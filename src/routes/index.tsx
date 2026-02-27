@@ -1,53 +1,24 @@
-import { useState } from "react";
-import reactLogo from "../assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
 import { createFileRoute } from "@tanstack/react-router";
-import { Button } from "@/components/ui/button";
+import { HeroBanner } from "@/components/hero-banner";
+import { AnimeRow } from "@/components/anime-row";
+import {
+  heroAnime,
+  trendingAnime,
+  newReleases,
+  classicAnime,
+} from "@/lib/mock-data";
 
 export const Route = createFileRoute("/")({
   component: IndexComponent,
 });
 
 function IndexComponent() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
-
-  async function greet() {
-    setGreetMsg(await invoke("greet", { name }));
-  }
-
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <Button type="submit">Greet</Button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+    <div className="space-y-10 p-6 pb-12">
+      <HeroBanner anime={heroAnime} />
+      <AnimeRow title="🔥 正在热播" items={trendingAnime} />
+      <AnimeRow title="✨ 新番上线" items={newReleases} />
+      <AnimeRow title="👑 经典必看" items={classicAnime} />
+    </div>
   );
 }
