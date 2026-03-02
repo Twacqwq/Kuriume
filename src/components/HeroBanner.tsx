@@ -1,0 +1,224 @@
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import type { HeroItem } from '@/lib/mock-data';
+import { cn } from '@/lib/utils';
+import { ChevronLeft, ChevronRight, Info, Pause, Play, Star } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+interface HeroBannerProps {
+  items: HeroItem[]
+  /** Auto-rotate interval in ms, default 8000 */
+  interval?: number
+}
+
+const REASON_STYLES: Record<HeroItem['reason'], string> = {
+  继续观看: 'bg-primary text-primary-foreground',
+  今日推荐: 'bg-yellow-500/80 text-black',
+  新番上线: 'bg-green-500/80 text-white',
+  热播榜首: 'bg-red-500/80 text-white',
+}
+
+export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
+  const [current, setCurrent] = useState(0)
+  const [isPaused, setIsPaused] = useState(false)
+  const [isTransitioning, setIsTransitioning] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setInterval>>(null)
+  const count = items.length
+
+  const goTo = useCallback(
+    (index: number) => {
+      if (isTransitioning) return
+      setIsTransitioning(true)
+      setCurrent((index + count) % count)
+      setTimeout(() => setIsTransitioning(false), 600)
+    },
+    [count, isTransitioning],
+  )
+
+  const next = useCallback(() => goTo(current + 1), [current, goTo])
+  const prev = useCallback(() => goTo(current - 1), [current, goTo])
+
+  // Auto-rotate
+  useEffect(() => {
+    if (isPaused || count <= 1) return
+    timerRef.current = setInterval(next, interval)
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, [isPaused, next, interval, count])
+
+  const item = items[current]!
+  const { anime } = item
+
+  return (
+    <section
+      className="group/hero relative h-[70vh] min-h-120 w-full overflow-hidden"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+    >
+      {/* Background images (all stacked, only current visible) */}
+      {items.map((it, i) => (
+        <div
+          key={it.anime.id}
+          className={cn(
+            'absolute inset-0 transition-opacity duration-700 ease-in-out',
+            i === current ? 'opacity-100' : 'opacity-0',
+          )}
+        >
+          <img
+            src={it.heroCover}
+            alt={it.anime.title}
+            className="h-full w-full object-cover"
+          />
+        </div>
+      ))}
+
+      {/* Gradient overlays */}
+      <div className="absolute inset-0 bg-linear-to-r from-black/90 via-black/50 to-transparent" />
+      <div className="absolute inset-0 bg-linear-to-t from-black/80 via-transparent to-black/20" />
+
+      {/* Content */}
+      <div className="relative flex h-full items-end pb-20 pl-8 pr-8 md:pl-12">
+        <div
+          key={current}
+          className="max-w-xl space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500"
+        >
+          {/* Reason tag + badges */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge className={cn('text-xs font-semibold border-0', REASON_STYLES[item.reason])}>
+              {item.reason}
+              {item.progress && ` · 第${item.progress.episode}话`}
+            </Badge>
+            <Badge variant="secondary" className="gap-1 bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+              <Star size={12} fill="currentColor" />
+              {anime.score}
+            </Badge>
+            <Badge variant="outline" className="border-border/60 text-muted-foreground">
+              {anime.year}
+            </Badge>
+            <Badge variant="outline" className="border-border/60 text-muted-foreground">
+              全{anime.episodes}话
+            </Badge>
+          </div>
+
+          {/* Title */}
+          <h1 className="text-4xl font-bold tracking-tight md:text-5xl lg:text-6xl">
+            {anime.title}
+          </h1>
+          {/* Genre tags */}
+          <div className="flex gap-2">
+            {anime.genre.map((g) => (
+              <span key={g} className="text-sm text-muted-foreground">
+                {g}
+              </span>
+            ))}
+          </div>
+
+          {/* Description */}
+          <p className="text-sm leading-relaxed text-muted-foreground md:text-base line-clamp-3">
+            {anime.description}
+          </p>
+
+          {/* Progress bar for continue watching */}
+          {item.progress && (
+            <div className="flex items-center gap-3 max-w-xs">
+              <div className="h-1 flex-1 rounded-full bg-white/20 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-500"
+                  style={{ width: `${item.progress.percent}%` }}
+                />
+              </div>
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                {item.progress.percent}%
+              </span>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-3 pt-1">
+            <Button size="lg" className="gap-2 rounded-full px-8">
+              <Play size={18} fill="currentColor" />
+              {item.progress ? '继续播放' : '立即播放'}
+            </Button>
+            <Button
+              size="lg"
+              variant="secondary"
+              className="gap-2 rounded-full px-6 bg-white/10 hover:bg-white/20 border-0"
+            >
+              <Info size={18} />
+              详情
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation arrows (visible on hover) */}
+      {count > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={prev}
+            className="absolute left-3 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white/80 opacity-0 backdrop-blur-sm transition-all hover:bg-black/60 group-hover/hero:opacity-100"
+          >
+            <ChevronLeft size={22} />
+          </button>
+          <button
+            type="button"
+            onClick={next}
+            className="absolute right-3 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white/80 opacity-0 backdrop-blur-sm transition-all hover:bg-black/60 group-hover/hero:opacity-100"
+          >
+            <ChevronRight size={22} />
+          </button>
+        </>
+      )}
+
+      {/* Bottom indicator bar */}
+      {count > 1 && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3">
+          {/* Dots / progress bars */}
+          <div className="flex items-center gap-1.5">
+            {items.map((it, i) => (
+              <button
+                key={it.anime.id}
+                type="button"
+                onClick={() => goTo(i)}
+                className="group/dot relative h-1 overflow-hidden rounded-full transition-all duration-300"
+                style={{ width: i === current ? 32 : 8 }}
+              >
+                <div className="absolute inset-0 bg-white/30" />
+                {i === current && (
+                  <div
+                    className="absolute inset-0 rounded-full bg-white"
+                    style={{
+                      animation: isPaused ? 'none' : `hero-progress ${interval}ms linear`,
+                    }}
+                  />
+                )}
+                {i !== current && (
+                  <div className="absolute inset-0 rounded-full bg-white/30 hover:bg-white/50 transition-colors" />
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Pause/play toggle */}
+          <button
+            type="button"
+            onClick={() => setIsPaused((p) => !p)}
+            className="flex h-6 w-6 items-center justify-center rounded-full text-white/60 hover:text-white transition-colors"
+          >
+            {isPaused ? <Play size={12} fill="currentColor" /> : <Pause size={12} fill="currentColor" />}
+          </button>
+        </div>
+      )}
+
+      {/* Inline keyframes for progress animation */}
+      <style>{`
+        @keyframes hero-progress {
+          from { width: 0%; }
+          to { width: 100%; }
+        }
+      `}</style>
+    </section>
+  )
+}

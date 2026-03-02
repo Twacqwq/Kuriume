@@ -8,9 +8,9 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   return (
-    <div className="flex min-h-screen bg-zinc-950">
+    <div className="flex min-h-screen">
       <Sidebar />
-      <main className="ml-55 flex-1 transition-all duration-300 peer-data-collapsed:ml-18">
+      <main className="flex-1 transition-all duration-300 peer-data-collapsed">
         <Outlet />
       </main>
       <TanStackRouterDevtools position="bottom-right" />
