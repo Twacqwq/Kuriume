@@ -11,8 +11,12 @@ export const Route = createFileRoute("/")({
 
 function IndexComponent() {
   return (
-    <div className="">
+    <div>
       <HeroBanner items={heroItems} />
+      {/* Future content area — overlaps banner fade zone */}
+      <div className="relative z-10 -mt-12 px-8 md:px-12 lg:px-16">
+        {/* Grid list will go here */}
+      </div>
     </div>
   );
 }

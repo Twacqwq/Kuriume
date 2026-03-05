@@ -45,11 +45,11 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
 
   return (
     <section
-      className="group/hero relative h-[70vh] min-h-120 w-full overflow-hidden"
+      className="group/hero relative h-[50vh] min-h-80 w-full overflow-hidden"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
-      {/* Background images (all stacked, only current visible) */}
+      {/* Blurred background images (stretched cover, all stacked) */}
       {items.map((it, i) => (
         <div
           key={it.anime.id}
@@ -60,21 +60,22 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
         >
           <img
             src={it.heroCover}
-            alt={it.anime.title}
-            className="h-full w-full object-cover"
+            alt=""
+            className="h-full w-full scale-110 object-cover blur-sm brightness-85 saturate-120"
           />
         </div>
       ))}
 
       {/* Gradient overlays */}
-      <div className="absolute inset-0 bg-linear-to-r from-black/90 via-black/50 to-transparent" />
-      <div className="absolute inset-0 bg-linear-to-t from-black/80 via-transparent to-black/20" />
+      <div className="absolute inset-0 bg-linear-to-r from-black/60 via-black/10 to-black/30" />
+      <div className="absolute inset-0 bg-linear-to-t from-background via-transparent to-transparent" />
 
-      {/* Content */}
-      <div className="relative flex h-full items-end pb-20 pl-8 pr-8 md:pl-12">
+      {/* Content: left info + right cover card */}
+      <div className="relative flex h-full items-center justify-between px-8 md:px-12 lg:px-16">
+        {/* Left side: text content */}
         <div
           key={current}
-          className="max-w-xl space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500"
+          className="flex-1 max-w-xl space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500"
         >
           {/* Badges */}
           <div className="flex items-center gap-2 flex-wrap">
@@ -82,34 +83,35 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
               <Star size={12} fill="currentColor" />
               {anime.score}
             </Badge>
-            <Badge variant="outline" className="border-border/60 text-muted-foreground">
+            <Badge variant="outline" className="border-white/20 text-white/70">
               {anime.year}
             </Badge>
-            <Badge variant="outline" className="border-border/60 text-muted-foreground">
+            <Badge variant="outline" className="border-white/20 text-white/70">
               全{anime.episodes}话
             </Badge>
           </div>
 
           {/* Title */}
-          <h1 className="text-4xl font-bold tracking-tight md:text-5xl lg:text-6xl">
+          <h1 className="text-4xl font-bold tracking-tight text-white md:text-5xl lg:text-6xl drop-shadow-lg">
             {anime.title}
           </h1>
+
           {/* Genre tags */}
           <div className="flex gap-2">
             {anime.genre.map((g) => (
-              <span key={g} className="text-sm text-muted-foreground">
+              <Badge key={g} variant="outline" className="border-white/15 text-white/60 text-xs">
                 {g}
-              </span>
+              </Badge>
             ))}
           </div>
 
           {/* Description */}
-          <p className="text-sm leading-relaxed text-muted-foreground md:text-base line-clamp-3">
+          <p className="text-sm leading-relaxed text-white/70 md:text-base line-clamp-3">
             {anime.description}
           </p>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-3 pt-1">
+          <div className="flex items-center gap-3 pt-2">
             <Button size="lg" className="gap-2 rounded-full px-8">
               <Play size={18} fill="currentColor" />
               立即播放
@@ -122,6 +124,27 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
               <Info size={18} />
               详情
             </Button>
+          </div>
+        </div>
+
+        {/* Right side: portrait cover card */}
+        <div
+          key={`cover-${current}`}
+          className="hidden md:flex items-center shrink-0 animate-in fade-in slide-in-from-right-8 duration-700"
+        >
+          <div className="relative group/card">
+            {/* Glow effect behind card */}
+            <div className="absolute -inset-4 rounded-2xl bg-white/5 blur-2xl" />
+            {/* Card */}
+            <div className="relative w-40 lg:w-48 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10 transition-transform duration-300 group-hover/card:scale-[1.02]">
+              <img
+                src={item.heroCover}
+                alt={anime.title}
+                className="h-auto w-full object-cover aspect-2/3"
+              />
+              {/* Subtle bottom gradient on card */}
+              <div className="absolute inset-x-0 bottom-0 h-1/3 bg-linear-to-t from-black/60 to-transparent" />
+            </div>
           </div>
         </div>
       </div>

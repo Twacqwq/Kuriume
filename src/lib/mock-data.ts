@@ -24,9 +24,9 @@ export interface ContinueWatchingItem {
 }
 
 const HERO_COVERS = [
-  'https://picsum.photos/seed/hero1/1920/800',
-  'https://picsum.photos/seed/hero2/1920/800',
-  'https://picsum.photos/seed/hero3/1920/800',
+  'https://lain.bgm.tv/pic/cover/l/c2/0a/12_24O6L.jpg',
+  'http://lain.bgm.tv/pic/cover/l/7c/f1/443106_b4QP3.jpg',
+  'http://lain.bgm.tv/pic/cover/l/0c/f3/458985_wIzkk.jpg',
 ]
 
 export const heroAnime: Anime = {
@@ -46,14 +46,14 @@ export const heroItems: HeroItem[] = [
     anime: {
       id: 100,
       title: '咒术回战',
-      cover: 'https://picsum.photos/seed/jjk/400/560',
+      cover: 'http://lain.bgm.tv/pic/cover/l/0c/f3/458985_wIzkk.jpg',
       score: 9.1,
       year: 2024,
       episodes: 47,
       genre: ['动作', '奇幻'],
       description: '隐藏着强大诅咒力量的少年，被卷入咒术师与诅咒之间的殊死战斗。涩谷事变后的故事将走向何方？',
     },
-    heroCover: 'https://picsum.photos/seed/jjk-hero/1920/800',
+    heroCover: 'http://lain.bgm.tv/pic/cover/l/0c/f3/458985_wIzkk.jpg',
   },
   {
     anime: heroAnime,
@@ -63,26 +63,26 @@ export const heroItems: HeroItem[] = [
     anime: {
       id: 101,
       title: '药屋少女的呢喃',
-      cover: 'https://picsum.photos/seed/kusuri/400/560',
+      cover: 'https://lain.bgm.tv/pic/cover/l/c2/0a/12_24O6L.jpg',
       score: 9.0,
       year: 2025,
       episodes: 24,
       genre: ['悬疑', '日常'],
       description: '后宫药屋中的少女猫猫，凭借毒物知识卷入宫廷谜案。第二季全新篇章，更多宫廷秘辛等你揭开。',
     },
-    heroCover: 'https://picsum.photos/seed/kusuri-hero/1920/800',
+    heroCover: 'https://lain.bgm.tv/pic/cover/l/c2/0a/12_24O6L.jpg',
   },
   {
     anime: {
       id: 102,
       title: '鬼灭之刃',
-      cover: 'https://picsum.photos/seed/kimetsu/400/560',
+      cover: 'http://lain.bgm.tv/pic/cover/l/7c/f1/443106_b4QP3.jpg',
       score: 9.3,
       year: 2025,
       episodes: 44,
       genre: ['动作', '奇幻'],
       description: '少年踏上了成为最强剑士的道路，与同伴一起斩杀恶鬼，保护所爱之人。无限城决战即将到来。',
     },
-    heroCover: 'https://picsum.photos/seed/kimetsu-hero/1920/800',
+    heroCover: 'http://lain.bgm.tv/pic/cover/l/7c/f1/443106_b4QP3.jpg',
   },
 ]
