@@ -11,13 +11,6 @@ interface HeroBannerProps {
   interval?: number
 }
 
-const REASON_STYLES: Record<HeroItem['reason'], string> = {
-  继续观看: 'bg-primary text-primary-foreground',
-  今日推荐: 'bg-yellow-500/80 text-black',
-  新番上线: 'bg-green-500/80 text-white',
-  热播榜首: 'bg-red-500/80 text-white',
-}
-
 export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
   const [current, setCurrent] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
@@ -83,12 +76,8 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
           key={current}
           className="max-w-xl space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500"
         >
-          {/* Reason tag + badges */}
+          {/* Badges */}
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge className={cn('text-xs font-semibold border-0', REASON_STYLES[item.reason])}>
-              {item.reason}
-              {item.progress && ` · 第${item.progress.episode}话`}
-            </Badge>
             <Badge variant="secondary" className="gap-1 bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
               <Star size={12} fill="currentColor" />
               {anime.score}
@@ -119,26 +108,11 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
             {anime.description}
           </p>
 
-          {/* Progress bar for continue watching */}
-          {item.progress && (
-            <div className="flex items-center gap-3 max-w-xs">
-              <div className="h-1 flex-1 rounded-full bg-white/20 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-primary transition-all duration-500"
-                  style={{ width: `${item.progress.percent}%` }}
-                />
-              </div>
-              <span className="text-xs text-muted-foreground whitespace-nowrap">
-                {item.progress.percent}%
-              </span>
-            </div>
-          )}
-
           {/* Action buttons */}
           <div className="flex items-center gap-3 pt-1">
             <Button size="lg" className="gap-2 rounded-full px-8">
               <Play size={18} fill="currentColor" />
-              {item.progress ? '继续播放' : '立即播放'}
+              立即播放
             </Button>
             <Button
               size="lg"
