@@ -1,5 +1,19 @@
 [workspace]
-members = ["crates/*"]
+members = ["crates/kuriume-provider"]
+
+[workspace.dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri-build = { version = "2", features = [] }
+async-trait = "0.1"
+reqwest = { version = "0.12", features = ["json"] }
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+
+# Internal crates
+kuriume-provider = { path = "crates/kuriume-provider" }
 
 [package]
 name = "kuriume"
@@ -18,12 +32,11 @@ name = "kuriume_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { workspace = true }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-kuriume-provider = { path = "crates/kuriume-provider" }
-
+tauri = { workspace = true }
+tauri-plugin-opener = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+kuriume-provider = { workspace = true }
