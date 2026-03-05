@@ -19,7 +19,7 @@ function IndexComponent() {
     <div>
       <HeroBanner items={heroItems} />
       {/* Content area — overlaps banner fade zone */}
-      <div className="relative z-10 -mt-12 px-8 pb-12 md:px-12 lg:px-16">
+      <div className="relative z-10 -mt-12 pt-6 px-8 pb-12 md:px-12 lg:px-16">
         <AnimeGrid title="全部番剧" fetchPage={fetchPage} />
       </div>
     </div>

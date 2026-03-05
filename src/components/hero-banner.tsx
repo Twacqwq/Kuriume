@@ -171,7 +171,7 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
 
       {/* Bottom indicator bar */}
       {count > 1 && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3">
+        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 flex items-center gap-3">
           {/* Dots / progress bars */}
           <div className="flex items-center gap-1.5">
             {items.map((it, i) => (

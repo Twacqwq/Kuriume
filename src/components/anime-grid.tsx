@@ -52,7 +52,7 @@ export function AnimeGrid({ fetchPage, title, pageSize = 20 }: AnimeGridProps) {
   }, [loadMore])
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-5">
       {title && (
         <h2 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">
           {title}
@@ -60,7 +60,7 @@ export function AnimeGrid({ fetchPage, title, pageSize = 20 }: AnimeGridProps) {
       )}
 
       {/* Grid */}
-      <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
+      <div className="grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
         {items.map((anime) => (
           <AnimeCard key={anime.id} anime={anime} />
         ))}
@@ -89,7 +89,7 @@ function AnimeCard({ anime }: { anime: Anime }) {
   return (
     <button
       type="button"
-      className="group relative flex flex-col gap-2 text-left outline-none"
+      className="group relative flex flex-col gap-2.5 text-left outline-none"
     >
       {/* Cover */}
       <div className="relative overflow-hidden rounded-lg aspect-2/3 bg-muted">
