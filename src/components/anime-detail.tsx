@@ -1,0 +1,584 @@
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { Link } from "@tanstack/react-router";
+import {
+  ArrowLeft,
+  BookmarkPlus,
+  Calendar,
+  ChevronRight,
+  Film,
+  Grid3X3,
+  Heart,
+  LayoutList,
+  Play,
+  Rows3,
+  Share2,
+  Star,
+  Tv,
+  Users,
+} from "lucide-react";
+import { useState } from "react";
+
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
+export interface AnimeEpisode {
+  id: number;
+  number: number;
+  title: string;
+  cover: string;
+  duration: string;
+  /** 0-100, undefined = not watched */
+  progress?: number;
+}
+
+export interface AnimeCharacter {
+  id: number;
+  name: string;
+  role: string;
+  avatar: string;
+  cv: string;
+}
+
+export interface AnimeRelated {
+  id: number;
+  title: string;
+  cover: string;
+  score: number;
+  year: number;
+  relation: string; // e.g. "续集", "前传", "番外"
+}
+
+export interface AnimeDetailData {
+  id: number;
+  title: string;
+  titleOriginal?: string;
+  cover: string;
+  score: number;
+  ratingCount: number;
+  year: number;
+  season: string;
+  status: "连载中" | "已完结";
+  totalEpisodes: number;
+  currentEpisodes: number;
+  genre: string[];
+  studio: string;
+  director: string;
+  description: string;
+  episodes: AnimeEpisode[];
+  characters: AnimeCharacter[];
+  related: AnimeRelated[];
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main component                                                     */
+/* ------------------------------------------------------------------ */
+interface AnimeDetailProps {
+  data: AnimeDetailData;
+  onBack?: () => void;
+}
+
+export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
+  return (
+    <div className="min-h-screen">
+      {/* ============ Hero Section ============ */}
+      <section className="relative overflow-hidden">
+        {/* Blurred background */}
+        <div className="absolute inset-0">
+          <img
+            src={data.cover}
+            alt=""
+            className="h-full w-full scale-110 object-cover blur-2xl brightness-[0.4] saturate-[1.4]"
+          />
+          <div className="absolute inset-0 bg-linear-to-t from-background from-5% via-background/80 via-40% to-transparent" />
+          <div className="absolute inset-0 bg-linear-to-r from-background/90 via-background/40 to-transparent" />
+          <div className="absolute inset-0 bg-linear-to-b from-black/40 via-transparent to-transparent" />
+          <div
+            className="absolute inset-0 opacity-[0.03] mix-blend-overlay"
+            style={{
+              backgroundImage:
+                'url("data:image/svg+xml,%3Csvg viewBox=%270 0 256 256%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cfilter id=%27n%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.9%27 numOctaves=%274%27 stitchTiles=%27stitch%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23n)%27/%3E%3C/svg%3E")',
+            }}
+          />
+        </div>
+
+        {/* Back button */}
+        {onBack && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={onBack}
+                className="absolute left-6 top-6 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20"
+              >
+                <ArrowLeft size={18} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">返回</TooltipContent>
+          </Tooltip>
+        )}
+
+        {/* Content */}
+        <div className="relative flex flex-col gap-8 px-8 pb-10 pt-20 md:flex-row md:items-end md:px-16 lg:px-24">
+          {/* Cover */}
+          <div className="group/cover relative shrink-0 self-center md:self-auto">
+            <img
+              src={data.cover}
+              alt=""
+              className="absolute inset-0 m-auto h-full w-full scale-110 rounded-2xl object-cover opacity-30 blur-2xl"
+            />
+            <img
+              src={data.cover}
+              alt={data.title}
+              className="relative h-72 w-auto rounded-2xl object-cover shadow-2xl shadow-black/60 ring-1 ring-white/10 transition-transform duration-300 group-hover/cover:scale-[1.02] sm:h-80 md:h-88"
+            />
+            <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/0 transition-colors duration-300 group-hover/cover:bg-black/30">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/90 text-white opacity-0 shadow-lg shadow-primary/30 transition-all duration-300 group-hover/cover:scale-100 group-hover/cover:opacity-100 scale-75">
+                <Play size={24} fill="currentColor" className="ml-1" />
+              </div>
+            </div>
+          </div>
+
+          {/* Info */}
+          <div className="flex-1 space-y-4">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-bold tracking-tight text-white md:text-4xl">
+                {data.title}
+              </h1>
+              {data.titleOriginal && (
+                <p className="text-sm text-white/40">{data.titleOriginal}</p>
+              )}
+            </div>
+
+            {/* Score */}
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 rounded-lg bg-yellow-500/15 px-3 py-1.5">
+                  <Star size={16} fill="currentColor" className="text-yellow-400" />
+                  <span className="text-lg font-bold text-yellow-400">{data.score}</span>
+                </div>
+                <span className="text-xs text-white/40">{data.ratingCount} 人评分</span>
+              </div>
+            </div>
+
+            {/* Meta badges */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="gap-1 border-white/15 text-white/70">
+                <Calendar size={12} />
+                {data.year} · {data.season}
+              </Badge>
+              <Badge variant="outline" className="border-white/15 text-white/70">
+                {data.status === "连载中" ? (
+                  <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+                ) : (
+                  <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-blue-400" />
+                )}
+                {data.status} · {data.currentEpisodes}/{data.totalEpisodes}话
+              </Badge>
+              <Badge variant="outline" className="border-white/15 text-white/70">
+                {data.studio}
+              </Badge>
+            </div>
+
+            {/* Genre tags */}
+            <div className="flex flex-wrap gap-2">
+              {data.genre.map((g) => (
+                <Badge key={g} variant="ghost" className="bg-white/6 text-white/60 hover:bg-white/10 hover:text-white/80">
+                  {g}
+                </Badge>
+              ))}
+            </div>
+
+            {/* Description */}
+            <p className="max-w-2xl text-sm leading-relaxed text-white/55 md:text-base">
+              {data.description}
+            </p>
+
+            {/* Action buttons */}
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <Link
+                to="/anime/$id/episode/$ep"
+                params={{
+                  id: String(data.id),
+                  ep: String(
+                    data.episodes.find((e) => !e.progress || e.progress < 100)?.number ?? 1
+                  ),
+                }}
+              >
+                <Button size="lg" className="gap-2 rounded-full px-8 shadow-lg shadow-primary/25">
+                  <Play size={18} fill="currentColor" />
+                  开始播放
+                </Button>
+              </Link>
+              <Button
+                size="lg"
+                variant="secondary"
+                className="gap-2 rounded-full border-0 bg-white/10 px-6 hover:bg-white/20"
+              >
+                <BookmarkPlus size={18} />
+                追番
+              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon-lg" variant="ghost" className="rounded-full text-white/60 hover:bg-white/10 hover:text-white">
+                    <Heart size={18} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>收藏</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon-lg" variant="ghost" className="rounded-full text-white/60 hover:bg-white/10 hover:text-white">
+                    <Share2 size={18} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>分享</TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
+        </div>
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-16 bg-linear-to-t from-background to-transparent" />
+      </section>
+
+      {/* ============ Tabs (shadcn) ============ */}
+      <Tabs defaultValue="episodes" className="gap-0">
+        <div className="sticky top-0 z-30 border-b border-white/6 bg-background/80 backdrop-blur-xl">
+          <div className="px-8 md:px-16 lg:px-24">
+            <TabsList variant="line" className="h-auto w-auto bg-transparent p-0">
+              <TabsTrigger
+                value="episodes"
+                className="gap-2 px-5 py-3.5 text-sm data-[state=active]:text-primary data-[state=active]:after:bg-primary"
+              >
+                <Tv size={16} />
+                剧集
+              </TabsTrigger>
+              <TabsTrigger
+                value="characters"
+                className="gap-2 px-5 py-3.5 text-sm data-[state=active]:text-primary data-[state=active]:after:bg-primary"
+              >
+                <Users size={16} />
+                角色
+              </TabsTrigger>
+              <TabsTrigger
+                value="related"
+                className="gap-2 px-5 py-3.5 text-sm data-[state=active]:text-primary data-[state=active]:after:bg-primary"
+              >
+                <Film size={16} />
+                相关推荐
+              </TabsTrigger>
+            </TabsList>
+          </div>
+        </div>
+
+        <div className="px-8 py-8 md:px-16 lg:px-24">
+          <TabsContent value="episodes">
+            <EpisodeList episodes={data.episodes} animeId={data.id} />
+          </TabsContent>
+          <TabsContent value="characters">
+            <CharacterGrid characters={data.characters} />
+          </TabsContent>
+          <TabsContent value="related">
+            <RelatedList related={data.related} />
+          </TabsContent>
+        </div>
+      </Tabs>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Episode List                                                       */
+/* ------------------------------------------------------------------ */
+type EpisodeViewMode = "card" | "list" | "grid";
+
+function EpisodeList({ episodes, animeId }: { episodes: AnimeEpisode[]; animeId: number }) {
+  const [viewMode, setViewMode] = useState<EpisodeViewMode>("card");
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-foreground">
+          全部剧集
+          <span className="ml-2 text-sm font-normal text-muted-foreground">
+            共 {episodes.length} 话
+          </span>
+        </h2>
+
+        {/* View mode toggle (shadcn ToggleGroup) */}
+        <ToggleGroup
+          type="single"
+          value={viewMode}
+          onValueChange={(v) => { if (v) setViewMode(v as EpisodeViewMode); }}
+          size="sm"
+          className="rounded-lg bg-white/4 p-0.5"
+        >
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToggleGroupItem
+                value="card"
+                className="h-7 w-7 p-0 data-[state=on]:bg-white/10 data-[state=on]:text-primary"
+              >
+                <LayoutList size={15} />
+              </ToggleGroupItem>
+            </TooltipTrigger>
+            <TooltipContent>卡片</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToggleGroupItem
+                value="list"
+                className="h-7 w-7 p-0 data-[state=on]:bg-white/10 data-[state=on]:text-primary"
+              >
+                <Rows3 size={15} />
+              </ToggleGroupItem>
+            </TooltipTrigger>
+            <TooltipContent>列表</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToggleGroupItem
+                value="grid"
+                className="h-7 w-7 p-0 data-[state=on]:bg-white/10 data-[state=on]:text-primary"
+              >
+                <Grid3X3 size={15} />
+              </ToggleGroupItem>
+            </TooltipTrigger>
+            <TooltipContent>数字</TooltipContent>
+          </Tooltip>
+        </ToggleGroup>
+      </div>
+
+      {/* View: Card (default – with thumbnail) */}
+      {viewMode === "card" && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {episodes.map((ep) => (
+            <Link
+              key={ep.id}
+              to="/anime/$id/episode/$ep"
+              params={{ id: String(animeId), ep: String(ep.number) }}
+              className="group flex gap-3 rounded-xl bg-card/50 p-3 text-left transition-colors hover:bg-card"
+            >
+              {/* Thumbnail */}
+              <div className="relative aspect-video w-36 shrink-0 overflow-hidden rounded-lg bg-card">
+                <img
+                  src={ep.cover}
+                  alt={ep.title}
+                  loading="lazy"
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+                <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white/90 backdrop-blur-sm">
+                  {ep.duration}
+                </span>
+                <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">
+                  <Play
+                    size={20}
+                    fill="currentColor"
+                    className="text-white opacity-0 transition-opacity group-hover:opacity-100"
+                  />
+                </div>
+                {ep.progress !== undefined && (
+                  <Progress
+                    value={ep.progress}
+                    className="absolute bottom-0 left-0 right-0 h-0.5 rounded-none bg-white/20"
+                  />
+                )}
+              </div>
+
+              <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
+                <span className="text-xs font-medium text-primary">
+                  第 {ep.number} 话
+                </span>
+                <span className="text-sm font-medium text-foreground line-clamp-2 transition-colors group-hover:text-primary">
+                  {ep.title}
+                </span>
+                {ep.progress !== undefined && (
+                  <span className="text-[11px] text-muted-foreground">
+                    已看 {ep.progress}%
+                  </span>
+                )}
+              </div>
+
+              <ChevronRight
+                size={16}
+                className="shrink-0 self-center text-muted-foreground/50 transition-transform group-hover:translate-x-0.5"
+              />
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {/* View: Title list (no thumbnail) */}
+      {viewMode === "list" && (
+        <div className="divide-y divide-white/4">
+          {episodes.map((ep) => (
+            <Link
+              key={ep.id}
+              to="/anime/$id/episode/$ep"
+              params={{ id: String(animeId), ep: String(ep.number) }}
+              className="group flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-white/2"
+            >
+              <span
+                className={cn(
+                  "w-8 shrink-0 text-center text-sm font-semibold tabular-nums",
+                  ep.progress !== undefined && ep.progress >= 100
+                    ? "text-muted-foreground/50"
+                    : "text-primary"
+                )}
+              >
+                {ep.number}
+              </span>
+
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="text-sm font-medium text-foreground line-clamp-1 transition-colors group-hover:text-primary">
+                  {ep.title}
+                </span>
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <span>{ep.duration}</span>
+                  {ep.progress !== undefined && (
+                    <>
+                      <span className="text-white/20">·</span>
+                      <span>{ep.progress >= 100 ? "已看完" : `已看 ${ep.progress}%`}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {ep.progress !== undefined && ep.progress < 100 && (
+                <Progress
+                  value={ep.progress}
+                  className="h-1 w-16 shrink-0 bg-white/10"
+                />
+              )}
+
+              <Play
+                size={14}
+                fill="currentColor"
+                className="shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:text-primary group-hover:opacity-100"
+              />
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {/* View: Number grid */}
+      {viewMode === "grid" && (
+        <div className="flex flex-wrap gap-2">
+          {episodes.map((ep) => {
+            const watched = ep.progress !== undefined && ep.progress >= 100;
+            const watching = ep.progress !== undefined && ep.progress > 0 && ep.progress < 100;
+            return (
+              <Tooltip key={ep.id}>
+                <TooltipTrigger asChild>
+                  <Link
+                    to="/anime/$id/episode/$ep"
+                    params={{ id: String(animeId), ep: String(ep.number) }}
+                    className={cn(
+                      "relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums transition-all",
+                      watched
+                        ? "bg-white/4 text-muted-foreground/50"
+                        : watching
+                          ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                          : "bg-card/60 text-foreground hover:bg-card hover:text-primary"
+                    )}
+                  >
+                    {ep.number}
+                    {watching && (
+                      <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary shadow-[0_0_4px_var(--primary)]" />
+                    )}
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>
+                  第 {ep.number} 话 · {ep.title}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Character Grid (shadcn Avatar)                                     */
+/* ------------------------------------------------------------------ */
+function CharacterGrid({ characters }: { characters: AnimeCharacter[] }) {
+  return (
+    <div className="space-y-6">
+      <h2 className="text-lg font-bold text-foreground">角色 & 声优</h2>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {characters.map((ch) => (
+          <div
+            key={ch.id}
+            className="group flex items-center gap-4 rounded-xl bg-card/50 p-4 transition-colors hover:bg-card"
+          >
+            <Avatar className="size-14 ring-2 ring-white/6">
+              <AvatarImage src={ch.avatar} alt={ch.name} />
+              <AvatarFallback className="text-base">{ch.name[0]}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-semibold text-foreground line-clamp-1">
+                {ch.name}
+              </h3>
+              <p className="text-xs text-muted-foreground">{ch.role}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground/70">
+                CV: {ch.cv}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Related Anime                                                      */
+/* ------------------------------------------------------------------ */
+function RelatedList({ related }: { related: AnimeRelated[] }) {
+  return (
+    <div className="space-y-6">
+      <h2 className="text-lg font-bold text-foreground">相关推荐</h2>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+        {related.map((item) => (
+          <div key={item.id} className="group cursor-pointer">
+            <div className="relative aspect-2/3 overflow-hidden rounded-lg bg-card">
+              <img
+                src={item.cover}
+                alt={item.title}
+                loading="lazy"
+                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              />
+              <div className="absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/30" />
+              <Badge className="absolute top-2 left-2 bg-primary/80 text-[10px] backdrop-blur-sm">
+                {item.relation}
+              </Badge>
+              {item.score > 0 && (
+                <div className="absolute top-2 right-2 flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-xs text-yellow-400 backdrop-blur-sm">
+                  <Star size={10} fill="currentColor" />
+                  {item.score}
+                </div>
+              )}
+            </div>
+            <div className="mt-2 space-y-1">
+              <h3 className="text-sm font-medium text-foreground line-clamp-1 transition-colors group-hover:text-primary">
+                {item.title}
+              </h3>
+              <span className="text-xs text-muted-foreground">{item.year}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

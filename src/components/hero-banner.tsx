@@ -1,12 +1,22 @@
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import type { HeroItem } from '@/lib/mock-data';
-import { cn } from '@/lib/utils';
-import { ChevronLeft, ChevronRight, Info, Pause, Play, Star } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import { ChevronLeft, ChevronRight, Info, Pause, Play, Star } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+
+export interface BannerItem {
+  id: number
+  title: string
+  cover: string
+  score: number
+  year: number
+  episodes: number
+  genre: string[]
+  description: string
+}
 
 interface HeroBannerProps {
-  items: HeroItem[]
+  items: BannerItem[]
   /** Auto-rotate interval in ms, default 8000 */
   interval?: number
 }
@@ -41,73 +51,71 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
   }, [isPaused, next, interval, count])
 
   const item = items[current]!
-  const { anime } = item
 
   return (
     <section
-      className="group/hero relative h-[50vh] min-h-80 w-full overflow-hidden"
+      className="group/hero relative w-full overflow-hidden"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
-      {/* Blurred background images (stretched cover, all stacked) */}
+      {/* Blurred background layer */}
       {items.map((it, i) => (
         <div
-          key={it.anime.id}
+          key={it.id}
           className={cn(
             'absolute inset-0 transition-opacity duration-700 ease-in-out',
             i === current ? 'opacity-100' : 'opacity-0',
           )}
         >
           <img
-            src={it.heroCover}
+            src={it.cover}
             alt=""
-            className="h-full w-full scale-110 object-cover blur-sm brightness-85 saturate-120"
+            className="h-full w-full scale-110 object-cover blur-sm brightness-65 saturate-130"
           />
         </div>
       ))}
 
-      {/* Gradient overlays */}
-      <div className="absolute inset-0 bg-linear-to-r from-black/60 via-black/10 to-black/30" />
+      {/* Gradient overlay for bottom fade */}
       <div className="absolute inset-0 bg-linear-to-t from-background via-transparent to-transparent" />
 
-      {/* Content: left info + right cover card */}
-      <div className="relative flex h-full items-center justify-between px-8 md:px-12 lg:px-16">
-        {/* Left side: text content */}
+      {/* Spotlight layout */}
+      <div className="relative flex min-h-120 items-center px-8 py-16 md:px-16 lg:px-24">
+        {/* Left: text info */}
         <div
-          key={current}
-          className="flex-1 max-w-xl space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500"
+          key={`info-${current}`}
+          className="flex-1 space-y-4 pr-8 animate-in fade-in slide-in-from-left-4 duration-500 md:pr-16"
         >
           {/* Badges */}
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="secondary" className="gap-1 bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
               <Star size={12} fill="currentColor" />
-              {anime.score}
+              {item.score}
             </Badge>
             <Badge variant="outline" className="border-white/20 text-white/70">
-              {anime.year}
+              {item.year}
             </Badge>
             <Badge variant="outline" className="border-white/20 text-white/70">
-              全{anime.episodes}话
+              全{item.episodes}话
             </Badge>
           </div>
 
           {/* Title */}
-          <h1 className="text-4xl font-bold tracking-tight text-white md:text-5xl lg:text-6xl drop-shadow-lg">
-            {anime.title}
+          <h1 className="text-3xl font-bold tracking-tight text-white md:text-4xl lg:text-5xl">
+            {item.title}
           </h1>
 
           {/* Genre tags */}
           <div className="flex gap-2">
-            {anime.genre.map((g) => (
-              <Badge key={g} variant="outline" className="border-white/15 text-white/60 text-xs">
+            {item.genre.map((g) => (
+              <span key={g} className="text-sm text-white/60">
                 {g}
-              </Badge>
+              </span>
             ))}
           </div>
 
           {/* Description */}
-          <p className="text-sm leading-relaxed text-white/70 md:text-base line-clamp-3">
-            {anime.description}
+          <p className="text-sm leading-relaxed text-white/60 md:text-base line-clamp-3 max-w-lg">
+            {item.description}
           </p>
 
           {/* Action buttons */}
@@ -127,28 +135,34 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
           </div>
         </div>
 
-        {/* Right side: portrait cover card */}
-        <div
-          key={`cover-${current}`}
-          className="hidden md:flex items-center shrink-0 animate-in fade-in slide-in-from-right-8 duration-700"
-        >
-          <div className="relative group/card">
-            {/* Glow effect behind card */}
-            <div className="absolute -inset-4 rounded-2xl bg-white/5 blur-2xl" />
-            {/* Card */}
-            <div className="relative w-40 lg:w-48 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10 transition-transform duration-300 group-hover/card:scale-[1.02]">
+        {/* Right: cover card */}
+        <div className="hidden md:block relative shrink-0">
+          {items.map((it, i) => (
+            <div
+              key={it.id}
+              className={cn(
+                'transition-all duration-700 ease-in-out',
+                i === current
+                  ? 'opacity-100 scale-100 translate-y-0'
+                  : 'opacity-0 scale-95 translate-y-4 absolute inset-0',
+              )}
+            >
+              {/* Glow */}
               <img
-                src={item.heroCover}
-                alt={anime.title}
-                className="h-auto w-full object-cover aspect-2/3"
+                src={it.cover}
+                alt=""
+                className="absolute inset-0 m-auto h-full w-full object-cover blur-2xl opacity-30 scale-110 rounded-2xl"
               />
-              {/* Subtle bottom gradient on card */}
-              <div className="absolute inset-x-0 bottom-0 h-1/3 bg-linear-to-t from-black/60 to-transparent" />
+              {/* Cover */}
+              <img
+                src={it.cover}
+                alt={it.title}
+                className="relative h-95 w-auto rounded-2xl object-cover shadow-2xl shadow-black/50 ring-1 ring-white/10 lg:h-105"
+              />
             </div>
-          </div>
+          ))}
         </div>
       </div>
-
       {/* Navigation arrows (visible on hover) */}
       {count > 1 && (
         <>
@@ -171,12 +185,12 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
 
       {/* Bottom indicator bar */}
       {count > 1 && (
-        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 flex items-center gap-3">
-          {/* Dots / progress bars */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3">
+          {/* Progress dots */}
           <div className="flex items-center gap-1.5">
             {items.map((it, i) => (
               <button
-                key={it.anime.id}
+                key={it.id}
                 type="button"
                 onClick={() => goTo(i)}
                 className="group/dot relative h-1 overflow-hidden rounded-full transition-all duration-300"
@@ -198,18 +212,22 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
             ))}
           </div>
 
-          {/* Pause/play toggle */}
+          {/* Play/pause toggle */}
           <button
             type="button"
             onClick={() => setIsPaused((p) => !p)}
             className="flex h-6 w-6 items-center justify-center rounded-full text-white/60 hover:text-white transition-colors"
           >
-            {isPaused ? <Play size={12} fill="currentColor" /> : <Pause size={12} fill="currentColor" />}
+            {isPaused ? (
+              <Play size={12} fill="currentColor" />
+            ) : (
+              <Pause size={12} fill="currentColor" />
+            )}
           </button>
         </div>
       )}
 
-      {/* Inline keyframes for progress animation */}
+      {/* Progress animation keyframes */}
       <style>{`
         @keyframes hero-progress {
           from { width: 0%; }

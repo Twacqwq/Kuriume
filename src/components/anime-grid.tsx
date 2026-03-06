@@ -1,20 +1,17 @@
-import { Badge } from '@/components/ui/badge'
-import type { Anime } from '@/lib/mock-data'
-import { cn } from '@/lib/utils'
-import { Star } from 'lucide-react'
+import { Star, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 interface AnimeGridProps {
-  /** Function to fetch a page of anime. Returns items + whether more exist. */
-  fetchPage: (page: number) => Promise<{ items: Anime[]; hasMore: boolean }>
+  /** Fetch a page of items. Return empty array when no more data. */
+  fetchPage: (page: number) => Promise<AnimeCardItem[]>
   /** Grid section title */
   title?: string
-  /** Initial page size hint (for skeleton count), default 20 */
+  /** Items per page, for skeleton count */
   pageSize?: number
 }
 
 export function AnimeGrid({ fetchPage, title, pageSize = 20 }: AnimeGridProps) {
-  const [items, setItems] = useState<Anime[]>([])
+  const [items, setItems] = useState<AnimeCardItem[]>([])
   const [page, setPage] = useState(0)
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
@@ -24,10 +21,14 @@ export function AnimeGrid({ fetchPage, title, pageSize = 20 }: AnimeGridProps) {
     if (loading || !hasMore) return
     setLoading(true)
     try {
-      const result = await fetchPage(page)
-      setItems((prev) => [...prev, ...result.items])
-      setHasMore(result.hasMore)
-      setPage((p) => p + 1)
+      const nextPage = page + 1
+      const newItems = await fetchPage(nextPage)
+      if (newItems.length === 0) {
+        setHasMore(false)
+      } else {
+        setItems((prev) => [...prev, ...newItems])
+        setPage(nextPage)
+      }
     } finally {
       setLoading(false)
     }
@@ -37,7 +38,6 @@ export function AnimeGrid({ fetchPage, title, pageSize = 20 }: AnimeGridProps) {
   useEffect(() => {
     const sentinel = sentinelRef.current
     if (!sentinel) return
-
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) {
@@ -46,99 +46,100 @@ export function AnimeGrid({ fetchPage, title, pageSize = 20 }: AnimeGridProps) {
       },
       { rootMargin: '200px' },
     )
-
     observer.observe(sentinel)
     return () => observer.disconnect()
   }, [loadMore])
 
   return (
-    <section className="space-y-5">
+    <section className="px-6 py-8 md:px-10 lg:px-12 xl:px-16">
       {title && (
-        <h2 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">
-          {title}
-        </h2>
+        <h2 className="text-xl font-bold text-foreground mb-6">{title}</h2>
       )}
-
       {/* Grid */}
-      <div className="grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
-        {items.map((anime) => (
-          <AnimeCard key={anime.id} anime={anime} />
+      <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+        {items.map((item) => (
+          <AnimeCard key={item.id} item={item} />
         ))}
-
-        {/* Loading skeletons */}
+        {/* Skeletons while loading */}
         {loading &&
           Array.from({ length: pageSize }).map((_, i) => (
-            <AnimeCardSkeleton key={`skeleton-${i}`} />
+            <div key={`skeleton-${i}`} className="animate-pulse">
+              <div className="aspect-2/3 rounded-lg bg-card" />
+              <div className="mt-2 space-y-1.5">
+                <div className="h-4 w-3/4 rounded bg-card" />
+                <div className="h-3 w-1/2 rounded bg-card" />
+              </div>
+            </div>
           ))}
       </div>
-
-      {/* Sentinel element for intersection observer */}
-      {hasMore && <div ref={sentinelRef} className="h-1" />}
-
-      {/* End of list */}
+      {/* Sentinel for triggering next page */}
+      {hasMore && (
+        <div ref={sentinelRef} className="flex justify-center py-8">
+          {loading && <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />}
+        </div>
+      )}
+      {/* End message */}
       {!hasMore && items.length > 0 && (
-        <p className="py-6 text-center text-sm text-muted-foreground">已经到底了</p>
+        <p className="text-center text-sm text-muted-foreground py-8">
+          已经到底了 ~
+        </p>
       )}
     </section>
   )
 }
 
-function AnimeCard({ anime }: { anime: Anime }) {
-  const [imgLoaded, setImgLoaded] = useState(false)
-
-  return (
-    <button
-      type="button"
-      className="group relative flex flex-col gap-2.5 text-left outline-none"
-    >
-      {/* Cover */}
-      <div className="relative overflow-hidden rounded-lg aspect-2/3 bg-muted">
-        <img
-          src={anime.cover}
-          alt={anime.title}
-          loading="lazy"
-          onLoad={() => setImgLoaded(true)}
-          className={cn(
-            'h-full w-full object-cover transition-all duration-300 group-hover:scale-105',
-            imgLoaded ? 'opacity-100' : 'opacity-0',
-          )}
-        />
-
-        {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/0 transition-colors duration-200 group-hover:bg-black/20" />
-
-        {/* Score badge */}
-        <div className="absolute top-1.5 right-1.5">
-          <Badge
-            variant="secondary"
-            className="gap-0.5 bg-black/60 text-yellow-400 backdrop-blur-sm text-xs px-1.5 py-0.5"
-          >
-            <Star size={10} fill="currentColor" />
-            {anime.score}
-          </Badge>
-        </div>
-      </div>
-
-      {/* Info */}
-      <div className="space-y-0.5 px-0.5">
-        <h3 className="text-sm font-medium leading-tight text-foreground line-clamp-2 group-hover:text-primary transition-colors">
-          {anime.title}
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          {anime.year} · 全{anime.episodes}话
-        </p>
-      </div>
-    </button>
-  )
+export interface AnimeCardItem {
+  id: number
+  title: string
+  cover: string
+  score: number
+  year: number
+  episodes: number
+  genre: string[]
 }
 
-function AnimeCardSkeleton() {
+interface AnimeCardProps {
+  item: AnimeCardItem
+}
+
+function AnimeCard({ item }: AnimeCardProps) {
   return (
-    <div className="flex flex-col gap-2 animate-pulse">
-      <div className="rounded-lg aspect-2/3 bg-muted" />
-      <div className="space-y-1.5 px-0.5">
-        <div className="h-3.5 w-3/4 rounded bg-muted" />
-        <div className="h-3 w-1/2 rounded bg-muted" />
+    <div className="group cursor-pointer">
+      {/* Cover */}
+      <div className="relative aspect-2/3 overflow-hidden rounded-lg bg-card">
+        <img
+          src={item.cover}
+          alt={item.title}
+          loading="lazy"
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+        />
+        {/* Hover overlay */}
+        <div className="absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/30" />
+        {/* Score badge */}
+        {item.score > 0 && (
+          <div className="absolute top-2 right-2 flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-xs text-yellow-400 backdrop-blur-sm">
+            <Star size={10} fill="currentColor" />
+            {item.score}
+          </div>
+        )}
+      </div>
+      {/* Info */}
+      <div className="mt-2 space-y-1">
+        <h3 className="text-sm font-medium text-foreground line-clamp-1 group-hover:text-primary transition-colors">
+          {item.title}
+        </h3>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>{item.year}</span>
+          <span>·</span>
+          <span>{item.episodes}话</span>
+        </div>
+        <div className="flex gap-1.5">
+          {item.genre.slice(0, 2).map((g) => (
+            <span key={g} className="text-xs text-muted-foreground/70">
+              {g}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   )

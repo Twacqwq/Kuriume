@@ -8,7 +8,7 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   return (
-    <div className="flex h-full">
+    <div className="flex h-full bg-background">
       <Sidebar />
       <main className="flex-1 overflow-y-auto transition-all duration-300 peer-data-collapsed">
         <Outlet />
