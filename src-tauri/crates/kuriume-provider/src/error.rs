@@ -2,16 +2,16 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ProviderError {
-    #[error("HTTP 请求失败: {0}")]
+    #[error("HTTP request failed: {0}")]
     Http(#[from] reqwest::Error),
 
-    #[error("JSON 解析失败: {0}")]
+    #[error("JSON deserialization failed: {0}")]
     Json(#[from] serde_json::Error),
 
-    #[error("数据源错误: {0}")]
+    #[error("Data-source error: {0}")]
     Source(String),
 
-    #[error("未找到: {0}")]
+    #[error("Not found: {0}")]
     NotFound(String),
 }
 

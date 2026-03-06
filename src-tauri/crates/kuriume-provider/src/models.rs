@@ -1,42 +1,82 @@
 use serde::{Deserialize, Serialize};
 
-/// 番剧基本信息
+/// Basic anime information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnimeInfo {
-    /// 数据源内部 ID
+    /// Internal ID from the data source.
     pub id: String,
-    /// 番剧标题
+    /// Anime title.
     pub title: String,
-    /// 封面图 URL
+    /// Anime title with cn
+    pub title_cn: String,
+    /// Cover image URL.
     pub cover: Option<String>,
-    /// 评分（0-10）
+    /// Score (0–10).
     pub score: Option<f64>,
-    /// 首播年份
+    /// Premiere year.
     pub year: Option<u16>,
-    /// 总集数
-    pub episodes: Option<u32>,
-    /// 分类标签
+    /// Total number of episodes.
+    pub total_episodes: u32,
+    /// Genre tags.
     pub genres: Vec<String>,
-    /// 简介
+    /// Synopsis / description.
     pub description: Option<String>,
 }
 
-/// 搜索请求参数
+/// Search request parameters.
 #[derive(Debug, Clone, Default)]
 pub struct SearchQuery {
-    /// 搜索关键词
+    /// Search keyword.
     pub keyword: String,
-    /// 分页偏移
+    /// Pagination offset.
     pub offset: u32,
-    /// 每页数量
+    /// Number of items per page.
     pub limit: u32,
 }
 
-/// 分页结果
+/// GetList request parameters.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct GetListQuery {
+    // year
+    pub year: u32,
+    // month
+    pub month: u32,
+    // limit
+    pub limit: u32,
+    // offset
+    pub offset: u32,
+    // soft
+    pub soft: SortBy,
+    // type
+    #[serde(rename = "type")]
+    pub typ: u32,
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+pub enum SortBy {
+    #[default]
+    Rank,
+    Date,
+}
+
+impl SortBy {
+    pub fn as_str(&self) -> &str {
+        match self {
+            SortBy::Rank => "rank",
+            SortBy::Date => "date",
+        }
+    }
+}
+
+/// Paginated result wrapper.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PagedResult<T> {
-    /// 数据列表
+    /// List of items.
     pub data: Vec<T>,
-    /// 总数
-    pub total: u32,
+    /// Total count.
+    pub total: u64,
+    // Limit
+    pub limit: u32,
+    // Offset
+    pub offset: u32,
 }

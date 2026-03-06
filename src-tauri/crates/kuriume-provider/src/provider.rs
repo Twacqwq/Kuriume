@@ -1,23 +1,23 @@
 use async_trait::async_trait;
 
 use crate::error::Result;
-use crate::models::{AnimeInfo, PagedResult, SearchQuery};
+use crate::models::{AnimeInfo, GetListQuery, PagedResult, SearchQuery};
 
-/// Unified interface for anime series data sources
+/// Unified interface for anime data sources.
 ///
-/// Each data source (such as Bangumi) implements this trait,
-/// and internally holds its own HTTP client to request the corresponding API.
+/// Each data source (e.g. Bangumi, AniList) implements this trait,
+/// internally holding its own HTTP client to call the corresponding API.
 #[async_trait]
 pub trait AnimeProvider: Send + Sync {
-    /// 数据源名称（用于标识和日志）
+    /// Data-source name (used for identification and logging).
     fn name(&self) -> &str;
 
-    /// 按关键词搜索番剧
+    /// Search for anime by keyword.
     async fn search(&self, query: SearchQuery) -> Result<PagedResult<AnimeInfo>>;
 
-    /// 根据数据源内部 ID 获取番剧详情
+    /// Get anime details by the data-source internal ID.
     async fn get_detail(&self, id: &str) -> Result<AnimeInfo>;
 
-    /// 获取热门 / 排行榜番剧
-    async fn get_trending(&self, limit: u32) -> Result<Vec<AnimeInfo>>;
+    /// Get anime list
+    async fn get_list(&self, query: GetListQuery) -> Result<PagedResult<AnimeInfo>>;
 }
