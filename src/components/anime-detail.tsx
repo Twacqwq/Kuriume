@@ -7,6 +7,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -90,6 +91,7 @@ interface AnimeDetailProps {
 
 export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
   return (
+    <TooltipProvider>
     <div className="min-h-screen">
       {/* ============ Hero Section ============ */}
       <section className="relative overflow-hidden">
@@ -292,6 +294,7 @@ export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
         </div>
       </Tabs>
     </div>
+    </TooltipProvider>
   );
 }
 

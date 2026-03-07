@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { Star, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -104,7 +105,7 @@ interface AnimeCardProps {
 
 function AnimeCard({ item }: AnimeCardProps) {
   return (
-    <div className="group cursor-pointer">
+    <Link to="/anime/$id" params={{ id: String(item.id) }} className="group cursor-pointer">
       {/* Cover */}
       <div className="relative aspect-2/3 overflow-hidden rounded-lg bg-card">
         <img
@@ -141,6 +142,6 @@ function AnimeCard({ item }: AnimeCardProps) {
           ))}
         </div>
       </div>
-    </div>
+    </Link>
   )
 }
