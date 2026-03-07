@@ -72,12 +72,14 @@ impl AnimeProvider for Bangumi {
             ("limit", query.limit),
             ("offset", query.offset),
         ]);
-        req = req.query(&[("soft", query.soft.as_str())]);
-        if query.year > 0 {
-            req = req.query(&[("year", query.year)]);
+        if let Some(soft_by) = query.soft.filter(|s| !s.as_str().is_empty()) {
+            req = req.query(&[("sort", soft_by.as_str())]);   
         }
-        if query.month > 0 {
-            req = req.query(&[("month", query.month)]);
+        if let Some(year) = query.year.filter(|&y| y > 0) {
+            req = req.query(&[("year", year)]);
+        }
+        if let Some(month) = query.month.filter(|&m| m > 0) {
+            req = req.query(&[("month", month)]);
         }
 
         let resp = req.send().await?;

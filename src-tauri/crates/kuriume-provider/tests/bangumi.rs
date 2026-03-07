@@ -17,11 +17,11 @@ fn bangumi_default_trait() {
 async fn get_list_basic() {
     let provider = Bangumi::new();
     let query = GetListQuery {
-        year: 0,
-        month: 0,
+        year: Some(0),
+        month: Some(0),
         limit: 5,
         offset: 0,
-        soft: SortBy::Rank,
+        soft: Some(SortBy::Rank),
         typ: 2, // anime type
     };
 
@@ -51,11 +51,11 @@ async fn get_list_pagination() {
 
     let page1 = provider
         .get_list(GetListQuery {
-            year: 2024,
-            month: 1,
+            year: Some(2024),
+            month: Some(1),
             limit: 3,
             offset: 0,
-            soft: SortBy::Rank,
+            soft: Some(SortBy::Rank),
             typ: 2,
         })
         .await
@@ -63,11 +63,11 @@ async fn get_list_pagination() {
 
     let page2 = provider
         .get_list(GetListQuery {
-            year: 2024,
-            month: 1,
+            year: Some(2024),
+            month: Some(1),
             limit: 3,
             offset: 3,
-            soft: SortBy::Rank,
+            soft: Some(SortBy::Rank),
             typ: 2,
         })
         .await
@@ -92,11 +92,11 @@ async fn get_list_sort_by_date() {
     let provider = Bangumi::new();
     let result = provider
         .get_list(GetListQuery {
-            year: 2024,
-            month: 0,
+            year: Some(2024),
+            month: Some(0),
             limit: 3,
             offset: 0,
-            soft: SortBy::Date,
+            soft: Some(SortBy::Date),
             typ: 2,
         })
         .await;

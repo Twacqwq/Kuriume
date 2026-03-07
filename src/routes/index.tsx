@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { HeroBanner, type BannerItem } from "@/components/hero-banner";
-import { AnimeGrid, type AnimeCardItem } from "@/components/anime-grid";
+import { AnimeGrid } from "@/components/anime-grid";
+import { invoke } from "@tauri-apps/api/core";
+import type { AnimeInfo, PagedResult } from "@/lib/types";
 
 export const Route = createFileRoute("/")({
   component: IndexComponent,
@@ -64,32 +66,20 @@ const mockItems: BannerItem[] = [
   },
 ];
 
-// Mock grid data pool
-const allGridItems: AnimeCardItem[] = Array.from({ length: 100 }, (_, i) => ({
-  id: 100 + i,
-  title: [
-    "进击的巨人", "鬼灭之刃", "咒术回战", "葬送的芙莉莲", "CLANNAD",
-    "钢之炼金术师", "命运石之门", "魔法少女小圆", "你的名字", "间谍过家家",
-    "辉夜大小姐", "关于我转生变成史莱姆", "86", "电锯人", "孤独摇滚",
-    "我推的孩子", "迷宫饭", "药屋少女", "排球少年", "一拳超人",
-  ][i % 20]!,
-  cover: mockItems[i % 5]!.cover,
-  score: +(7.5 + Math.random() * 2.5).toFixed(1),
-  year: 2015 + (i % 12),
-  episodes: 12 + (i % 4) * 6,
-  genre: [
-    ["动作", "奇幻"], ["校园", "恋爱"], ["科幻", "悬疑"],
-    ["冒险", "治愈"], ["搞笑", "日常"],
-  ][i % 5]!,
-}));
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 50;
 
-async function fetchMockPage(page: number): Promise<AnimeCardItem[]> {
-  // Simulate network delay
-  await new Promise((r) => setTimeout(r, 600));
-  const start = (page - 1) * PAGE_SIZE;
-  return allGridItems.slice(start, start + PAGE_SIZE);
+async function fetchAnimeList(offset: number): Promise<PagedResult<AnimeInfo>> {
+  return invoke<PagedResult<AnimeInfo>>("get_list", {
+    provider: "Bangumi",
+    query: {
+      limit: PAGE_SIZE,
+      offset,
+      soft: "Rank",
+      type: 2,
+      year: 2026,
+    },
+  });
 }
 
 function IndexComponent() {
@@ -97,7 +87,12 @@ function IndexComponent() {
     <div>
       <HeroBanner items={mockItems} />
       {/* Content area — overlaps banner fade zone */}
-      <AnimeGrid title="全部番剧" fetchPage={fetchMockPage} pageSize={PAGE_SIZE} />
+      <AnimeGrid
+        title="全部番剧"
+        queryKey={["anime-list", "Bangumi"]}
+        queryFn={fetchAnimeList}
+        pageSize={PAGE_SIZE}
+      />
     </div>
   );
 }

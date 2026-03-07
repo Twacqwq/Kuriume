@@ -38,15 +38,15 @@ pub struct SearchQuery {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct GetListQuery {
     // year
-    pub year: u32,
+    pub year: Option<u32>,
     // month
-    pub month: u32,
+    pub month: Option<u32>,
     // limit
     pub limit: u32,
     // offset
     pub offset: u32,
     // soft
-    pub soft: SortBy,
+    pub soft: Option<SortBy>,
     // type
     #[serde(rename = "type")]
     pub typ: u32,

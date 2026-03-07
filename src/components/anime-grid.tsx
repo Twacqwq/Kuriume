@@ -1,55 +1,80 @@
 import { Link } from '@tanstack/react-router'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { Star, Loader2 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
+
+import type { AnimeInfo, PagedResult } from '@/lib/types'
 
 interface AnimeGridProps {
-  /** Fetch a page of items. Return empty array when no more data. */
-  fetchPage: (page: number) => Promise<AnimeCardItem[]>
+  /** TanStack Query cache key */
+  queryKey: unknown[]
+  /** Fetch function — receives offset, returns a PagedResult */
+  queryFn: (offset: number) => Promise<PagedResult<AnimeInfo>>
   /** Grid section title */
   title?: string
-  /** Items per page, for skeleton count */
+  /** Items per page (for skeleton count & limit param) */
   pageSize?: number
 }
 
-export function AnimeGrid({ fetchPage, title, pageSize = 20 }: AnimeGridProps) {
-  const [items, setItems] = useState<AnimeCardItem[]>([])
-  const [page, setPage] = useState(0)
-  const [loading, setLoading] = useState(false)
-  const [hasMore, setHasMore] = useState(true)
+export function AnimeGrid({
+  queryKey,
+  queryFn,
+  title,
+  pageSize = 30,
+}: AnimeGridProps) {
   const sentinelRef = useRef<HTMLDivElement>(null)
 
-  const loadMore = useCallback(async () => {
-    if (loading || !hasMore) return
-    setLoading(true)
-    try {
-      const nextPage = page + 1
-      const newItems = await fetchPage(nextPage)
-      if (newItems.length === 0) {
-        setHasMore(false)
-      } else {
-        setItems((prev) => [...prev, ...newItems])
-        setPage(nextPage)
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [fetchPage, page, loading, hasMore])
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+  } = useInfiniteQuery({
+    queryKey,
+    queryFn: ({ pageParam }) => queryFn(pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const next = lastPage.offset + lastPage.limit
+      return next < lastPage.total ? next : undefined
+    },
+  })
 
-  // IntersectionObserver for infinite scroll
+  // Flatten all pages into a single list
+  const items: AnimeCardItem[] =
+    data?.pages.flatMap((page) =>
+      page.data.map((item) => ({
+        id: Number(item.id),
+        title: item.title_cn || item.title,
+        cover: item.cover ?? '',
+        score: item.score ?? 0,
+        year: item.year ?? 0,
+        episodes: item.total_episodes,
+        genre: item.genres,
+      })),
+    ) ?? []
+
+  // IntersectionObserver — prefetch when sentinel is near viewport
   useEffect(() => {
     const sentinel = sentinelRef.current
     if (!sentinel) return
+
+    // Find the actual scroll container (<main> with overflow-y-auto)
+    const scrollRoot = sentinel.closest('main')
+
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) {
-          loadMore()
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage()
         }
       },
-      { rootMargin: '200px' },
+      { root: scrollRoot, rootMargin: '1200px' },
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [loadMore])
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage])
+
+  const showInitialSkeleton = isLoading
 
   return (
     <section className="px-6 py-8 md:px-10 lg:px-12 xl:px-16">
@@ -61,9 +86,11 @@ export function AnimeGrid({ fetchPage, title, pageSize = 20 }: AnimeGridProps) {
         {items.map((item) => (
           <AnimeCard key={item.id} item={item} />
         ))}
-        {/* Skeletons while loading */}
-        {loading &&
-          Array.from({ length: pageSize }).map((_, i) => (
+        {/* Initial skeleton or loading-more skeleton */}
+        {(showInitialSkeleton || isFetchingNextPage) &&
+          Array.from({
+            length: showInitialSkeleton ? pageSize : Math.min(pageSize, 14),
+          }).map((_, i) => (
             <div key={`skeleton-${i}`} className="animate-pulse">
               <div className="aspect-2/3 rounded-lg bg-card" />
               <div className="mt-2 space-y-1.5">
@@ -74,13 +101,15 @@ export function AnimeGrid({ fetchPage, title, pageSize = 20 }: AnimeGridProps) {
           ))}
       </div>
       {/* Sentinel for triggering next page */}
-      {hasMore && (
+      {hasNextPage && (
         <div ref={sentinelRef} className="flex justify-center py-8">
-          {loading && <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />}
+          {isFetchingNextPage && !showInitialSkeleton && (
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          )}
         </div>
       )}
       {/* End message */}
-      {!hasMore && items.length > 0 && (
+      {!hasNextPage && items.length > 0 && (
         <p className="text-center text-sm text-muted-foreground py-8">
           已经到底了 ~
         </p>
