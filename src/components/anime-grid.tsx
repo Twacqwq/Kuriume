@@ -5,23 +5,34 @@ import { useEffect, useRef } from 'react'
 
 import type { AnimeInfo, PagedResult } from '@/lib/types'
 
-interface AnimeGridProps {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface AnimeGridProps<TPageParam = any> {
   /** TanStack Query cache key */
   queryKey: unknown[]
-  /** Fetch function — receives offset, returns a PagedResult */
-  queryFn: (offset: number) => Promise<PagedResult<AnimeInfo>>
+  /** Fetch function — receives pageParam, returns a PagedResult */
+  queryFn: (pageParam: TPageParam) => Promise<PagedResult<AnimeInfo>>
+  /** Initial page param (e.g. offset number or { year, offset } object) */
+  initialPageParam: TPageParam
+  /** Determine next page param from last page result + last param. Return undefined to stop. */
+  getNextPageParam: (
+    lastPage: PagedResult<AnimeInfo>,
+    allPages: PagedResult<AnimeInfo>[],
+    lastPageParam: TPageParam,
+  ) => TPageParam | undefined
   /** Grid section title */
   title?: string
-  /** Items per page (for skeleton count & limit param) */
+  /** Items per page (for skeleton count) */
   pageSize?: number
 }
 
-export function AnimeGrid({
+export function AnimeGrid<TPageParam>({
   queryKey,
   queryFn,
+  initialPageParam,
+  getNextPageParam,
   title,
   pageSize = 30,
-}: AnimeGridProps) {
+}: AnimeGridProps<TPageParam>) {
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   const {
@@ -32,12 +43,10 @@ export function AnimeGrid({
     isLoading,
   } = useInfiniteQuery({
     queryKey,
-    queryFn: ({ pageParam }) => queryFn(pageParam),
-    initialPageParam: 0,
-    getNextPageParam: (lastPage) => {
-      const next = lastPage.offset + lastPage.limit
-      return next < lastPage.total ? next : undefined
-    },
+    queryFn: ({ pageParam }) => queryFn(pageParam as TPageParam),
+    initialPageParam,
+    getNextPageParam: (lastPage, allPages, lastPageParam) =>
+      getNextPageParam(lastPage, allPages, lastPageParam),
   })
 
   // Flatten all pages into a single list

@@ -68,18 +68,40 @@ const mockItems: BannerItem[] = [
 
 
 const PAGE_SIZE = 50;
+const START_YEAR = new Date().getFullYear();
 
-async function fetchAnimeList(offset: number): Promise<PagedResult<AnimeInfo>> {
+interface YearPageParam {
+  year: number;
+  offset: number;
+}
+
+async function fetchAnimeList(
+  param: YearPageParam,
+): Promise<PagedResult<AnimeInfo>> {
   return invoke<PagedResult<AnimeInfo>>("get_list", {
     provider: "Bangumi",
     query: {
       limit: PAGE_SIZE,
-      offset,
+      offset: param.offset,
       soft: "Rank",
       type: 2,
-      year: 2026,
+      year: param.year,
     },
   });
+}
+
+function getNextAnimePageParam(
+  lastPage: PagedResult<AnimeInfo>,
+  _allPages: PagedResult<AnimeInfo>[],
+  lastParam: YearPageParam,
+): YearPageParam | undefined {
+  const nextOffset = lastPage.offset + lastPage.limit;
+  if (nextOffset < lastPage.total) {
+    return { year: lastParam.year, offset: nextOffset };
+  }
+
+  const nextYear = lastParam.year - 1;
+  return { year: nextYear, offset: 0 };
 }
 
 function IndexComponent() {
@@ -91,6 +113,8 @@ function IndexComponent() {
         title="全部番剧"
         queryKey={["anime-list", "Bangumi"]}
         queryFn={fetchAnimeList}
+        initialPageParam={{ year: START_YEAR, offset: 0 }}
+        getNextPageParam={getNextAnimePageParam}
         pageSize={PAGE_SIZE}
       />
     </div>
