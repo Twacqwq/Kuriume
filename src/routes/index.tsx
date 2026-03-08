@@ -17,7 +17,7 @@ interface YearPageParam {
 async function fetchAnimeList(
   param: YearPageParam,
 ): Promise<PagedResult<AnimeInfo>> {
-  return invoke<PagedResult<AnimeInfo>>("get_list", {
+  const result = await invoke<PagedResult<AnimeInfo>>("get_list", {
     provider: "Bangumi",
     query: {
       limit: PAGE_SIZE,
@@ -27,6 +27,13 @@ async function fetchAnimeList(
       year: param.year,
     },
   });
+
+  // Seed each item into the detail cache so detail pages get O(1) hits
+  for (const item of result.data) {
+    queryClient.setQueryData(["anime-detail", item.id], item);
+  }
+
+  return result;
 }
 
 function getNextAnimePageParam(

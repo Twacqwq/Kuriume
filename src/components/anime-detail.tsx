@@ -92,208 +92,208 @@ interface AnimeDetailProps {
 export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
   return (
     <TooltipProvider>
-    <div className="min-h-screen">
-      {/* ============ Hero Section ============ */}
-      <section className="relative overflow-hidden">
-        {/* Blurred background */}
-        <div className="absolute inset-0">
-          <img
-            src={data.cover}
-            alt=""
-            className="h-full w-full scale-110 object-cover blur-2xl brightness-[0.4] saturate-[1.4]"
-          />
-          <div className="absolute inset-0 bg-linear-to-t from-background from-5% via-background/80 via-40% to-transparent" />
-          <div className="absolute inset-0 bg-linear-to-r from-background/90 via-background/40 to-transparent" />
-          <div className="absolute inset-0 bg-linear-to-b from-black/40 via-transparent to-transparent" />
-          <div
-            className="absolute inset-0 opacity-[0.03] mix-blend-overlay"
-            style={{
-              backgroundImage:
-                'url("data:image/svg+xml,%3Csvg viewBox=%270 0 256 256%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cfilter id=%27n%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.9%27 numOctaves=%274%27 stitchTiles=%27stitch%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23n)%27/%3E%3C/svg%3E")',
-            }}
-          />
-        </div>
-
-        {/* Back button */}
-        {onBack && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={onBack}
-                className="absolute left-6 top-6 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20"
-              >
-                <ArrowLeft size={18} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">返回</TooltipContent>
-          </Tooltip>
-        )}
-
-        {/* Content */}
-        <div className="relative flex flex-col gap-8 px-8 pb-10 pt-20 md:flex-row md:items-end md:px-16 lg:px-24">
-          {/* Cover */}
-          <div className="group/cover relative shrink-0 self-center md:self-auto">
+      <div className="min-h-screen">
+        {/* ============ Hero Section ============ */}
+        <section className="relative overflow-hidden">
+          {/* Blurred background */}
+          <div className="absolute inset-0">
             <img
               src={data.cover}
               alt=""
-              className="absolute inset-0 m-auto h-full w-full scale-110 rounded-2xl object-cover opacity-30 blur-2xl"
+              className="h-full w-full scale-110 object-cover blur-2xl brightness-[0.4] saturate-[1.4]"
             />
-            <img
-              src={data.cover}
-              alt={data.title}
-              className="relative h-72 w-auto rounded-2xl object-cover shadow-2xl shadow-black/60 ring-1 ring-white/10 transition-transform duration-300 group-hover/cover:scale-[1.02] sm:h-80 md:h-88"
+            <div className="absolute inset-0 bg-linear-to-t from-background from-5% via-background/80 via-40% to-transparent" />
+            <div className="absolute inset-0 bg-linear-to-r from-background/90 via-background/40 to-transparent" />
+            <div className="absolute inset-0 bg-linear-to-b from-black/40 via-transparent to-transparent" />
+            <div
+              className="absolute inset-0 opacity-[0.03] mix-blend-overlay"
+              style={{
+                backgroundImage:
+                  'url("data:image/svg+xml,%3Csvg viewBox=%270 0 256 256%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cfilter id=%27n%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.9%27 numOctaves=%274%27 stitchTiles=%27stitch%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23n)%27/%3E%3C/svg%3E")',
+              }}
             />
-            <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/0 transition-colors duration-300 group-hover/cover:bg-black/30">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/90 text-white opacity-0 shadow-lg shadow-primary/30 transition-all duration-300 group-hover/cover:scale-100 group-hover/cover:opacity-100 scale-75">
-                <Play size={24} fill="currentColor" className="ml-1" />
-              </div>
-            </div>
           </div>
 
-          {/* Info */}
-          <div className="flex-1 space-y-4">
-            <div className="space-y-1">
-              <h1 className="text-3xl font-bold tracking-tight text-white md:text-4xl">
-                {data.title}
-              </h1>
-              {data.titleOriginal && (
-                <p className="text-sm text-white/40">{data.titleOriginal}</p>
-              )}
-            </div>
+          {/* Back button */}
+          {onBack && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onBack}
+                  className="absolute left-6 top-6 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">返回</TooltipContent>
+            </Tooltip>
+          )}
 
-            {/* Score */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1 rounded-lg bg-yellow-500/15 px-3 py-1.5">
-                  <Star size={16} fill="currentColor" className="text-yellow-400" />
-                  <span className="text-lg font-bold text-yellow-400">{data.score}</span>
+          {/* Content */}
+          <div className="relative flex flex-col gap-8 px-8 pb-10 pt-20 md:flex-row md:items-end md:px-16 lg:px-24">
+            {/* Cover */}
+            <div className="group/cover relative shrink-0 self-center md:self-auto">
+              <img
+                src={data.cover}
+                alt=""
+                className="absolute inset-0 m-auto h-full w-full scale-110 rounded-2xl object-cover opacity-30 blur-2xl"
+              />
+              <img
+                src={data.cover}
+                alt={data.title}
+                className="relative h-72 w-auto rounded-2xl object-cover shadow-2xl shadow-black/60 ring-1 ring-white/10 transition-transform duration-300 group-hover/cover:scale-[1.02] sm:h-80 md:h-88"
+              />
+              <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/0 transition-colors duration-300 group-hover/cover:bg-black/30">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/90 text-white opacity-0 shadow-lg shadow-primary/30 transition-all duration-300 group-hover/cover:scale-100 group-hover/cover:opacity-100 scale-75">
+                  <Play size={24} fill="currentColor" className="ml-1" />
                 </div>
-                <span className="text-xs text-white/40">{data.ratingCount} 人评分</span>
               </div>
             </div>
 
-            {/* Meta badges */}
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="gap-1 border-white/15 text-white/70">
-                <Calendar size={12} />
-                {data.year} · {data.season}
-              </Badge>
-              <Badge variant="outline" className="border-white/15 text-white/70">
-                {data.status === "连载中" ? (
-                  <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
-                ) : (
-                  <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-blue-400" />
+            {/* Info */}
+            <div className="flex-1 space-y-4">
+              <div className="space-y-1">
+                <h1 className="text-3xl font-bold tracking-tight text-white md:text-4xl">
+                  {data.title}
+                </h1>
+                {data.titleOriginal && (
+                  <p className="text-sm text-white/40">{data.titleOriginal}</p>
                 )}
-                {data.status} · {data.currentEpisodes}/{data.totalEpisodes}话
-              </Badge>
-              <Badge variant="outline" className="border-white/15 text-white/70">
-                {data.studio}
-              </Badge>
-            </div>
+              </div>
 
-            {/* Genre tags */}
-            <div className="flex flex-wrap gap-2">
-              {data.genre.map((g) => (
-                <Badge key={g} variant="ghost" className="bg-white/6 text-white/60 hover:bg-white/10 hover:text-white/80">
-                  {g}
+              {/* Score */}
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 rounded-lg bg-yellow-500/15 px-3 py-1.5">
+                    <Star size={16} fill="currentColor" className="text-yellow-400" />
+                    <span className="text-lg font-bold text-yellow-400">{data.score}</span>
+                  </div>
+                  <span className="text-xs text-white/40">{data.ratingCount} 人评分</span>
+                </div>
+              </div>
+
+              {/* Meta badges */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="gap-1 border-white/15 text-white/70">
+                  <Calendar size={12} />
+                  {data.year} · {data.season}
                 </Badge>
-              ))}
-            </div>
+                <Badge variant="outline" className="border-white/15 text-white/70">
+                  {data.status === "连载中" ? (
+                    <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+                  ) : (
+                    <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-blue-400" />
+                  )}
+                  {data.status} · {data.currentEpisodes}/{data.totalEpisodes}话
+                </Badge>
+                <Badge variant="outline" className="border-white/15 text-white/70">
+                  {data.studio}
+                </Badge>
+              </div>
 
-            {/* Description */}
-            <p className="max-w-2xl text-sm leading-relaxed text-white/55 md:text-base">
-              {data.description}
-            </p>
+              {/* Genre tags */}
+              <div className="flex flex-wrap gap-2">
+                {data.genre.map((g) => (
+                  <Badge key={g} variant="ghost" className="bg-white/6 text-white/60 hover:bg-white/10 hover:text-white/80">
+                    {g}
+                  </Badge>
+                ))}
+              </div>
 
-            {/* Action buttons */}
-            <div className="flex flex-wrap items-center gap-3 pt-1">
-              <Link
-                to="/anime/$id/episode/$ep"
-                params={{
-                  id: String(data.id),
-                  ep: String(
-                    data.episodes.find((e) => !e.progress || e.progress < 100)?.number ?? 1
-                  ),
-                }}
-              >
-                <Button size="lg" className="gap-2 rounded-full px-8 shadow-lg shadow-primary/25">
-                  <Play size={18} fill="currentColor" />
-                  开始播放
+              {/* Description */}
+              <p className="max-w-2xl text-sm leading-relaxed text-white/55 md:text-base">
+                {data.description}
+              </p>
+
+              {/* Action buttons */}
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <Link
+                  to="/anime/$id/episode/$ep"
+                  params={{
+                    id: String(data.id),
+                    ep: String(
+                      data.episodes.find((e) => !e.progress || e.progress < 100)?.number ?? 1
+                    ),
+                  }}
+                >
+                  <Button size="lg" className="gap-2 rounded-full px-8 shadow-lg shadow-primary/25">
+                    <Play size={18} fill="currentColor" />
+                    开始播放
+                  </Button>
+                </Link>
+                <Button
+                  size="lg"
+                  variant="secondary"
+                  className="gap-2 rounded-full border-0 bg-white/10 px-6 hover:bg-white/20"
+                >
+                  <BookmarkPlus size={18} />
+                  追番
                 </Button>
-              </Link>
-              <Button
-                size="lg"
-                variant="secondary"
-                className="gap-2 rounded-full border-0 bg-white/10 px-6 hover:bg-white/20"
-              >
-                <BookmarkPlus size={18} />
-                追番
-              </Button>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button size="icon-lg" variant="ghost" className="rounded-full text-white/60 hover:bg-white/10 hover:text-white">
-                    <Heart size={18} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>收藏</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button size="icon-lg" variant="ghost" className="rounded-full text-white/60 hover:bg-white/10 hover:text-white">
-                    <Share2 size={18} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>分享</TooltipContent>
-              </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button size="icon-lg" variant="ghost" className="rounded-full text-white/60 hover:bg-white/10 hover:text-white">
+                      <Heart size={18} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>收藏</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button size="icon-lg" variant="ghost" className="rounded-full text-white/60 hover:bg-white/10 hover:text-white">
+                      <Share2 size={18} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>分享</TooltipContent>
+                </Tooltip>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-16 bg-linear-to-t from-background to-transparent" />
-      </section>
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-16 bg-linear-to-t from-background to-transparent" />
+        </section>
 
-      {/* ============ Tabs (shadcn) ============ */}
-      <Tabs defaultValue="episodes" className="gap-0">
-        <div className="sticky top-0 z-30 border-b border-white/6 bg-background/80 backdrop-blur-xl">
-          <div className="px-8 md:px-16 lg:px-24">
-            <TabsList variant="line" className="h-auto w-auto bg-transparent p-0">
-              <TabsTrigger
-                value="episodes"
-                className="gap-2 px-5 py-3.5 text-sm data-[state=active]:text-primary data-[state=active]:after:bg-primary"
-              >
-                <Tv size={16} />
-                剧集
-              </TabsTrigger>
-              <TabsTrigger
-                value="characters"
-                className="gap-2 px-5 py-3.5 text-sm data-[state=active]:text-primary data-[state=active]:after:bg-primary"
-              >
-                <Users size={16} />
-                角色
-              </TabsTrigger>
-              <TabsTrigger
-                value="related"
-                className="gap-2 px-5 py-3.5 text-sm data-[state=active]:text-primary data-[state=active]:after:bg-primary"
-              >
-                <Film size={16} />
-                相关推荐
-              </TabsTrigger>
-            </TabsList>
+        {/* ============ Tabs (shadcn) ============ */}
+        <Tabs defaultValue="episodes" className="gap-0">
+          <div className="sticky top-0 z-30 border-b border-white/6 bg-background/80 backdrop-blur-xl">
+            <div className="px-8 md:px-16 lg:px-24">
+              <TabsList variant="line" className="h-auto w-auto bg-transparent p-0">
+                <TabsTrigger
+                  value="episodes"
+                  className="gap-2 px-5 py-3.5 text-sm data-[state=active]:text-primary data-[state=active]:after:bg-primary"
+                >
+                  <Tv size={16} />
+                  剧集
+                </TabsTrigger>
+                <TabsTrigger
+                  value="characters"
+                  className="gap-2 px-5 py-3.5 text-sm data-[state=active]:text-primary data-[state=active]:after:bg-primary"
+                >
+                  <Users size={16} />
+                  角色
+                </TabsTrigger>
+                <TabsTrigger
+                  value="related"
+                  className="gap-2 px-5 py-3.5 text-sm data-[state=active]:text-primary data-[state=active]:after:bg-primary"
+                >
+                  <Film size={16} />
+                  相关推荐
+                </TabsTrigger>
+              </TabsList>
+            </div>
           </div>
-        </div>
 
-        <div className="px-8 py-8 md:px-16 lg:px-24">
-          <TabsContent value="episodes">
-            <EpisodeList episodes={data.episodes} animeId={data.id} />
-          </TabsContent>
-          <TabsContent value="characters">
-            <CharacterGrid characters={data.characters} />
-          </TabsContent>
-          <TabsContent value="related">
-            <RelatedList related={data.related} />
-          </TabsContent>
-        </div>
-      </Tabs>
-    </div>
+          <div className="px-8 py-8 md:px-16 lg:px-24">
+            <TabsContent value="episodes">
+              <EpisodeList episodes={data.episodes} animeId={data.id} />
+            </TabsContent>
+            <TabsContent value="characters">
+              <CharacterGrid characters={data.characters} />
+            </TabsContent>
+            <TabsContent value="related">
+              <RelatedList related={data.related} />
+            </TabsContent>
+          </div>
+        </Tabs>
+      </div>
     </TooltipProvider>
   );
 }

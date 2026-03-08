@@ -3,8 +3,47 @@ import {
   AnimeDetail,
   type AnimeDetailData,
 } from "@/components/anime-detail";
+import { invoke } from "@tauri-apps/api/core";
+import { useQuery } from "@tanstack/react-query";
+import { queryClient } from "@/lib/query-client";
+import type { AnimeInfo } from "@/lib/types";
+
+function toAnimeDetailData(info: AnimeInfo): AnimeDetailData {
+  return {
+    id: Number(info.id),
+    title: info.title_cn || info.title,
+    titleOriginal: info.title_cn ? info.title : undefined,
+    cover: info.cover ?? "",
+    score: info.score ?? 0,
+    ratingCount: 0,
+    year: info.year ?? 0,
+    season: "",
+    status: "已完结",
+    totalEpisodes: info.total_episodes,
+    currentEpisodes: info.total_episodes,
+    genre: info.genres,
+    studio: "",
+    director: "",
+    description: info.description ?? "",
+    episodes: [],
+    characters: [],
+    related: [],
+  };
+}
 
 export const Route = createFileRoute("/anime/$id")({
+  loader: async ({ params }) => {
+    if (queryClient.getQueryData(["anime-detail", params.id])) return;
+
+    await queryClient.prefetchQuery({
+      queryKey: ["anime-detail", params.id],
+      queryFn: () =>
+        invoke<AnimeInfo>("get_detail", {
+          provider: "Bangumi",
+          id: params.id,
+        }),
+    });
+  },
   component: AnimeDetailPage,
 });
 
@@ -153,9 +192,23 @@ const MOCK_DETAIL: AnimeDetailData = {
 
 function AnimeDetailPage() {
   const router = useRouter();
+  const { id } = Route.useParams();
+
+  const { data } = useQuery({
+    queryKey: ["anime-detail", id],
+    queryFn: () =>
+      invoke<AnimeInfo>("get_detail", {
+        provider: "Bangumi",
+        id,
+      }),
+    initialData: () => queryClient.getQueryData<AnimeInfo>(["anime-detail", id]),
+  });
+
+  if (!data) return null;
+
   return (
     <AnimeDetail
-      data={MOCK_DETAIL}
+      data={toAnimeDetailData(data)}
       onBack={() => router.history.back()}
     />
   );

@@ -37,3 +37,13 @@ pub(crate) async fn get_list(
     let provider = state.get(provider).ok_or("Provider not found")?;
     provider.get_list(query).await.map_err(|e| e.to_string())
 }
+
+#[command]
+pub(crate) async fn get_detail(
+    state: State<'_, ProviderState>,
+    provider: &str,
+    id: &str,
+) -> Result<AnimeInfo, String> {
+    let provider = state.get(provider).ok_or("Provider not found")?;
+    provider.get_detail(&id).await.map_err(|e| e.to_string())
+}

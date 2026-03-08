@@ -16,6 +16,7 @@ pub fn run() {
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             crate::commands::get_list,
+            crate::commands::get_detail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
