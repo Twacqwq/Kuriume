@@ -113,10 +113,11 @@ struct BangumiSubject {
     name_cn: Option<String>,
     summary: Option<String>,
     date: Option<String>,
-    score: Option<f64>,
+    rating: Rating,
     images: Option<BangumiImages>,
     meta_tags: Option<Vec<String>>,
     total_episodes: u32,
+    eps: u32,
 }
 
 impl From<BangumiSubject> for AnimeInfo {
@@ -136,14 +137,16 @@ impl From<BangumiSubject> for AnimeInfo {
             .and_then(|d| d.split('-').next())
             .and_then(|y| y.parse::<u16>().ok());
 
+        let total_episodes = std::cmp::max(value.total_episodes, value.eps);
+
         Self {
             id: value.id.to_string(),
             title: value.name,
             title_cn,
             cover,
-            score: value.score,
+            score: value.rating.score,
             year,
-            total_episodes: value.total_episodes,
+            total_episodes,
             genres: value.meta_tags.unwrap(),
             description: value.summary,
         }
@@ -155,6 +158,11 @@ struct BangumiImages {
     large: Option<String>,
     common: Option<String>,
     medium: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Rating {
+    score: Option<f64>,
 }
 
 #[derive(Deserialize)]
