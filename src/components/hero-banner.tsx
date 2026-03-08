@@ -50,7 +50,16 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
     }
   }, [isPaused, next, interval, count])
 
-  const item = items[current]!
+  const item = items[current]
+
+  if (!item) {
+    // Loading skeleton while banner data is being fetched
+    return (
+      <section className="relative w-full overflow-hidden" style={{ height: '50vh' }}>
+        <div className="absolute inset-0 animate-pulse bg-card" />
+      </section>
+    )
+  }
 
   return (
     <section
