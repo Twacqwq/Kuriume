@@ -160,14 +160,16 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
               <img
                 src={it.cover}
                 alt=""
-                className="absolute inset-0 m-auto h-full w-full object-cover blur-2xl opacity-30 scale-110 rounded-2xl"
+                className="absolute inset-0 h-full w-full object-cover blur-2xl opacity-30 scale-110"
               />
               {/* Cover */}
-              <img
-                src={it.cover}
-                alt={it.title}
-                className="relative h-95 w-auto rounded-2xl object-cover shadow-2xl shadow-black/50 ring-1 ring-white/10 lg:h-105"
-              />
+              <div className="relative h-95 lg:h-105 aspect-2/3 overflow-hidden rounded-2xl shadow-2xl shadow-black/50 ring-1 ring-white/10">
+                <img
+                  src={it.cover}
+                  alt={it.title}
+                  className="h-full w-full object-cover"
+                />
+              </div>
             </div>
           ))}
         </div>
