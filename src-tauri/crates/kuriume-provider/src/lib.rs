@@ -28,6 +28,6 @@ mod provider;
 pub use bangumi::Bangumi;
 pub use error::{ProviderError, Result};
 pub use models::{
-    AnimeInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery, PagedResult, SearchQuery, SortBy,
+    AnimeInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery, PagedResult, SearchQuery, SortBy, CharacterInfo,
 };
 pub use provider::AnimeProvider;

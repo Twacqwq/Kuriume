@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::error::{ProviderError, Result};
 use crate::models::{
-    AnimeInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery, PagedResult, SearchQuery,
+    AnimeInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery, PagedResult, SearchQuery, CharacterInfo,
 };
 use crate::provider::AnimeProvider;
 
@@ -132,6 +132,21 @@ impl AnimeProvider for Bangumi {
             .into_iter()
             .map(EpisodesInfo::from)
             .collect())
+    }
+
+    async fn get_characters(&self, id: &str) -> Result<Vec<CharacterInfo>> {
+        let url = format!("{BANGUMI_API}/v0/subjects/{id}/characters");
+
+        let resp = self.client.get(&url).send().await?;
+        if !resp.status().is_success() {
+            return Err(ProviderError::Source(format!(
+                "Failed to request Bangumi {} API returned {}",
+                &url,
+                resp.status()
+            )));
+        }
+
+        Ok(resp.json().await?)
     }
 }
 

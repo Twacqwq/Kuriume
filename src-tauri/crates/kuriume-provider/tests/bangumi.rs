@@ -122,10 +122,21 @@ fn sort_by_default_is_rank() {
 async fn get_episodes() {
     let provider = Bangumi::new();
 
-    let result = provider.get_episodes(GetEpisodesQuery {
-        id: 493016.to_string(),
-        limit: 13,
-        ..Default::default()
-    }).await.unwrap();
+    let result = provider
+        .get_episodes(GetEpisodesQuery {
+            id: 493016.to_string(),
+            limit: 13,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
     assert_eq!(result.len(), 13);
+}
+
+#[tokio::test]
+async fn get_characters() {
+    let provider = Bangumi::new();
+
+    let result = provider.get_characters(&493016.to_string()).await.unwrap();
+    assert!(!result.is_empty())
 }

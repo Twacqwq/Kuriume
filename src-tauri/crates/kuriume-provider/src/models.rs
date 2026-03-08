@@ -110,3 +110,17 @@ pub struct EpisodesInfo {
     // Episodes thumbnail
     pub thumbnail: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CharacterInfo {
+    // ID
+    pub id: u32,
+    // Name
+    pub name: Option<String>,
+    // Role
+    pub role: Option<String>,
+    // Avatar
+    pub avatar: Option<String>,
+    // CV
+    pub cv: Option<String>,
+}
