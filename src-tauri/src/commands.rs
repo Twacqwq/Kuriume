@@ -1,4 +1,4 @@
-use kuriume_provider::{AnimeInfo, AnimeProvider, GetListQuery, PagedResult};
+use kuriume_provider::{AnimeInfo, AnimeProvider, GetEpisodesQuery, GetListQuery, PagedResult, EpisodesInfo};
 use std::{collections::HashMap, sync::Arc};
 use tauri::{command, State};
 
@@ -45,5 +45,15 @@ pub(crate) async fn get_detail(
     id: &str,
 ) -> Result<AnimeInfo, String> {
     let provider = state.get(provider).ok_or("Provider not found")?;
-    provider.get_detail(&id).await.map_err(|e| e.to_string())
+    provider.get_detail(id).await.map_err(|e| e.to_string())
+}
+
+#[command]
+pub(crate) async fn get_episodes(
+    state: State<'_, ProviderState>,
+    provider: &str,
+    query: GetEpisodesQuery,
+) -> Result<HashMap<u32, EpisodesInfo>, String> {
+    let provider = state.get(provider).ok_or("Provider not found")?;
+    provider.get_episodes(query).await.map_err(|e| e.to_string())
 }

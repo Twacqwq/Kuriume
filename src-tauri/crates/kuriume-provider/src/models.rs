@@ -80,3 +80,33 @@ pub struct PagedResult<T> {
     // Offset
     pub offset: u32,
 }
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct GetEpisodesQuery {
+    // ID
+    pub id: String,
+    // Limit
+    pub limit: u32,
+    // Offset
+    pub offset: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EpisodesInfo {
+    // ID
+    pub id: String,
+    // Episodes ID
+    pub ep: u32,
+    // Episodes airdate
+    pub airdate: Option<String>,
+    // Episodes title
+    pub title: Option<String>,
+    // Episodes title with cn
+    pub title_cn: Option<String>,
+    // Episodes duration
+    pub duration: Option<String>,
+    // Episodes summary
+    pub summary: Option<String>,
+    // Episodes thumbnail
+    pub thumbnail: Option<String>,
+}

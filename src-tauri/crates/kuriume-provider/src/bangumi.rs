@@ -1,9 +1,12 @@
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 use crate::error::{ProviderError, Result};
-use crate::models::{AnimeInfo, GetListQuery, PagedResult, SearchQuery};
+use crate::models::{
+    AnimeInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery, PagedResult, SearchQuery,
+};
 use crate::provider::AnimeProvider;
 
 const BANGUMI_API: &str = "https://api.bgm.tv";
@@ -73,7 +76,7 @@ impl AnimeProvider for Bangumi {
             ("offset", query.offset),
         ]);
         if let Some(soft_by) = query.soft.filter(|s| !s.as_str().is_empty()) {
-            req = req.query(&[("sort", soft_by.as_str())]);   
+            req = req.query(&[("sort", soft_by.as_str())]);
         }
         if let Some(year) = query.year.filter(|&y| y > 0) {
             req = req.query(&[("year", year)]);
@@ -91,7 +94,7 @@ impl AnimeProvider for Bangumi {
             )));
         }
 
-        let parsed_resp: GetBangumiListResponse = resp.json().await?;
+        let parsed_resp: GetBangumiListResponse<BangumiSubject> = resp.json().await?;
         Ok(PagedResult {
             data: parsed_resp
                 .data
@@ -103,6 +106,33 @@ impl AnimeProvider for Bangumi {
             limit: parsed_resp.limit,
             offset: parsed_resp.offset,
         })
+    }
+
+    async fn get_episodes(&self, query: GetEpisodesQuery) -> Result<HashMap<u32, EpisodesInfo>> {
+        let url = format!("{BANGUMI_API}/v0/episodes");
+
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("subject_id", query.id)])
+            .query(&[("offset", query.offset), ("limit", query.limit)])
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            return Err(ProviderError::Source(format!(
+                "Failed to request Bangumi {} API returned {}",
+                &url,
+                resp.status()
+            )));
+        }
+
+        let parsed_resp: GetBangumiListResponse<BangumiEposodes> = resp.json().await?;
+        Ok(parsed_resp
+            .data
+            .unwrap_or_default()
+            .into_iter()
+            .map(|episodes| (episodes.ep, EpisodesInfo::from(episodes)))
+            .collect())
     }
 }
 
@@ -166,9 +196,35 @@ struct Rating {
 }
 
 #[derive(Deserialize)]
-struct GetBangumiListResponse {
+struct GetBangumiListResponse<T> {
     total: u64,
     limit: u32,
     offset: u32,
-    data: Option<Vec<BangumiSubject>>,
+    data: Option<Vec<T>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BangumiEposodes {
+    id: u64,
+    airdate: Option<String>,
+    name: Option<String>,
+    name_cn: Option<String>,
+    duration: Option<String>,
+    desc: Option<String>,
+    ep: u32,
+}
+
+impl From<BangumiEposodes> for EpisodesInfo {
+    fn from(value: BangumiEposodes) -> Self {
+        Self {
+            id: value.id.to_string(),
+            ep: value.ep,
+            airdate: value.airdate,
+            title: value.name,
+            title_cn: value.name_cn,
+            summary: value.desc,
+            duration: value.duration,
+            thumbnail: Some("".to_string()),
+        }
+    }
 }

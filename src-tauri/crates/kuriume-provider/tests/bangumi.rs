@@ -1,4 +1,6 @@
-use kuriume_provider::{AnimeProvider, Bangumi, GetListQuery, PagedResult, SortBy};
+use kuriume_provider::{
+    AnimeProvider, Bangumi, GetEpisodesQuery, GetListQuery, PagedResult, SortBy,
+};
 
 #[test]
 fn bangumi_provider_name() {
@@ -114,4 +116,16 @@ fn sort_by_as_str() {
 fn sort_by_default_is_rank() {
     let default: SortBy = Default::default();
     assert_eq!(default.as_str(), "rank");
+}
+
+#[tokio::test]
+async fn get_episodes() {
+    let provider = Bangumi::new();
+
+    let result = provider.get_episodes(GetEpisodesQuery {
+        id: 493016.to_string(),
+        limit: 13,
+        ..Default::default()
+    }).await.unwrap();
+    assert_eq!(result.len(), 13);
 }

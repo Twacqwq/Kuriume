@@ -1,7 +1,11 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 
 use crate::error::Result;
-use crate::models::{AnimeInfo, GetListQuery, PagedResult, SearchQuery};
+use crate::models::{
+    AnimeInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery, PagedResult, SearchQuery,
+};
 
 /// Unified interface for anime data sources.
 ///
@@ -20,4 +24,8 @@ pub trait AnimeProvider: Send + Sync {
 
     /// Get anime list
     async fn get_list(&self, query: GetListQuery) -> Result<PagedResult<AnimeInfo>>;
+
+    /// Get anime episodes
+    /// episodes ID -> episodes info
+    async fn get_episodes(&self, query: GetEpisodesQuery) -> Result<HashMap<u32, EpisodesInfo>>;
 }

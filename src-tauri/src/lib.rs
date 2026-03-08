@@ -17,6 +17,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             crate::commands::get_list,
             crate::commands::get_detail,
+            crate::commands::get_episodes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
