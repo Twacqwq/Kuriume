@@ -21,7 +21,7 @@ function toAnimeDetailData(info: AnimeInfo): AnimeDetailData {
     status: "已完结",
     totalEpisodes: info.total_episodes,
     currentEpisodes: info.total_episodes,
-    genre: info.genres,
+    genre: [...new Set(info.genres)],
     studio: "",
     director: "",
     description: info.description ?? "",

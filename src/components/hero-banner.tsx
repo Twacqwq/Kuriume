@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { Link } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, Info, Pause, Play, Star } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -115,8 +116,8 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
 
           {/* Genre tags */}
           <div className="flex gap-2">
-            {item.genre.map((g) => (
-              <span key={g} className="text-sm text-white/60">
+            {item.genre.map((g, i) => (
+              <span key={`${g}-${i}`} className="text-sm text-white/60">
                 {g}
               </span>
             ))}
@@ -133,14 +134,14 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
               <Play size={18} fill="currentColor" />
               立即播放
             </Button>
-            <Button
-              size="lg"
-              variant="secondary"
-              className="gap-2 rounded-full px-6 bg-white/10 hover:bg-white/20 border-0"
+            <Link
+              to="/anime/$id"
+              params={{ id: String(item.id) }}
+              className="inline-flex items-center justify-center gap-2 rounded-full px-6 py-2 text-sm font-medium bg-white/10 hover:bg-white/20 border-0 text-white"
             >
               <Info size={18} />
               详情
-            </Button>
+            </Link>
           </div>
         </div>
 

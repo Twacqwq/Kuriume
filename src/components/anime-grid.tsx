@@ -59,7 +59,7 @@ export function AnimeGrid<TPageParam>({
         score: item.score ?? 0,
         year: item.year ?? 0,
         episodes: item.total_episodes,
-        genre: item.genres,
+        genre: [...new Set(item.genres)],
       })),
     ) ?? []
 
@@ -173,8 +173,8 @@ function AnimeCard({ item }: AnimeCardProps) {
           <span>{item.episodes}话</span>
         </div>
         <div className="flex gap-1.5">
-          {item.genre.slice(0, 2).map((g) => (
-            <span key={g} className="text-xs text-muted-foreground/70">
+          {item.genre.slice(0, 2).map((g, i) => (
+            <span key={`${g}-${i}`} className="text-xs text-muted-foreground/70">
               {g}
             </span>
           ))}

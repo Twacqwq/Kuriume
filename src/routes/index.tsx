@@ -86,7 +86,7 @@ function toBannerItem(info: AnimeInfo): BannerItem {
     score: info.score ?? 0,
     year: info.year ?? 0,
     episodes: info.total_episodes,
-    genre: info.genres,
+    genre: [...new Set(info.genres)],
     description: info.description ?? "",
   };
 }

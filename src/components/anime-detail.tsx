@@ -28,7 +28,7 @@ import {
   Tv,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -82,6 +82,58 @@ export interface AnimeDetailData {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Expandable description                                             */
+/* ------------------------------------------------------------------ */
+const CLAMP_LINES = 4;
+
+function ExpandableDescription({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [clamped, setClamped] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Split on literal \r\n, \n, or \r to form paragraphs
+  const paragraphs = text.split(/\r\n|\r|\n/).filter(Boolean);
+
+  // Check overflow after layout settles (only when collapsed)
+  useEffect(() => {
+    if (expanded) return;
+    const el = contentRef.current;
+    if (!el) return;
+    const id = requestAnimationFrame(() => {
+      setClamped(el.scrollHeight > el.clientHeight);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [expanded, text]);
+
+  return (
+    <div className="max-w-2xl">
+      <div
+        ref={contentRef}
+        className={cn(
+          "text-sm leading-relaxed text-white/55 md:text-base",
+          !expanded && "line-clamp-(--clamp)",
+        )}
+        style={{ "--clamp": CLAMP_LINES } as React.CSSProperties}
+      >
+        {paragraphs.map((p, i) => (
+          <p key={i} className={i > 0 ? "mt-2" : undefined}>
+            {p}
+          </p>
+        ))}
+      </div>
+      {clamped && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1.5 text-xs font-medium text-white/40 transition-colors hover:text-white/70"
+        >
+          {expanded ? "收起" : "展开全部"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main component                                                     */
 /* ------------------------------------------------------------------ */
 interface AnimeDetailProps {
@@ -130,9 +182,9 @@ export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
           )}
 
           {/* Content */}
-          <div className="relative flex flex-col gap-8 px-8 pb-10 pt-20 md:flex-row md:items-end md:px-16 lg:px-24">
+          <div className="relative flex flex-col gap-8 px-8 pb-10 pt-20 md:flex-row md:items-start md:px-16 lg:px-24">
             {/* Cover */}
-            <div className="group/cover relative shrink-0 self-center md:self-auto">
+            <div className="group/cover relative shrink-0 self-center md:self-start">
               <img
                 src={data.cover}
                 alt=""
@@ -193,17 +245,15 @@ export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
 
               {/* Genre tags */}
               <div className="flex flex-wrap gap-2">
-                {data.genre.map((g) => (
-                  <Badge key={g} variant="ghost" className="bg-white/6 text-white/60 hover:bg-white/10 hover:text-white/80">
+                {data.genre.map((g, i) => (
+                  <Badge key={`${g}-${i}`} variant="ghost" className="bg-white/6 text-white/60 hover:bg-white/10 hover:text-white/80">
                     {g}
                   </Badge>
                 ))}
               </div>
 
               {/* Description */}
-              <p className="max-w-2xl text-sm leading-relaxed text-white/55 md:text-base">
-                {data.description}
-              </p>
+              <ExpandableDescription text={data.description} />
 
               {/* Action buttons */}
               <div className="flex flex-wrap items-center gap-3 pt-1">
