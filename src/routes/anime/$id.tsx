@@ -6,9 +6,12 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/query-client";
-import type { AnimeInfo } from "@/lib/types";
+import type { AnimeInfo, AnimeEpisodes } from "@/lib/types";
 
-function toAnimeDetailData(info: AnimeInfo): AnimeDetailData {
+function toAnimeDetailData(
+  info: AnimeInfo,
+  episodes: AnimeEpisodes[] = [],
+): AnimeDetailData {
   return {
     id: Number(info.id),
     title: info.title_cn || info.title,
@@ -25,24 +28,37 @@ function toAnimeDetailData(info: AnimeInfo): AnimeDetailData {
     studio: "",
     director: "",
     description: info.description ?? "",
-    episodes: [],
+    episodes,
     characters: [],
     related: [],
   };
 }
 
+const detailQueryOptions = (id: string) => ({
+  queryKey: ["anime-detail", id],
+  queryFn: () =>
+    invoke<AnimeInfo>("get_detail", {
+      provider: "Bangumi",
+      id,
+    }),
+});
+
+const episodesQueryOptions = (id: string, limit: number) => ({
+  queryKey: ["anime-episodes", id],
+  queryFn: () =>
+    invoke<AnimeEpisodes[]>("get_episodes", {
+      provider: "Bangumi",
+      query: { id, offset: 0, limit },
+    }),
+});
+
 export const Route = createFileRoute("/anime/$id")({
   loader: async ({ params }) => {
-    if (queryClient.getQueryData(["anime-detail", params.id])) return;
+    const cached = queryClient.getQueryData<AnimeInfo>(["anime-detail", params.id]);
+    const detail = cached ?? await queryClient.fetchQuery(detailQueryOptions(params.id));
+    if (!detail) return;
 
-    await queryClient.prefetchQuery({
-      queryKey: ["anime-detail", params.id],
-      queryFn: () =>
-        invoke<AnimeInfo>("get_detail", {
-          provider: "Bangumi",
-          id: params.id,
-        }),
-    });
+    queryClient.prefetchQuery(episodesQueryOptions(params.id, detail.total_episodes));
   },
   component: AnimeDetailPage,
 });
@@ -64,22 +80,7 @@ const MOCK_DETAIL: AnimeDetailData = {
   director: "斋藤圭一郎",
   description:
     "勇者一行击败魔王后，精灵魔法使芙莉莲开始了新的旅程。在漫长岁月中回顾曾经的伙伴，她逐渐学会理解人类的情感。这是一段关于「了解人类」的冒险物语。通过与弟子费伦、战士修塔尔克的旅行，千年精灵芙莉莲终于开始理解那些转瞬即逝却无比珍贵的人类情感。",
-  episodes: Array.from({ length: 28 }, (_, i) => ({
-    id: i + 1,
-    number: i + 1,
-    title: [
-      "冒险的结束", "去往魔法都市", "杀人魔法", "灵魂的灯火",
-      "死者的幻影", "新年快乐", "像勇者一样", "冒险的开始",
-      "断头台的贤者", "沉潜于黑暗中的修道士", "北方勇者", "那时的选择",
-      "同族", "不一般的随行护卫", "厄运真的来了", "长寿种族的老师",
-      "去往第一级魔法使试验的旅途", "在第一级魔法使考试中", "入学",
-      "必要的准备", "魔法的使用方法", "暗号", "迷宫攻略",
-      "完美的复制体", "一级魔法使试验的终结", "默契", "人类的时代", "享受旅途",
-    ][i] ?? `第 ${i + 1} 话`,
-    cover: "https://lain.bgm.tv/pic/cover/l/13/c5/400602_ZI8Y9.jpg",
-    duration: `${22 + (i % 3)}:${String(30 + (i % 30)).padStart(2, "0")}`,
-    progress: i < 5 ? 100 : i === 5 ? 42 : undefined,
-  })),
+  episodes: [],
   characters: [
     {
       id: 1,
@@ -194,21 +195,17 @@ function AnimeDetailPage() {
   const router = useRouter();
   const { id } = Route.useParams();
 
-  const { data } = useQuery({
-    queryKey: ["anime-detail", id],
-    queryFn: () =>
-      invoke<AnimeInfo>("get_detail", {
-        provider: "Bangumi",
-        id,
-      }),
-    initialData: () => queryClient.getQueryData<AnimeInfo>(["anime-detail", id]),
+  const { data: info } = useQuery(detailQueryOptions(id));
+  const { data: episodes } = useQuery({
+    ...episodesQueryOptions(id, info?.total_episodes ?? 0),
+    enabled: !!info,
   });
 
-  if (!data) return null;
+  if (!info) return null;
 
   return (
     <AnimeDetail
-      data={toAnimeDetailData(data)}
+      data={toAnimeDetailData(info, episodes)}
       onBack={() => router.history.back()}
     />
   );

@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
-use std::collections::HashMap;
 
 use crate::error::{ProviderError, Result};
 use crate::models::{
@@ -108,7 +107,7 @@ impl AnimeProvider for Bangumi {
         })
     }
 
-    async fn get_episodes(&self, query: GetEpisodesQuery) -> Result<HashMap<u32, EpisodesInfo>> {
+    async fn get_episodes(&self, query: GetEpisodesQuery) -> Result<Vec<EpisodesInfo>> {
         let url = format!("{BANGUMI_API}/v0/episodes");
 
         let resp = self
@@ -131,7 +130,7 @@ impl AnimeProvider for Bangumi {
             .data
             .unwrap_or_default()
             .into_iter()
-            .map(|episodes| (episodes.ep, EpisodesInfo::from(episodes)))
+            .map(EpisodesInfo::from)
             .collect())
     }
 }

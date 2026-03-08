@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use async_trait::async_trait;
 
 use crate::error::Result;
@@ -26,6 +24,5 @@ pub trait AnimeProvider: Send + Sync {
     async fn get_list(&self, query: GetListQuery) -> Result<PagedResult<AnimeInfo>>;
 
     /// Get anime episodes
-    /// episodes ID -> episodes info
-    async fn get_episodes(&self, query: GetEpisodesQuery) -> Result<HashMap<u32, EpisodesInfo>>;
+    async fn get_episodes(&self, query: GetEpisodesQuery) -> Result<Vec<EpisodesInfo>>;
 }

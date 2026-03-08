@@ -16,3 +16,15 @@ export interface PagedResult<T> {
   limit: number;
   offset: number;
 }
+
+export interface AnimeEpisodes {
+  id: string;
+  ep: number;
+  airdate: string;
+  title?: string;
+  title_cn?: string;
+  duration?: string;
+  summary?: string;
+  thumbnail?: string;
+  progress?: number;
+}

@@ -53,7 +53,7 @@ pub(crate) async fn get_episodes(
     state: State<'_, ProviderState>,
     provider: &str,
     query: GetEpisodesQuery,
-) -> Result<HashMap<u32, EpisodesInfo>, String> {
+) -> Result<Vec<EpisodesInfo>, String> {
     let provider = state.get(provider).ok_or("Provider not found")?;
     provider.get_episodes(query).await.map_err(|e| e.to_string())
 }

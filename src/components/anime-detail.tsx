@@ -10,38 +10,22 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AnimeEpisodes } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
   BookmarkPlus,
   Calendar,
-  ChevronRight,
   Film,
   Grid3X3,
-  Heart,
-  LayoutList,
   Play,
   Rows3,
-  Share2,
   Star,
   Tv,
   Users,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
-export interface AnimeEpisode {
-  id: number;
-  number: number;
-  title: string;
-  cover: string;
-  duration: string;
-  /** 0-100, undefined = not watched */
-  progress?: number;
-}
 
 export interface AnimeCharacter {
   id: number;
@@ -76,7 +60,7 @@ export interface AnimeDetailData {
   studio: string;
   director: string;
   description: string;
-  episodes: AnimeEpisode[];
+  episodes: AnimeEpisodes[];
   characters: AnimeCharacter[];
   related: AnimeRelated[];
 }
@@ -262,7 +246,7 @@ export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
                   params={{
                     id: String(data.id),
                     ep: String(
-                      data.episodes.find((e) => !e.progress || e.progress < 100)?.number ?? 1
+                      data.episodes.find((e) => !e.progress || e.progress < 100)?.ep ?? 1
                     ),
                   }}
                 >
@@ -279,22 +263,6 @@ export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
                   <BookmarkPlus size={18} />
                   追番
                 </Button>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button size="icon-lg" variant="ghost" className="rounded-full text-white/60 hover:bg-white/10 hover:text-white">
-                      <Heart size={18} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>收藏</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button size="icon-lg" variant="ghost" className="rounded-full text-white/60 hover:bg-white/10 hover:text-white">
-                      <Share2 size={18} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>分享</TooltipContent>
-                </Tooltip>
               </div>
             </div>
           </div>
@@ -353,8 +321,8 @@ export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
 /* ------------------------------------------------------------------ */
 type EpisodeViewMode = "card" | "list" | "grid";
 
-function EpisodeList({ episodes, animeId }: { episodes: AnimeEpisode[]; animeId: number }) {
-  const [viewMode, setViewMode] = useState<EpisodeViewMode>("card");
+function EpisodeList({ episodes, animeId }: { episodes: AnimeEpisodes[]; animeId: number }) {
+  const [viewMode, setViewMode] = useState<EpisodeViewMode>("list");
 
   return (
     <div className="space-y-6">
@@ -375,7 +343,7 @@ function EpisodeList({ episodes, animeId }: { episodes: AnimeEpisode[]; animeId:
           size="sm"
           className="rounded-lg bg-white/4 p-0.5"
         >
-          <Tooltip>
+          {/* <Tooltip>
             <TooltipTrigger asChild>
               <ToggleGroupItem
                 value="card"
@@ -385,7 +353,7 @@ function EpisodeList({ episodes, animeId }: { episodes: AnimeEpisode[]; animeId:
               </ToggleGroupItem>
             </TooltipTrigger>
             <TooltipContent>卡片</TooltipContent>
-          </Tooltip>
+          </Tooltip> */}
           <Tooltip>
             <TooltipTrigger asChild>
               <ToggleGroupItem
@@ -412,19 +380,19 @@ function EpisodeList({ episodes, animeId }: { episodes: AnimeEpisode[]; animeId:
       </div>
 
       {/* View: Card (default – with thumbnail) */}
-      {viewMode === "card" && (
+      {/* {viewMode === "card" && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {episodes.map((ep) => (
             <Link
               key={ep.id}
               to="/anime/$id/episode/$ep"
-              params={{ id: String(animeId), ep: String(ep.number) }}
+              params={{ id: String(animeId), ep: String(ep.ep) }}
               className="group flex gap-3 rounded-xl bg-card/50 p-3 text-left transition-colors hover:bg-card"
             >
               {/* Thumbnail */}
-              <div className="relative aspect-video w-36 shrink-0 overflow-hidden rounded-lg bg-card">
+              {/* <div className="relative aspect-video w-36 shrink-0 overflow-hidden rounded-lg bg-card">
                 <img
-                  src={ep.cover}
+                  src={ep.thumbnail}
                   alt={ep.title}
                   loading="lazy"
                   className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
@@ -449,10 +417,10 @@ function EpisodeList({ episodes, animeId }: { episodes: AnimeEpisode[]; animeId:
 
               <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
                 <span className="text-xs font-medium text-primary">
-                  第 {ep.number} 话
+                  第 {ep.ep} 话
                 </span>
                 <span className="text-sm font-medium text-foreground line-clamp-2 transition-colors group-hover:text-primary">
-                  {ep.title}
+                  {ep.title_cn || ep.title}
                 </span>
                 {ep.progress !== undefined && (
                   <span className="text-[11px] text-muted-foreground">
@@ -467,8 +435,8 @@ function EpisodeList({ episodes, animeId }: { episodes: AnimeEpisode[]; animeId:
               />
             </Link>
           ))}
-        </div>
-      )}
+        </div> */}
+      {/* )} */}
 
       {/* View: Title list (no thumbnail) */}
       {viewMode === "list" && (
@@ -477,7 +445,7 @@ function EpisodeList({ episodes, animeId }: { episodes: AnimeEpisode[]; animeId:
             <Link
               key={ep.id}
               to="/anime/$id/episode/$ep"
-              params={{ id: String(animeId), ep: String(ep.number) }}
+              params={{ id: String(animeId), ep: String(ep.ep) }}
               className="group flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-white/2"
             >
               <span
@@ -488,12 +456,12 @@ function EpisodeList({ episodes, animeId }: { episodes: AnimeEpisode[]; animeId:
                     : "text-primary"
                 )}
               >
-                {ep.number}
+                {ep.ep}
               </span>
 
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="text-sm font-medium text-foreground line-clamp-1 transition-colors group-hover:text-primary">
-                  {ep.title}
+                  {ep.title_cn || ep.title}
                 </span>
                 <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                   <span>{ep.duration}</span>
@@ -534,7 +502,7 @@ function EpisodeList({ episodes, animeId }: { episodes: AnimeEpisode[]; animeId:
                 <TooltipTrigger asChild>
                   <Link
                     to="/anime/$id/episode/$ep"
-                    params={{ id: String(animeId), ep: String(ep.number) }}
+                    params={{ id: String(animeId), ep: String(ep.ep) }}
                     className={cn(
                       "relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums transition-all",
                       watched
@@ -544,14 +512,14 @@ function EpisodeList({ episodes, animeId }: { episodes: AnimeEpisode[]; animeId:
                           : "bg-card/60 text-foreground hover:bg-card hover:text-primary"
                     )}
                   >
-                    {ep.number}
+                    {ep.ep}
                     {watching && (
                       <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary shadow-[0_0_4px_var(--primary)]" />
                     )}
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent>
-                  第 {ep.number} 话 · {ep.title}
+                  第 {ep.ep} 话 · {ep.title_cn || ep.title}
                 </TooltipContent>
               </Tooltip>
             );
