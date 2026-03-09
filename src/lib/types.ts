@@ -28,3 +28,11 @@ export interface AnimeEpisodes {
   thumbnail?: string;
   progress?: number;
 }
+
+export interface AnimeCharacters {
+  id: number;
+  name: string;
+  role: string;
+  avatar: string;
+  cvs: string[];
+}

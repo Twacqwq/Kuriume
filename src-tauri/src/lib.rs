@@ -18,6 +18,7 @@ pub fn run() {
             crate::commands::get_list,
             crate::commands::get_detail,
             crate::commands::get_episodes,
+            crate::commands::get_characters,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,4 +1,7 @@
-use kuriume_provider::{AnimeInfo, AnimeProvider, GetEpisodesQuery, GetListQuery, PagedResult, EpisodesInfo};
+use kuriume_provider::{
+    AnimeInfo, AnimeProvider, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery,
+    PagedResult,
+};
 use std::{collections::HashMap, sync::Arc};
 use tauri::{command, State};
 
@@ -55,5 +58,18 @@ pub(crate) async fn get_episodes(
     query: GetEpisodesQuery,
 ) -> Result<Vec<EpisodesInfo>, String> {
     let provider = state.get(provider).ok_or("Provider not found")?;
-    provider.get_episodes(query).await.map_err(|e| e.to_string())
+    provider
+        .get_episodes(query)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[command]
+pub(crate) async fn get_characters(
+    state: State<'_, ProviderState>,
+    provider: &str,
+    id: &str,
+) -> Result<Vec<CharacterInfo>, String> {
+    let provider = state.get(provider).ok_or("Provider not found")?;
+    provider.get_characters(id).await.map_err(|e| e.to_string())
 }

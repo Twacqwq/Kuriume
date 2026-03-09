@@ -10,7 +10,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { AnimeEpisodes } from "@/lib/types";
+import { AnimeCharacters, AnimeEpisodes } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
 import {
@@ -26,14 +26,6 @@ import {
   Users,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-
-export interface AnimeCharacter {
-  id: number;
-  name: string;
-  role: string;
-  avatar: string;
-  cv: string;
-}
 
 export interface AnimeRelated {
   id: number;
@@ -52,7 +44,6 @@ export interface AnimeDetailData {
   score: number;
   ratingCount: number;
   year: number;
-  season: string;
   status: "连载中" | "已完结";
   totalEpisodes: number;
   currentEpisodes: number;
@@ -61,7 +52,7 @@ export interface AnimeDetailData {
   director: string;
   description: string;
   episodes: AnimeEpisodes[];
-  characters: AnimeCharacter[];
+  characters: AnimeCharacters[];
   related: AnimeRelated[];
 }
 
@@ -212,7 +203,7 @@ export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="gap-1 border-white/15 text-white/70">
                   <Calendar size={12} />
-                  {data.year} · {data.season}
+                  {data.year}
                 </Badge>
                 <Badge variant="outline" className="border-white/15 text-white/70">
                   {data.status === "连载中" ? (
@@ -533,7 +524,7 @@ function EpisodeList({ episodes, animeId }: { episodes: AnimeEpisodes[]; animeId
 /* ------------------------------------------------------------------ */
 /*  Character Grid (shadcn Avatar)                                     */
 /* ------------------------------------------------------------------ */
-function CharacterGrid({ characters }: { characters: AnimeCharacter[] }) {
+function CharacterGrid({ characters }: { characters: AnimeCharacters[] }) {
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-bold text-foreground">角色 & 声优</h2>
@@ -553,7 +544,7 @@ function CharacterGrid({ characters }: { characters: AnimeCharacter[] }) {
               </h3>
               <p className="text-xs text-muted-foreground">{ch.role}</p>
               <p className="mt-0.5 text-xs text-muted-foreground/70">
-                CV: {ch.cv}
+                CV: {ch.cvs[0]}
               </p>
             </div>
           </div>

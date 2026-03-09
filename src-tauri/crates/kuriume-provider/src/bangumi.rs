@@ -4,7 +4,8 @@ use serde::Deserialize;
 
 use crate::error::{ProviderError, Result};
 use crate::models::{
-    AnimeInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery, PagedResult, SearchQuery, CharacterInfo,
+    AnimeInfo, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery, PagedResult,
+    SearchQuery,
 };
 use crate::provider::AnimeProvider;
 
@@ -146,7 +147,8 @@ impl AnimeProvider for Bangumi {
             )));
         }
 
-        Ok(resp.json().await?)
+        let parsed_resp: Vec<BangumiCharacters> = resp.json().await?;
+        Ok(parsed_resp.into_iter().map(CharacterInfo::from).collect())
     }
 }
 
@@ -239,6 +241,41 @@ impl From<BangumiEposodes> for EpisodesInfo {
             summary: value.desc,
             duration: value.duration,
             thumbnail: Some("".to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct Actor {
+    name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BangumiCharacters {
+    id: u64,
+    images: Option<BangumiImages>,
+    relation: Option<String>,
+    name: Option<String>,
+    actors: Option<Vec<Actor>>,
+}
+
+impl From<BangumiCharacters> for CharacterInfo {
+    fn from(value: BangumiCharacters) -> Self {
+        let avatar = value
+            .images
+            .and_then(|img| img.large.or(img.common).or(img.medium));
+
+        Self {
+            id: value.id,
+            name: value.name,
+            role: value.relation,
+            avatar,
+            cvs: value
+                .actors
+                .unwrap_or_default()
+                .into_iter()
+                .map(|c| c.name)
+                .collect(),
         }
     }
 }
