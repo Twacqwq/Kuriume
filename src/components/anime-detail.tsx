@@ -17,7 +17,6 @@ import {
   ArrowLeft,
   BookmarkPlus,
   Calendar,
-  Film,
   Grid3X3,
   Play,
   Rows3,
@@ -279,13 +278,6 @@ export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
                   <Users size={16} />
                   角色
                 </TabsTrigger>
-                <TabsTrigger
-                  value="related"
-                  className="gap-2 px-5 py-3.5 text-sm data-[state=active]:text-primary data-[state=active]:after:bg-primary"
-                >
-                  <Film size={16} />
-                  相关推荐
-                </TabsTrigger>
               </TabsList>
             </div>
           </div>
@@ -296,9 +288,6 @@ export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
             </TabsContent>
             <TabsContent value="characters">
               <CharacterGrid characters={data.characters} />
-            </TabsContent>
-            <TabsContent value="related">
-              <RelatedList related={data.related} />
             </TabsContent>
           </div>
         </Tabs>
@@ -546,47 +535,6 @@ function CharacterGrid({ characters }: { characters: AnimeCharacters[] }) {
               <p className="mt-0.5 text-xs text-muted-foreground/70">
                 CV: {ch.cvs[0]}
               </p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Related Anime                                                      */
-/* ------------------------------------------------------------------ */
-function RelatedList({ related }: { related: AnimeRelated[] }) {
-  return (
-    <div className="space-y-6">
-      <h2 className="text-lg font-bold text-foreground">相关推荐</h2>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-        {related.map((item) => (
-          <div key={item.id} className="group cursor-pointer">
-            <div className="relative aspect-2/3 overflow-hidden rounded-lg bg-card">
-              <img
-                src={item.cover}
-                alt={item.title}
-                loading="lazy"
-                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-              />
-              <div className="absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/30" />
-              <Badge className="absolute top-2 left-2 bg-primary/80 text-[10px] backdrop-blur-sm">
-                {item.relation}
-              </Badge>
-              {item.score > 0 && (
-                <div className="absolute top-2 right-2 flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-xs text-yellow-400 backdrop-blur-sm">
-                  <Star size={10} fill="currentColor" />
-                  {item.score}
-                </div>
-              )}
-            </div>
-            <div className="mt-2 space-y-1">
-              <h3 className="text-sm font-medium text-foreground line-clamp-1 transition-colors group-hover:text-primary">
-                {item.title}
-              </h3>
-              <span className="text-xs text-muted-foreground">{item.year}</span>
             </div>
           </div>
         ))}
