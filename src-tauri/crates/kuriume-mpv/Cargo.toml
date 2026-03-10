@@ -1,0 +1,11 @@
+[package]
+name = "kuriume-mpv"
+version = "0.1.0"
+edition = "2021"
+description = "libmpv wrapper for Kuriume player"
+
+[dependencies]
+libmpv2 = "5"
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
