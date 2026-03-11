@@ -127,7 +127,7 @@ export function AnimeGrid<TPageParam>({
   )
 }
 
-export interface AnimeCardItem {
+interface AnimeCardItem {
   id: number
   title: string
   cover: string

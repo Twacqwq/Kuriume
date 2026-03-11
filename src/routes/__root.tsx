@@ -1,4 +1,4 @@
-import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { Outlet, createRootRoute, useMatches } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { Sidebar } from "@/components/sidebar";
 
@@ -7,13 +7,26 @@ export const Route = createRootRoute({
 });
 
 function RootComponent() {
+  const matches = useMatches();
+
+  // Hide sidebar & make main non-scrollable on player pages
+  const isPlayerPage = matches.some((m) =>
+    m.routeId.includes("/episode/"),
+  );
+
   return (
     <div className="flex h-full bg-background">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto transition-all duration-300 peer-data-collapsed">
+      {!isPlayerPage && <Sidebar />}
+      <main
+        className={
+          isPlayerPage
+            ? "flex-1 overflow-hidden"
+            : "flex-1 overflow-y-auto transition-all duration-300 peer-data-collapsed"
+        }
+      >
         <Outlet />
       </main>
-      <TanStackRouterDevtools position="bottom-right" />
+      {!isPlayerPage && <TanStackRouterDevtools position="bottom-right" />}
     </div>
   );
 }

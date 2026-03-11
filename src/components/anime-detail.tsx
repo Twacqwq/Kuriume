@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-export interface AnimeRelated {
+interface AnimeRelated {
   id: number;
   title: string;
   cover: string;

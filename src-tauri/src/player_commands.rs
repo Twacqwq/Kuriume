@@ -24,7 +24,7 @@ impl Default for PlayerState {
 
 /// Initialize the mpv player, optionally embedded in a native window.
 #[command]
-pub(crate) fn player_init(
+pub(crate) async fn player_init(
     state: State<'_, PlayerState>,
     app: AppHandle,
     wid: Option<i64>,
