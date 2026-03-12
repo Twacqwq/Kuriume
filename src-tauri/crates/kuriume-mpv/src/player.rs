@@ -26,7 +26,9 @@ const ALL_OBS_IDS: &[u64] = &[
 ];
 
 pub struct MpvPlayer {
-    mpv: Mpv,
+    /// Boxed so that moving `MpvPlayer` (e.g. into a Mutex) does not
+    /// invalidate the raw pointer held by the event-loop thread.
+    mpv: Box<Mpv>,
     running: Arc<AtomicBool>,
     /// Condvar used by `set_wakeup_callback` to notify the event loop
     /// when new events are available, replacing the old 0.5s polling.
@@ -56,7 +58,7 @@ impl MpvPlayer {
         })?;
 
         Ok(Self {
-            mpv,
+            mpv: Box::new(mpv),
             running: Arc::new(AtomicBool::new(false)),
             wakeup: Arc::new((Mutex::new(false), Condvar::new())),
         })
@@ -214,7 +216,9 @@ impl MpvPlayer {
         // usize to satisfy the Send bound on std::thread::spawn.
         // The Mpv handle outlives the thread because Drop calls
         // stop_event_loop first, ensuring the thread exits before Mpv drops.
-        let mpv_addr = &mut self.mpv as *mut Mpv as usize;
+        // `self.mpv` is `Box<Mpv>`, so `&mut *self.mpv` points to stable
+        // heap memory that won't move when `MpvPlayer` itself is moved.
+        let mpv_addr = &mut *self.mpv as *mut Mpv as usize;
         let wakeup_for_thread = self.wakeup.clone();
 
         std::thread::Builder::new()
