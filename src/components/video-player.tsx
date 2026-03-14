@@ -1,15 +1,14 @@
 /**
- * Video player component — full-screen player with mpv backend.
+ * Video player component — full-screen player with HTML5 &lt;video&gt; backend.
  *
- * Since mpv renders to its own window (not embedded in WebView),
- * this component provides a transparent overlay with controls
- * on top. The actual video is rendered by mpv behind the WebView.
+ * All playback state is derived from the native &lt;video&gt; element events.
+ * Controls are rendered as an overlay on top of the video.
  *
  * Layout:
  * ┌──────────────────────────────────────────┐
  * │  Top bar (back, title, episode info)     │
  * │                                          │
- * │         (transparent — mpv underneath)   │
+ * │            &lt;video&gt; element               │
  * │                                          │
  * │  Bottom controls:                        │
  * │    - Seek bar (progress + buffer)        │
@@ -67,28 +66,13 @@ const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
 
 // ── Types ────────────────────────────────────────────────────────
 
-interface VideoPlayerProps {
+export interface VideoPlayerProps {
+  /** Media URL to play */
+  url: string;
   /** Current episode title to display in the top bar */
   title?: string;
   /** Episode subtitle (e.g. "第 3 话") */
   subtitle?: string;
-  /** Player state from usePlayer() */
-  state: {
-    ready: boolean;
-    loaded: boolean;
-    position: number;
-    duration: number;
-    paused: boolean;
-    volume: number;
-    speed: number;
-    buffered: number;
-    seeking: boolean;
-  };
-  /** Player control callbacks from usePlayer() */
-  onTogglePause: () => void;
-  onSeek: (seconds: number) => void;
-  onSetVolume: (volume: number) => void;
-  onSetSpeed: (speed: number) => void;
   /** Navigation callbacks */
   onBack?: () => void;
   onPrev?: () => void;
@@ -96,44 +80,149 @@ interface VideoPlayerProps {
 }
 
 export function VideoPlayer({
+  url,
   title,
   subtitle,
-  state,
-  onTogglePause,
-  onSeek,
-  onSetVolume,
-  onSetSpeed,
   onBack,
   onPrev,
   onNext,
 }: VideoPlayerProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // ── Playback state (driven by <video> element events) ──────────
+
+  const [loaded, setLoaded] = useState(false);
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [paused, setPaused] = useState(true);
+  const [volume, setVolumeState] = useState(100);
+  const [speed, setSpeedState] = useState(1);
+  const [buffered, setBuffered] = useState(0);
+  const [seeking, setSeeking] = useState(false);
+
+  // ── UI state ───────────────────────────────────────────────────
+
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [prevVolume, setPrevVolume] = useState(state.volume);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [prevVolume, setPrevVolume] = useState(100);
+
+  // ── Wire <video> element events to React state ─────────────────
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    const onTimeUpdate = () => setPosition(v.currentTime);
+    const onDurationChange = () => {
+      if (isFinite(v.duration)) setDuration(v.duration);
+    };
+    const onPlay = () => setPaused(false);
+    const onPause = () => setPaused(true);
+    const onSeeking = () => setSeeking(true);
+    const onSeeked = () => setSeeking(false);
+    const onLoadedData = () => setLoaded(true);
+    const onWaiting = () => setSeeking(true);
+    const onCanPlay = () => setSeeking(false);
+    const onProgress = () => {
+      if (v.buffered.length > 0) {
+        const end = v.buffered.end(v.buffered.length - 1);
+        setBuffered(Math.max(0, end - v.currentTime));
+      }
+    };
+    const onVolumeChange = () => setVolumeState(Math.round(v.volume * 100));
+    const onRateChange = () => setSpeedState(v.playbackRate);
+
+    v.addEventListener("timeupdate", onTimeUpdate);
+    v.addEventListener("durationchange", onDurationChange);
+    v.addEventListener("play", onPlay);
+    v.addEventListener("pause", onPause);
+    v.addEventListener("seeking", onSeeking);
+    v.addEventListener("seeked", onSeeked);
+    v.addEventListener("loadeddata", onLoadedData);
+    v.addEventListener("waiting", onWaiting);
+    v.addEventListener("canplay", onCanPlay);
+    v.addEventListener("progress", onProgress);
+    v.addEventListener("volumechange", onVolumeChange);
+    v.addEventListener("ratechange", onRateChange);
+
+    return () => {
+      v.removeEventListener("timeupdate", onTimeUpdate);
+      v.removeEventListener("durationchange", onDurationChange);
+      v.removeEventListener("play", onPlay);
+      v.removeEventListener("pause", onPause);
+      v.removeEventListener("seeking", onSeeking);
+      v.removeEventListener("seeked", onSeeked);
+      v.removeEventListener("loadeddata", onLoadedData);
+      v.removeEventListener("waiting", onWaiting);
+      v.removeEventListener("canplay", onCanPlay);
+      v.removeEventListener("progress", onProgress);
+      v.removeEventListener("volumechange", onVolumeChange);
+      v.removeEventListener("ratechange", onRateChange);
+    };
+  }, []);
+
+  // ── Load & autoplay when URL changes ───────────────────────────
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !url) return;
+    setLoaded(false);
+    setPosition(0);
+    setDuration(0);
+    v.src = url;
+    v.play().catch(() => {});
+  }, [url]);
+
+  // ── Playback control handlers ──────────────────────────────────
+
+  const handleTogglePause = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) v.play().catch(() => {});
+    else v.pause();
+  }, []);
+
+  const handleSeek = useCallback((seconds: number) => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = seconds;
+  }, []);
+
+  const handleSetVolume = useCallback((vol: number) => {
+    const v = videoRef.current;
+    if (!v) return;
+    const clamped = Math.max(0, Math.min(100, Math.round(vol)));
+    v.volume = clamped / 100;
+  }, []);
+
+  const handleSetSpeed = useCallback((s: number) => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.playbackRate = s;
+  }, []);
 
   // ── Auto-hide controls ─────────────────────────────────────────
 
   const resetHideTimer = useCallback(() => {
     setShowControls(true);
     clearTimeout(hideTimerRef.current);
-    if (!state.paused) {
+    if (!paused) {
       hideTimerRef.current = setTimeout(() => setShowControls(false), 3000);
     }
-  }, [state.paused]);
+  }, [paused]);
 
   useEffect(() => {
-    // Always show controls when paused
-    if (state.paused) {
+    if (paused) {
       setShowControls(true);
       clearTimeout(hideTimerRef.current);
     } else {
       resetHideTimer();
     }
     return () => clearTimeout(hideTimerRef.current);
-  }, [state.paused, resetHideTimer]);
+  }, [paused, resetHideTimer]);
 
   // ── Keyboard shortcuts ─────────────────────────────────────────
 
@@ -145,27 +234,27 @@ export function VideoPlayer({
         case " ":
         case "k":
           e.preventDefault();
-          onTogglePause();
+          handleTogglePause();
           resetHideTimer();
           break;
         case "ArrowLeft":
           e.preventDefault();
-          onSeek(Math.max(0, state.position - 5));
+          handleSeek(Math.max(0, position - 5));
           resetHideTimer();
           break;
         case "ArrowRight":
           e.preventDefault();
-          onSeek(Math.min(state.duration, state.position + 5));
+          handleSeek(Math.min(duration, position + 5));
           resetHideTimer();
           break;
         case "ArrowUp":
           e.preventDefault();
-          onSetVolume(Math.min(100, state.volume + 5));
+          handleSetVolume(Math.min(100, volume + 5));
           resetHideTimer();
           break;
         case "ArrowDown":
           e.preventDefault();
-          onSetVolume(Math.max(0, state.volume - 5));
+          handleSetVolume(Math.max(0, volume - 5));
           resetHideTimer();
           break;
         case "m":
@@ -182,7 +271,7 @@ export function VideoPlayer({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onTogglePause, onSeek, onSetVolume, state.position, state.duration, state.volume, resetHideTimer]);
+  }, [handleTogglePause, handleSeek, handleSetVolume, position, duration, volume, resetHideTimer]);
 
   // ── Fullscreen ─────────────────────────────────────────────────
 
@@ -210,23 +299,22 @@ export function VideoPlayer({
 
   const toggleMute = useCallback(() => {
     if (isMuted) {
-      onSetVolume(prevVolume || 50);
+      handleSetVolume(prevVolume || 50);
       setIsMuted(false);
     } else {
-      setPrevVolume(state.volume);
-      onSetVolume(0);
+      setPrevVolume(volume);
+      handleSetVolume(0);
       setIsMuted(true);
     }
-  }, [isMuted, prevVolume, state.volume, onSetVolume]);
+  }, [isMuted, prevVolume, volume, handleSetVolume]);
 
-  // Sync mute state when volume changes externally
   useEffect(() => {
-    if (state.volume > 0 && isMuted) setIsMuted(false);
-    if (state.volume === 0 && !isMuted) setIsMuted(true);
-  }, [state.volume]);
+    if (volume > 0 && isMuted) setIsMuted(false);
+    if (volume === 0 && !isMuted) setIsMuted(true);
+  }, [volume]);
 
-  const progress = state.duration > 0 ? (state.position / state.duration) * 100 : 0;
-  const bufferProgress = state.duration > 0 ? ((state.position + state.buffered) / state.duration) * 100 : 0;
+  const progress = duration > 0 ? (position / duration) * 100 : 0;
+  const bufferProgress = duration > 0 ? ((position + buffered) / duration) * 100 : 0;
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -237,11 +325,20 @@ export function VideoPlayer({
           !showControls && "cursor-none",
         )}
         onMouseMove={resetHideTimer}
-        onMouseLeave={() => { if (!state.paused) setShowControls(false); }}
+        onMouseLeave={() => { if (!paused) setShowControls(false); }}
         onDoubleClick={toggleFullscreen}
       >
+        {/* ── HTML5 Video element ─────────────────────────────── */}
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <video
+          ref={videoRef}
+          className="absolute inset-0 h-full w-full object-contain"
+          playsInline
+          preload="auto"
+        />
+
         {/* Click-to-pause zone */}
-        <div className="absolute inset-0 z-10" onClick={onTogglePause} />
+        <div className="absolute inset-0 z-10" onClick={handleTogglePause} />
 
         {/* ── Top bar ─────────────────────────────────────────── */}
         <div
@@ -272,14 +369,14 @@ export function VideoPlayer({
         </div>
 
         {/* ── Loading indicator ────────────────────────────────── */}
-        {state.seeking && (
+        {seeking && (
           <div className="absolute inset-0 z-15 flex items-center justify-center">
             <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-primary" />
           </div>
         )}
 
         {/* ── Big play button (when paused & controls shown) ──── */}
-        {state.paused && state.loaded && showControls && (
+        {paused && loaded && showControls && (
           <div className="absolute inset-0 z-15 flex items-center justify-center pointer-events-none">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/80 text-white shadow-lg shadow-primary/30 backdrop-blur-sm animate-in fade-in zoom-in-50 duration-200">
               <Play size={28} fill="currentColor" className="ml-1" />
@@ -297,11 +394,11 @@ export function VideoPlayer({
         >
           {/* Seek bar */}
           <SeekBar
-            position={state.position}
-            duration={state.duration}
+            position={position}
+            duration={duration}
             progress={progress}
             bufferProgress={bufferProgress}
-            onSeek={onSeek}
+            onSeek={handleSeek}
             onInteracting={resetHideTimer}
           />
 
@@ -331,16 +428,16 @@ export function VideoPlayer({
                     variant="ghost"
                     size="icon"
                     className="text-white hover:bg-white/10"
-                    onClick={(e) => { e.stopPropagation(); onTogglePause(); }}
+                    onClick={(e) => { e.stopPropagation(); handleTogglePause(); }}
                   >
-                    {state.paused ? (
+                    {paused ? (
                       <Play size={22} fill="currentColor" />
                     ) : (
                       <Pause size={22} fill="currentColor" />
                     )}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{state.paused ? "播放" : "暂停"}</TooltipContent>
+                <TooltipContent>{paused ? "播放" : "暂停"}</TooltipContent>
               </Tooltip>
 
               {onNext && (
@@ -362,9 +459,9 @@ export function VideoPlayer({
 
             {/* Time display */}
             <span className="ml-2 text-xs tabular-nums text-white/70">
-              {formatTime(state.position)}
+              {formatTime(position)}
               <span className="mx-1 text-white/30">/</span>
-              {formatTime(state.duration)}
+              {formatTime(duration)}
             </span>
 
             {/* Spacer */}
@@ -374,14 +471,14 @@ export function VideoPlayer({
             <div className="flex items-center gap-0.5">
               {/* Volume */}
               <VolumeControl
-                volume={state.volume}
+                volume={volume}
                 isMuted={isMuted}
                 onToggleMute={toggleMute}
-                onSetVolume={onSetVolume}
+                onSetVolume={handleSetVolume}
               />
 
               {/* Speed */}
-              <SpeedControl speed={state.speed} onSetSpeed={onSetSpeed} />
+              <SpeedControl speed={speed} onSetSpeed={handleSetSpeed} />
 
               {/* Fullscreen */}
               <Tooltip>

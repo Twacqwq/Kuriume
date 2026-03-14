@@ -124,9 +124,17 @@ pub(crate) fn player_set_subtitle_track(
 
 /// Destroy the player and free resources.
 #[command]
-pub(crate) fn player_destroy(state: State<'_, PlayerState>) -> Result<(), String> {
-    let mut guard = state.player.lock().map_err(|e| e.to_string())?;
-    *guard = None;
+pub(crate) async fn player_destroy(state: State<'_, PlayerState>) -> Result<(), String> {
+    let player = {
+        let mut guard = state.player.lock().map_err(|e| e.to_string())?;
+        guard.take()
+    };
+    // Drop on a blocking thread so the event-thread join doesn't block Tokio.
+    if let Some(p) = player {
+        tokio::task::spawn_blocking(move || drop(p))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 

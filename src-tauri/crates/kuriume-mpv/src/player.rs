@@ -33,6 +33,9 @@ pub struct MpvPlayer {
     /// Condvar used by `set_wakeup_callback` to notify the event loop
     /// when new events are available, replacing the old 0.5s polling.
     wakeup: Arc<(Mutex<bool>, Condvar)>,
+    /// Handle to the event-loop thread so we can join it on drop,
+    /// ensuring the raw Mpv pointer is no longer in use before freeing.
+    event_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl MpvPlayer {
@@ -61,6 +64,7 @@ impl MpvPlayer {
             mpv: Box::new(mpv),
             running: Arc::new(AtomicBool::new(false)),
             wakeup: Arc::new((Mutex::new(false), Condvar::new())),
+            event_thread: None,
         })
     }
 
@@ -221,7 +225,7 @@ impl MpvPlayer {
         let mpv_addr = &mut *self.mpv as *mut Mpv as usize;
         let wakeup_for_thread = self.wakeup.clone();
 
-        std::thread::Builder::new()
+        let handle = std::thread::Builder::new()
             .name("mpv-event-loop".into())
             .spawn(move || {
                 let mpv = unsafe { &mut *(mpv_addr as *mut Mpv) };
@@ -305,6 +309,7 @@ impl MpvPlayer {
             })
             .map_err(|e| MpvError::Mpv(format!("Failed to spawn event thread: {e}")))?;
 
+        self.event_thread = Some(handle);
         Ok(rx)
     }
 
@@ -331,6 +336,11 @@ impl MpvPlayer {
 impl Drop for MpvPlayer {
     fn drop(&mut self) {
         self.stop_event_loop();
+        // Wait for event thread to exit before freeing Box<Mpv>,
+        // otherwise the thread's raw pointer would be dangling.
+        if let Some(handle) = self.event_thread.take() {
+            let _ = handle.join();
+        }
         self.cleanup_observers();
     }
 }
