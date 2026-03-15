@@ -1,5 +1,6 @@
 use crate::commands::{MikanState, ProviderState};
 use crate::player_commands::PlayerState;
+use crate::store_commands::StoreState;
 use crate::torrent_commands::TorrentState;
 use kuriume_provider::Bangumi;
 use std::sync::Arc;
@@ -7,6 +8,7 @@ use std::sync::Arc;
 mod commands;
 mod frame_server;
 mod player_commands;
+mod store_commands;
 mod torrent_commands;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -22,6 +24,7 @@ pub fn run() {
         .manage(PlayerState::new())
         .manage(MikanState::new())
         .manage(TorrentState::new())
+        .manage(StoreState::new())
         .invoke_handler(tauri::generate_handler![
             crate::commands::get_list,
             crate::commands::get_detail,
@@ -50,6 +53,17 @@ pub fn run() {
             crate::torrent_commands::torrent_stream_url,
             crate::torrent_commands::torrent_stats,
             crate::torrent_commands::torrent_remove,
+            crate::torrent_commands::torrent_file_path,
+            crate::store_commands::get_settings,
+            crate::store_commands::set_cache_dir,
+            crate::store_commands::set_cache_enabled,
+            crate::store_commands::cache_lookup,
+            crate::store_commands::cache_register,
+            crate::store_commands::cache_remove,
+            crate::store_commands::cache_list,
+            crate::store_commands::cache_total_size,
+            crate::store_commands::cache_clear_all,
+            crate::store_commands::cache_organize,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

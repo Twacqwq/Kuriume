@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { queryClient } from "@/lib/query-client";
 import type { AnimeEpisodes, AnimeInfo } from "@/lib/types";
 import { useMikanTorrents } from "@/lib/use-mikan-torrents";
+import type { CacheContext } from "@/lib/use-torrent-stream";
 import { cn } from "@/lib/utils";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import {
@@ -222,6 +223,14 @@ function EpisodePage() {
 
   // ── State 4: Torrent source resolved — play ────────────────────
 
+  const cacheContext: CacheContext = {
+    bgmId: id,
+    episode: epNum,
+    animeTitle: animeTitle ?? `Unknown-${id}`,
+    groupName: mikan.selectedGroupName ?? "",
+    torrentSource,
+  };
+
   return (
     <div className="h-full w-full">
       <TorrentPlayer
@@ -229,6 +238,7 @@ function EpisodePage() {
         source={torrentSource}
         title={title}
         subtitle={`${subtitle} · ${mikan.selectedGroupName ?? ""}`}
+        cacheContext={cacheContext}
         onBack={navBack}
         onPrev={navPrev}
         onNext={navNext}

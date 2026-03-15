@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/kuriume-provider", "crates/kuriume-mpv", "crates/kuriume-torrent"]
+members = ["crates/kuriume-provider", "crates/kuriume-mpv", "crates/kuriume-torrent", "crates/kuriume-store"]
 
 [workspace.dependencies]
 tauri = { version = "2", features = [] }
@@ -16,6 +16,7 @@ tokio = { version = "1", features = ["full"] }
 kuriume-provider = { path = "crates/kuriume-provider" }
 kuriume-mpv = { path = "crates/kuriume-mpv" }
 kuriume-torrent = { path = "crates/kuriume-torrent" }
+kuriume-store = { path = "crates/kuriume-store" }
 
 [package]
 name = "kuriume"
@@ -45,6 +46,7 @@ tokio = { workspace = true }
 kuriume-provider = { workspace = true }
 kuriume-mpv = { workspace = true }
 kuriume-torrent = { workspace = true }
+kuriume-store = { workspace = true }
 tokio-tungstenite = "0.26"
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 

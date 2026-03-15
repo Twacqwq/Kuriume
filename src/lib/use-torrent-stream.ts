@@ -2,13 +2,14 @@
  * React hook that manages the full torrent → stream → mpv pipeline.
  *
  * Given a torrent source (magnet URI or .torrent URL), this hook:
- * 1. Adds the torrent to the engine (resolves metadata)
- * 2. Finds the best video file
- * 3. Gets the local HTTP streaming URL
- * 4. Plays via mpv using the player API
+ * 1. Checks local cache first — if hit, plays directly via file:// URL
+ * 2. Adds the torrent to the engine (resolves metadata)
+ * 3. Finds the best video file
+ * 4. Gets the local HTTP streaming URL
  * 5. Polls download stats for progress display
+ * 6. After download completes, registers file in cache for next time
  *
- * Automatically cleans up (removes torrent) on unmount.
+ * On unmount: removes torrent session but keeps files when caching is enabled.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -17,6 +18,7 @@ import {
   type TorrentFileInfo,
   type TorrentStatus,
 } from "./torrent";
+import { cacheApi, settingsApi } from "./store";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -36,12 +38,23 @@ export interface TorrentStreamState {
   files: TorrentFileInfo[];
   /** The selected video file. */
   selectedFile: TorrentFileInfo | null;
-  /** Local HTTP streaming URL. */
+  /** Local HTTP streaming URL (or file path for cached). */
   streamUrl: string | null;
+  /** Whether playing from local cache. */
+  isCached: boolean;
   /** Latest download stats. */
   stats: TorrentStatus | null;
   /** Error message if phase is "error". */
   error: string | null;
+}
+
+/** Anime context needed for cache registration. */
+export interface CacheContext {
+  bgmId: string;
+  episode: number;
+  animeTitle: string;
+  groupName: string;
+  torrentSource: string;
 }
 
 const INITIAL_STATE: TorrentStreamState = {
@@ -50,6 +63,7 @@ const INITIAL_STATE: TorrentStreamState = {
   files: [],
   selectedFile: null,
   streamUrl: null,
+  isCached: false,
   stats: null,
   error: null,
 };
@@ -64,6 +78,9 @@ export function useTorrentStream() {
   const torrentIdRef = useRef<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const mountedRef = useRef(true);
+  const cacheCtxRef = useRef<CacheContext | null>(null);
+  const cacheEnabledRef = useRef(false);
+  const registeredRef = useRef(false);
 
   // ── Cleanup helper ─────────────────────────────────────────────
 
@@ -77,7 +94,8 @@ export function useTorrentStream() {
     if (id !== null) {
       torrentIdRef.current = null;
       try {
-        await torrentApi.remove(id);
+        // Keep files if caching is enabled, delete if not
+        await torrentApi.remove(id, !cacheEnabledRef.current);
       } catch {
         /* torrent might already be removed */
       }
@@ -105,6 +123,17 @@ export function useTorrentStream() {
         const stats = await torrentApi.stats(torrentId);
         if (mountedRef.current) {
           setState((prev) => ({ ...prev, stats }));
+
+          // Auto-register in cache when download completes
+          if (
+            stats.progress >= 1.0 &&
+            !registeredRef.current &&
+            cacheEnabledRef.current &&
+            cacheCtxRef.current
+          ) {
+            registeredRef.current = true;
+            registerInCache(torrentId).catch(() => {});
+          }
         }
       } catch {
         /* ignore transient errors */
@@ -112,15 +141,73 @@ export function useTorrentStream() {
     }, STATS_POLL_INTERVAL);
   }, []);
 
+  // ── Register completed download in cache ───────────────────────
+
+  const registerInCache = useCallback(async (torrentId: number) => {
+    const ctx = cacheCtxRef.current;
+    if (!ctx) return;
+    try {
+      const currentState = await new Promise<TorrentStreamState>((resolve) => {
+        setState((prev) => { resolve(prev); return prev; });
+      });
+      const file = currentState.selectedFile;
+      if (!file) return;
+
+      // Get the file's actual path from the torrent engine
+      const sourcePath = await torrentApi.filePath(torrentId, file.index);
+
+      // Move file to organized cache dir & register in DB
+      await cacheApi.organize({
+        sourcePath,
+        bgmId: ctx.bgmId,
+        episode: ctx.episode,
+        animeTitle: ctx.animeTitle,
+        groupName: ctx.groupName,
+        torrentSource: ctx.torrentSource,
+      });
+    } catch {
+      /* non-critical — cache registration failure shouldn't affect playback */
+    }
+  }, []);
+
   // ── Main: start streaming a torrent ────────────────────────────
 
   const startStream = useCallback(
-    async (source: string) => {
+    async (source: string, cacheContext?: CacheContext) => {
       // Clean up any previous torrent
       await cleanup();
+      registeredRef.current = false;
+      cacheCtxRef.current = cacheContext ?? null;
       setState({ ...INITIAL_STATE, phase: "adding" });
 
+      // Always fetch the latest setting — the ref may not be ready yet
       try {
+        const settings = await settingsApi.get();
+        cacheEnabledRef.current = settings.cache_enabled;
+      } catch {
+        cacheEnabledRef.current = false;
+      }
+
+      try {
+        // ── Cache check ──────────────────────────────────────
+        if (cacheContext && cacheEnabledRef.current) {
+          const cached = await cacheApi.lookup(
+            cacheContext.bgmId,
+            cacheContext.episode,
+            cacheContext.groupName || undefined,
+          );
+          if (cached) {
+            if (!mountedRef.current) return;
+            setState({
+              ...INITIAL_STATE,
+              phase: "streaming",
+              streamUrl: cached.file_path,
+              isCached: true,
+            });
+            return;
+          }
+        }
+
         // Step 1: Add torrent & wait for metadata
         const torrentId = await torrentApi.add(source);
         torrentIdRef.current = torrentId;
@@ -182,7 +269,7 @@ export function useTorrentStream() {
         }));
       }
     },
-    [cleanup, startPolling],
+    [cleanup, startPolling, registerInCache],
   );
 
   // ── Manually select a different file ───────────────────────────

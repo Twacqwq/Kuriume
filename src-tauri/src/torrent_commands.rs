@@ -99,16 +99,33 @@ pub(crate) async fn torrent_stats(
     engine.stats(torrent_id).await.map_err(|e| e.to_string())
 }
 
-/// Remove a torrent and delete its downloaded data.
+/// Remove a torrent and optionally delete its downloaded data.
 #[command]
 pub(crate) async fn torrent_remove(
     state: State<'_, TorrentState>,
     app: AppHandle,
     torrent_id: usize,
+    #[allow(unused)] delete_data: Option<bool>,
 ) -> Result<(), String> {
     let engine = state.engine(&app).await?;
     engine
-        .remove(torrent_id)
+        .remove(torrent_id, delete_data.unwrap_or(true))
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Get the absolute on-disk path for a file within a torrent.
+#[command]
+pub(crate) async fn torrent_file_path(
+    state: State<'_, TorrentState>,
+    app: AppHandle,
+    torrent_id: usize,
+    file_id: usize,
+) -> Result<String, String> {
+    let engine = state.engine(&app).await?;
+    let path = engine
+        .file_path(torrent_id, file_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
 }

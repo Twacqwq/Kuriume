@@ -28,7 +28,7 @@ import {
 import { MpvCanvas } from "@/components/mpv-canvas";
 import { formatBytes, formatSpeed } from "@/lib/torrent";
 import { usePlayer } from "@/lib/use-player";
-import { useTorrentStream, type TorrentStreamPhase } from "@/lib/use-torrent-stream";
+import { useTorrentStream, type TorrentStreamPhase, type CacheContext } from "@/lib/use-torrent-stream";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
@@ -68,6 +68,8 @@ export interface TorrentPlayerProps {
   title?: string;
   /** Subtitle line (e.g. anime name + episode). */
   subtitle?: string;
+  /** Cache context for local file caching. */
+  cacheContext?: CacheContext;
   /** Navigation callbacks. */
   onBack?: () => void;
   onPrev?: () => void;
@@ -78,6 +80,7 @@ export function TorrentPlayer({
   source,
   title,
   subtitle,
+  cacheContext,
   onBack,
   onPrev,
   onNext,
@@ -103,7 +106,7 @@ export function TorrentPlayer({
 
   useEffect(() => {
     if (source) {
-      torrent.startStream(source);
+      torrent.startStream(source, cacheContext);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);

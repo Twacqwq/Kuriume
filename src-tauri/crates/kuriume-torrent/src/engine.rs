@@ -99,6 +99,8 @@ pub(crate) struct SharedState {
 /// URLs playable by mpv.
 pub struct TorrentEngine {
     pub(crate) state: Arc<SharedState>,
+    /// Directory where torrent data is downloaded.
+    download_dir: PathBuf,
     /// TCP port the local streaming server is listening on.
     server_port: u16,
     /// Handle to the background server task.
@@ -140,7 +142,7 @@ impl TorrentEngine {
             ..Default::default()
         };
 
-        let session = Session::new_with_opts(download_dir, opts)
+        let session = Session::new_with_opts(download_dir.clone(), opts)
             .await
             .context("failed to create librqbit session")?;
 
@@ -155,6 +157,7 @@ impl TorrentEngine {
 
         Ok(Self {
             state: shared,
+            download_dir,
             server_port: port,
             _server_handle: handle,
         })
@@ -308,17 +311,39 @@ impl TorrentEngine {
         })
     }
 
-    /// Remove a torrent and delete its data.
-    pub async fn remove(&self, torrent_id: usize) -> Result<()> {
+    /// Remove a torrent and optionally delete its data.
+    pub async fn remove(&self, torrent_id: usize, delete_data: bool) -> Result<()> {
         self.state.handles.write().await.remove(&torrent_id);
         self.state
             .session
-            .delete(TorrentIdOrHash::Id(torrent_id), true)
+            .delete(TorrentIdOrHash::Id(torrent_id), delete_data)
             .await
             .context("failed to delete torrent")?;
 
-        info!(torrent_id, "torrent removed");
+        info!(torrent_id, delete_data, "torrent removed");
         Ok(())
+    }
+
+    /// Get the absolute path of the download directory for a torrent file.
+    ///
+    /// Returns `{download_dir}/{relative_path}` where relative_path comes
+    /// from the torrent metadata.
+    pub async fn file_path(&self, torrent_id: usize, file_id: usize) -> Result<PathBuf> {
+        let handles = self.state.handles.read().await;
+        let torrent = handles
+            .get(&torrent_id)
+            .ok_or(TorrentError::NotFound(torrent_id))?;
+
+        let rel_path = torrent
+            .with_metadata(|meta| {
+                meta.file_infos
+                    .get(file_id)
+                    .map(|fi| fi.relative_filename.clone())
+            })
+            .map_err(|_| TorrentError::MetadataNotReady(torrent_id))?
+            .ok_or(TorrentError::FileNotFound { torrent_id, file_id })?;
+
+        Ok(self.download_dir.join(rel_path))
     }
 
     /// Get the streaming server port.

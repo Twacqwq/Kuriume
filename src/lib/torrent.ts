@@ -59,9 +59,13 @@ export const torrentApi = {
   stats: (torrentId: number) =>
     invoke<TorrentStatus>("torrent_stats", { torrentId }),
 
-  /** Remove a torrent and delete downloaded data. */
-  remove: (torrentId: number) =>
-    invoke<void>("torrent_remove", { torrentId }),
+  /** Remove a torrent and optionally delete downloaded data. */
+  remove: (torrentId: number, deleteData = true) =>
+    invoke<void>("torrent_remove", { torrentId, deleteData }),
+
+  /** Get the absolute on-disk path for a file within a torrent. */
+  filePath: (torrentId: number, fileId: number) =>
+    invoke<string>("torrent_file_path", { torrentId, fileId }),
 };
 
 // ── Helpers ─────────────────────────────────────────────────────

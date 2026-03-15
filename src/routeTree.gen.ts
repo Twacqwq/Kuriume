@@ -9,11 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnimeIdRouteImport } from './routes/anime/$id'
 import { Route as AnimeIdIndexRouteImport } from './routes/anime/$id/index'
 import { Route as AnimeIdEpisodeEpRouteImport } from './routes/anime/$id/episode/$ep'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -37,37 +43,59 @@ const AnimeIdEpisodeEpRoute = AnimeIdEpisodeEpRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRoute
   '/anime/$id': typeof AnimeIdRouteWithChildren
   '/anime/$id/': typeof AnimeIdIndexRoute
   '/anime/$id/episode/$ep': typeof AnimeIdEpisodeEpRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRoute
   '/anime/$id': typeof AnimeIdIndexRoute
   '/anime/$id/episode/$ep': typeof AnimeIdEpisodeEpRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRoute
   '/anime/$id': typeof AnimeIdRouteWithChildren
   '/anime/$id/': typeof AnimeIdIndexRoute
   '/anime/$id/episode/$ep': typeof AnimeIdEpisodeEpRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/anime/$id' | '/anime/$id/' | '/anime/$id/episode/$ep'
+  fullPaths:
+    | '/'
+    | '/settings'
+    | '/anime/$id'
+    | '/anime/$id/'
+    | '/anime/$id/episode/$ep'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/anime/$id' | '/anime/$id/episode/$ep'
-  id: '__root__' | '/' | '/anime/$id' | '/anime/$id/' | '/anime/$id/episode/$ep'
+  to: '/' | '/settings' | '/anime/$id' | '/anime/$id/episode/$ep'
+  id:
+    | '__root__'
+    | '/'
+    | '/settings'
+    | '/anime/$id'
+    | '/anime/$id/'
+    | '/anime/$id/episode/$ep'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SettingsRoute: typeof SettingsRoute
   AnimeIdRoute: typeof AnimeIdRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -114,6 +142,7 @@ const AnimeIdRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SettingsRoute: SettingsRoute,
   AnimeIdRoute: AnimeIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport

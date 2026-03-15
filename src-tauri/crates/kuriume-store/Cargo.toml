@@ -1,0 +1,11 @@
+[package]
+name = "kuriume-store"
+version = "0.1.0"
+edition = "2021"
+description = "SQLite-backed settings & media cache metadata for Kuriume"
+
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = "0.1"

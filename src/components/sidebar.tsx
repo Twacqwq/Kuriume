@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { Link } from "@tanstack/react-router";
 import { Compass, Heart, Clock, Settings, TrendingUp, Library } from "lucide-react";
 import { useState } from "react";
 
@@ -55,10 +56,13 @@ export function Sidebar() {
 
       {/* Bottom settings */}
       <div className="flex flex-col items-center gap-1 px-2 pb-4">
-        <button className="flex w-full flex-col items-center gap-1 rounded-xl py-2.5 text-muted-foreground transition-colors hover:bg-white/4 hover:text-foreground">
+        <Link
+          to="/settings"
+          className="flex w-full flex-col items-center gap-1 rounded-xl py-2.5 text-muted-foreground transition-colors hover:bg-white/4 hover:text-foreground"
+        >
           <Settings size={20} strokeWidth={1.8} />
           <span className="text-[10px] leading-none font-medium">设置</span>
-        </button>
+        </Link>
       </div>
     </aside>
   );
