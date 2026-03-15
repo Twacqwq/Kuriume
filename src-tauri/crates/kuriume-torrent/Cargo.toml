@@ -1,0 +1,15 @@
+[package]
+name = "kuriume-torrent"
+version = "0.1.0"
+edition = "2021"
+description = "Torrent streaming engine for Kuriume — download &amp; stream via librqbit"
+
+[dependencies]
+librqbit = { version = "8", default-features = false, features = ["default-tls"] }
+tokio = { workspace = true }
+tokio-util = { version = "0.7", features = ["io"] }
+axum = "0.8"
+serde = { workspace = true }
+thiserror = { workspace = true }
+anyhow = "1"
+tracing = "0.1"

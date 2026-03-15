@@ -84,6 +84,3 @@ where
     })
 }
 
-// TODO: Implement `register_torrent_protocol` when `kuriume-torrent` crate is ready.
-// It will create a `TorrentStreamState` per URI and wire read/seek/size to the
-// torrent piece cache.

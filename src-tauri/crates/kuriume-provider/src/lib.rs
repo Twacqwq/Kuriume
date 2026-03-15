@@ -22,12 +22,17 @@
 
 mod bangumi;
 mod error;
+mod mikan;
 mod models;
 mod provider;
 
 pub use bangumi::Bangumi;
 pub use error::{ProviderError, Result};
+pub use mikan::{
+    Mikan, MikanBangumiEntry, MikanTorrentEntry, SubtitleGroup, SubtitleGroupTorrents,
+};
 pub use models::{
-    AnimeInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery, PagedResult, SearchQuery, SortBy, CharacterInfo,
+    AnimeInfo, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery, PagedResult,
+    SearchQuery, SortBy,
 };
 pub use provider::AnimeProvider;
