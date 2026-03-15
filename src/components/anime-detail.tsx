@@ -11,6 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AnimeCharacters, AnimeEpisodes } from "@/lib/types";
+import type { SubtitleGroup } from "@/lib/mikan";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
 import {
@@ -18,9 +19,11 @@ import {
   BookmarkPlus,
   Calendar,
   Grid3X3,
+  Loader2,
   Play,
   Rows3,
   Star,
+  Subtitles,
   Tv,
   Users,
 } from "lucide-react";
@@ -108,14 +111,38 @@ function ExpandableDescription({ text }: { text: string }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+function hasAired(airdate: string): boolean {
+  if (!airdate) return true;
+  const d = new Date(airdate);
+  if (isNaN(d.getTime())) return true;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return d <= today;
+}
+
+function formatAirdate(airdate: string): string {
+  if (!airdate) return "播出日期未定";
+  const d = new Date(airdate);
+  if (isNaN(d.getTime())) return "播出日期未定";
+  return `${d.getMonth() + 1}月${d.getDate()}日播出`;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main component                                                     */
 /* ------------------------------------------------------------------ */
 interface AnimeDetailProps {
   data: AnimeDetailData;
   onBack?: () => void;
+  subtitleGroups?: SubtitleGroup[];
+  selectedGroupId?: string | null;
+  onSelectGroup?: (id: string) => void;
+  isLoadingGroups?: boolean;
 }
 
-export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
+export function AnimeDetail({ data, onBack, subtitleGroups, selectedGroupId, onSelectGroup, isLoadingGroups }: AnimeDetailProps) {
   return (
     <TooltipProvider>
       <div className="min-h-screen">
@@ -236,9 +263,10 @@ export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
                   params={{
                     id: String(data.id),
                     ep: String(
-                      data.episodes.find((e) => !e.progress || e.progress < 100)?.ep ?? 1
+                      data.episodes.find((e) => (!e.progress || e.progress < 100) && hasAired(e.airdate))?.ep ?? 1
                     ),
                   }}
+                  search={{ groupId: selectedGroupId ?? undefined }}
                 >
                   <Button size="lg" className="gap-2 rounded-full px-8 shadow-lg shadow-primary/25">
                     <Play size={18} fill="currentColor" />
@@ -284,7 +312,14 @@ export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
 
           <div className="px-8 py-8 md:px-16 lg:px-24">
             <TabsContent value="episodes">
-              <EpisodeList episodes={data.episodes} animeId={data.id} />
+              <EpisodeList
+                episodes={data.episodes}
+                animeId={data.id}
+                subtitleGroups={subtitleGroups}
+                selectedGroupId={selectedGroupId}
+                onSelectGroup={onSelectGroup}
+                isLoadingGroups={isLoadingGroups}
+              />
             </TabsContent>
             <TabsContent value="characters">
               <CharacterGrid characters={data.characters} />
@@ -304,14 +339,51 @@ type EpisodeViewMode = "card" | "list" | "grid";
 function EpisodeList({
   episodes,
   animeId,
+  subtitleGroups,
+  selectedGroupId,
+  onSelectGroup,
+  isLoadingGroups,
 }: {
   episodes: AnimeEpisodes[];
   animeId: number;
+  subtitleGroups?: SubtitleGroup[];
+  selectedGroupId?: string | null;
+  onSelectGroup?: (id: string) => void;
+  isLoadingGroups?: boolean;
 }) {
   const [viewMode, setViewMode] = useState<EpisodeViewMode>("list");
 
   return (
     <div className="space-y-6">
+      {/* Subtitle group selector */}
+      {(isLoadingGroups || (subtitleGroups && subtitleGroups.length > 0)) && (
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Subtitles size={15} />
+            <span className="font-medium">字幕组</span>
+            {isLoadingGroups && <Loader2 size={14} className="animate-spin text-muted-foreground/50" />}
+          </div>
+          {subtitleGroups && subtitleGroups.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {subtitleGroups.map((group) => (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => onSelectGroup?.(group.id)}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-sm font-medium transition-all",
+                    selectedGroupId === group.id
+                      ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                      : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70"
+                  )}
+                >
+                  {group.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-foreground">
@@ -427,53 +499,79 @@ function EpisodeList({
       {/* View: Title list (no thumbnail) */}
       {viewMode === "list" && (
         <div className="divide-y divide-white/4">
-          {episodes.map((ep) => (
-            <Link
-              key={ep.id}
-              to="/anime/$id/episode/$ep"
-              params={{ id: String(animeId), ep: String(ep.ep) }}
-              className="group flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-white/2"
-            >
-              <span
-                className={cn(
-                  "w-8 shrink-0 text-center text-sm font-semibold tabular-nums",
-                  ep.progress !== undefined && ep.progress >= 100
-                    ? "text-muted-foreground/50"
-                    : "text-primary"
-                )}
-              >
-                {ep.ep}
-              </span>
+          {episodes.map((ep) => {
+            const aired = hasAired(ep.airdate);
 
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="text-sm font-medium text-foreground line-clamp-1 transition-colors group-hover:text-primary">
-                  {ep.title_cn || ep.title}
-                </span>
-                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                  <span>{ep.duration}</span>
-                  {ep.progress !== undefined && (
-                    <>
-                      <span className="text-white/20">·</span>
-                      <span>{ep.progress >= 100 ? "已看完" : `已看 ${ep.progress}%`}</span>
-                    </>
-                  )}
+            if (!aired) {
+              return (
+                <div
+                  key={ep.id}
+                  className="flex w-full items-center gap-4 py-3 text-left opacity-35"
+                >
+                  <span className="w-8 shrink-0 text-center text-sm font-semibold tabular-nums text-muted-foreground/50">
+                    {ep.ep}
+                  </span>
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="text-sm font-medium text-foreground/50 line-clamp-1">
+                      {ep.title_cn || ep.title || `第 ${ep.ep} 话`}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {formatAirdate(ep.airdate)}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              );
+            }
 
-              {ep.progress !== undefined && ep.progress < 100 && (
-                <Progress
-                  value={ep.progress}
-                  className="h-1 w-16 shrink-0 bg-white/10"
+            return (
+              <Link
+                key={ep.id}
+                to="/anime/$id/episode/$ep"
+                params={{ id: String(animeId), ep: String(ep.ep) }}
+                search={{ groupId: selectedGroupId ?? undefined }}
+                className="group flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-white/2"
+              >
+                <span
+                  className={cn(
+                    "w-8 shrink-0 text-center text-sm font-semibold tabular-nums",
+                    ep.progress !== undefined && ep.progress >= 100
+                      ? "text-muted-foreground/50"
+                      : "text-primary"
+                  )}
+                >
+                  {ep.ep}
+                </span>
+
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="text-sm font-medium text-foreground line-clamp-1 transition-colors group-hover:text-primary">
+                    {ep.title_cn || ep.title}
+                  </span>
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <span>{ep.duration}</span>
+                    {ep.progress !== undefined && (
+                      <>
+                        <span className="text-white/20">·</span>
+                        <span>{ep.progress >= 100 ? "已看完" : `已看 ${ep.progress}%`}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {ep.progress !== undefined && ep.progress < 100 && (
+                  <Progress
+                    value={ep.progress}
+                    className="h-1 w-16 shrink-0 bg-white/10"
+                  />
+                )}
+
+                <Play
+                  size={14}
+                  fill="currentColor"
+                  className="shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:text-primary group-hover:opacity-100"
                 />
-              )}
-
-              <Play
-                size={14}
-                fill="currentColor"
-                className="shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:text-primary group-hover:opacity-100"
-              />
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       )}
 
@@ -481,14 +579,32 @@ function EpisodeList({
       {viewMode === "grid" && (
         <div className="flex flex-wrap gap-2">
           {episodes.map((ep) => {
+            const aired = hasAired(ep.airdate);
             const watched = ep.progress !== undefined && ep.progress >= 100;
             const watching = ep.progress !== undefined && ep.progress > 0 && ep.progress < 100;
+
+            if (!aired) {
+              return (
+                <Tooltip key={ep.id}>
+                  <TooltipTrigger asChild>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums bg-white/2 text-muted-foreground/30 cursor-default">
+                      {ep.ep}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    第 {ep.ep} 话 · {formatAirdate(ep.airdate)}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            }
+
             return (
               <Tooltip key={ep.id}>
                 <TooltipTrigger asChild>
                   <Link
                     to="/anime/$id/episode/$ep"
                     params={{ id: String(animeId), ep: String(ep.ep) }}
+                    search={{ groupId: selectedGroupId ?? undefined }}
                     className={cn(
                       "relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums transition-all",
                       watched

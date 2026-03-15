@@ -5,6 +5,7 @@ import {
 } from "@/components/anime-detail";
 import { useQuery } from "@tanstack/react-query";
 import type { AnimeInfo, AnimeEpisodes, AnimeCharacters } from "@/lib/types";
+import { useMikanTorrents } from "@/lib/use-mikan-torrents";
 
 import {
   detailQueryOptions,
@@ -56,12 +57,19 @@ function AnimeDetailPage() {
     enabled: !!info,
   });
 
+  const animeTitle = info?.title_cn || info?.title;
+  const mikan = useMikanTorrents(id, animeTitle);
+
   if (!info) return null;
 
   return (
     <AnimeDetail
       data={toAnimeDetailData(info, episodes, characters)}
       onBack={() => router.history.back()}
+      subtitleGroups={mikan.subtitleGroups}
+      selectedGroupId={mikan.selectedGroupId}
+      onSelectGroup={mikan.selectGroup}
+      isLoadingGroups={mikan.isLoading}
     />
   );
 }

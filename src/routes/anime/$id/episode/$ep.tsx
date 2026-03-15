@@ -16,11 +16,15 @@ import {
 import { useMemo } from "react";
 
 export const Route = createFileRoute("/anime/$id/episode/$ep")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    groupId: (search.groupId as string) || undefined,
+  }),
   component: EpisodePage,
 });
 
 function EpisodePage() {
   const { id, ep } = Route.useParams();
+  const { groupId } = Route.useSearch();
   const router = useRouter();
   const epNum = Number(ep);
 
@@ -45,15 +49,16 @@ function EpisodePage() {
   // ── Resolve torrent source ─────────────────────────────────────
 
   const animeTitle = animeInfo?.title_cn || animeInfo?.title;
-  const mikan = useMikanTorrents(id, animeTitle);
+  const mikan = useMikanTorrents(id, animeTitle, groupId);
   const torrentSource = mikan.getTorrentSource(epNum);
 
-  const navBack = () => router.navigate({ to: "/anime/$id", params: { id } });
+  const navBack = () => router.history.back();
   const navPrev = hasPrev
     ? () =>
         router.navigate({
           to: "/anime/$id/episode/$ep",
           params: { id, ep: String(epNum - 1) },
+          search: { groupId },
         })
     : undefined;
   const navNext = hasNext
@@ -61,6 +66,7 @@ function EpisodePage() {
         router.navigate({
           to: "/anime/$id/episode/$ep",
           params: { id, ep: String(epNum + 1) },
+          search: { groupId },
         })
     : undefined;
 

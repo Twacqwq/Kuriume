@@ -88,8 +88,9 @@ function matchTorrentsToEpisodes(
 export function useMikanTorrents(
   bgmId: string | undefined,
   title: string | undefined,
+  initialGroupId?: string,
 ): UseMikanTorrentsResult {
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(initialGroupId ?? null);
 
   // Step 1: Resolve Mikan ID from bgm.tv subject ID
   const {
