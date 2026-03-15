@@ -15,7 +15,7 @@ function RootComponent() {
   );
 
   return (
-    <div className="flex h-full bg-background">
+    <div className={`flex h-full ${isPlayerPage ? '' : 'bg-background'}`}>
       {!isPlayerPage && <Sidebar />}
       <main
         className={

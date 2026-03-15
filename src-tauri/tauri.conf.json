@@ -14,7 +14,8 @@
       {
         "title": "kuriume",
         "width": 1280,
-        "height": 960
+        "height": 960,
+        "transparent": false
       }
     ],
     "security": {

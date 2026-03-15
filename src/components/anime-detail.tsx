@@ -301,7 +301,13 @@ export function AnimeDetail({ data, onBack }: AnimeDetailProps) {
 /* ------------------------------------------------------------------ */
 type EpisodeViewMode = "card" | "list" | "grid";
 
-function EpisodeList({ episodes, animeId }: { episodes: AnimeEpisodes[]; animeId: number }) {
+function EpisodeList({
+  episodes,
+  animeId,
+}: {
+  episodes: AnimeEpisodes[];
+  animeId: number;
+}) {
   const [viewMode, setViewMode] = useState<EpisodeViewMode>("list");
 
   return (

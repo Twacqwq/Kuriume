@@ -43,6 +43,7 @@ pub fn run() {
             crate::player_commands::player_set_audio_track,
             crate::player_commands::player_set_subtitle_track,
             crate::player_commands::player_destroy,
+            crate::player_commands::player_set_geometry,
             crate::torrent_commands::torrent_add,
             crate::torrent_commands::torrent_list_files,
             crate::torrent_commands::torrent_stream_url,

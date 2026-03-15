@@ -68,7 +68,7 @@ body,
   @apply h-full overflow-hidden;
 }
 body {
-  @apply m-0 bg-background text-foreground antialiased;
+  @apply m-0 text-foreground antialiased;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
     "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
     sans-serif;

@@ -4,6 +4,8 @@
  * - Initializes/destroys the player on mount/unmount
  * - Listens to `player-event` from Tauri and keeps reactive state
  * - Exposes imperative controls (play, pause, seek, volume, speed)
+ * - Syncs a native mpv overlay view to a container element via
+ *   ResizeObserver + scroll tracking
  */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -35,7 +37,7 @@ const INITIAL: PlayerState = {
   seeking: false,
 };
 
-export function usePlayer() {
+export function usePlayer(containerRef?: React.RefObject<HTMLElement | null>) {
   const [state, setState] = useState<PlayerState>(INITIAL);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const initedRef = useRef(false);
@@ -109,6 +111,38 @@ export function usePlayer() {
       setState(INITIAL);
     };
   }, []);
+
+  // ── Geometry sync ─────────────────────────────────────────────
+  // Keep the native mpv NSView aligned with the container element.
+
+  const syncGeometry = useCallback(() => {
+    const el = containerRef?.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    playerApi.setGeometry(rect.x, rect.y, rect.width, rect.height).catch(() => {});
+  }, [containerRef]);
+
+  useEffect(() => {
+    const el = containerRef?.current;
+    if (!el) return;
+
+    // Initial sync
+    syncGeometry();
+
+    // Observe size changes
+    const ro = new ResizeObserver(() => syncGeometry());
+    ro.observe(el);
+
+    // Also track scroll / window resize since bounding rect changes
+    window.addEventListener("scroll", syncGeometry, true);
+    window.addEventListener("resize", syncGeometry);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("scroll", syncGeometry, true);
+      window.removeEventListener("resize", syncGeometry);
+    };
+  }, [containerRef, syncGeometry, state.ready]);
 
   // ── Controls ───────────────────────────────────────────────────
 

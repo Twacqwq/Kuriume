@@ -13,3 +13,4 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 anyhow = "1"
 tracing = "0.1"
+url = "2"

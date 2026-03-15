@@ -14,6 +14,9 @@ pub enum TorrentError {
     #[error("metadata not resolved for torrent {0}")]
     MetadataNotReady(usize),
 
+    #[error("torrent metadata resolution timed out after {0} seconds (no peers available)")]
+    Timeout(u64),
+
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }

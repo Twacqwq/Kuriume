@@ -1,18 +1,53 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use librqbit::{
-    AddTorrent, AddTorrentOptions, AddTorrentResponse, ManagedTorrent, Session,
-    SessionOptions, api::TorrentIdOrHash,
+    AddTorrent, AddTorrentOptions, AddTorrentResponse, ManagedTorrent,
+    PeerConnectionOptions, Session, SessionOptions, api::TorrentIdOrHash,
 };
 use serde::Serialize;
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::error::{Result, TorrentError};
 use crate::server;
+
+// ---------------------------------------------------------------------------
+// Tracker list
+// ---------------------------------------------------------------------------
+
+/// Comprehensive tracker list for anime torrents.
+///
+/// Prioritized by relevance:
+/// 1. Anime-specific (Mikan / nyaa / bangumi / ACG ecosystem)
+/// 2. High-uptime public trackers
+///
+/// These are injected both at the session level (all torrents) and per-torrent
+/// (via `AddTorrentOptions::trackers`) to supplement trackers embedded in the
+/// `.torrent` file itself.
+const TRACKER_LIST: &[&str] = &[
+    // ── Anime / ACG ecosystem (Mikan .torrent files embed these) ─
+    "http://t.nyaatracker.com/announce",
+    "http://opentracker.acgnx.se/announce",
+    "http://anidex.moe:6969/announce",
+    "http://t.acg.rip:6699/announce",
+    "https://tr.bangumi.moe:9696/announce",
+    "http://tr.bangumi.moe:6969/announce",
+    // ── High-uptime public trackers (verified active) ───────────
+    "udp://tracker.opentrackr.org:1337/announce",
+    "udp://open.stealth.si:80/announce",
+    "udp://tracker.torrent.eu.org:451/announce",
+    "udp://explodie.org:6969/announce",
+    "udp://open.demonii.com:1337/announce",
+    "udp://tracker.tiny-vps.com:6969/announce",
+    "udp://exodus.desync.com:6969/announce",
+    "udp://tracker.moeking.me:6969/announce",
+    "http://nyaa.tracker.wf:7777/announce",
+];
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -78,8 +113,30 @@ impl TorrentEngine {
         // Ensure download directory exists
         tokio::fs::create_dir_all(&download_dir).await?;
 
+        // Anime-specific + public trackers for peer discovery.
+        // The anime trackers are sourced from Mikan/nyaa/bangumi ecosystem
+        // and are most likely to have seeders for anime torrents.
+        let session_trackers: HashSet<url::Url> = TRACKER_LIST
+            .iter()
+            .filter_map(|s| url::Url::parse(s).ok())
+            .collect();
+
         let opts = SessionOptions {
             persistence: None, // no persistence across restarts
+            trackers: session_trackers,
+            // Listen for incoming peer connections on a port in range 6881-6889.
+            // Without this, `tcp_listen_port` is None and we can only initiate
+            // outgoing connections — other peers can never connect to us,
+            // drastically reducing available peers and download speed.
+            listen_port_range: Some(6881..6890),
+            // Enable UPnP port forwarding so peers behind NAT can still receive
+            // incoming connections via router auto-configuration.
+            enable_upnp_port_forwarding: true,
+            peer_opts: Some(PeerConnectionOptions {
+                connect_timeout: Some(Duration::from_secs(10)),
+                read_write_timeout: Some(Duration::from_secs(15)),
+                ..Default::default()
+            }),
             ..Default::default()
         };
 
@@ -106,11 +163,26 @@ impl TorrentEngine {
     /// Add a torrent from a magnet URI, HTTP URL, or raw `.torrent` bytes.
     ///
     /// Returns the torrent ID assigned by the session.
+    /// Metadata resolution timeout in seconds.
+    const INIT_TIMEOUT_SECS: u64 = 60;
+
     pub async fn add_torrent(&self, source: &str) -> Result<usize> {
         let add_torrent = AddTorrent::from_url(source);
 
+        // Per-torrent tracker injection: supplement whatever the .torrent file
+        // already contains with our known-good anime trackers.
+        let extra_trackers: Vec<String> = TRACKER_LIST
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+
         let opts = Some(AddTorrentOptions {
             overwrite: true,
+            trackers: Some(extra_trackers),
+            // Re-announce every 60s instead of the default (often 30min).
+            // 30s was too aggressive (trackers may reject), 120s too slow
+            // for low-seeder anime torrents. 60s is a reasonable balance.
+            force_tracker_interval: Some(Duration::from_secs(60)),
             ..Default::default()
         });
 
@@ -131,11 +203,39 @@ impl TorrentEngine {
             }
         };
 
-        // Wait until metadata is resolved (important for magnet links)
-        handle
-            .wait_until_initialized()
-            .await
-            .context("torrent metadata resolution failed")?;
+        // Wait until metadata is resolved with a timeout.
+        // librqbit's wait_until_initialized() polls indefinitely — we need
+        // an upper bound so the frontend doesn't hang forever.
+        let timeout_dur = Duration::from_secs(Self::INIT_TIMEOUT_SECS);
+        match tokio::time::timeout(timeout_dur, handle.wait_until_initialized()).await {
+            Ok(Ok(())) => {
+                // Metadata resolved successfully
+            }
+            Ok(Err(e)) => {
+                // librqbit returned an internal error (e.g. torrent entered error state)
+                warn!(id, error = %e, "torrent initialization failed");
+                // Try to clean up the failed torrent
+                let _ = self
+                    .state
+                    .session
+                    .delete(TorrentIdOrHash::Id(id), true)
+                    .await;
+                return Err(TorrentError::Engine(
+                    anyhow::anyhow!("torrent metadata resolution failed: {e}"),
+                ));
+            }
+            Err(_elapsed) => {
+                // Timed out — no peers / metadata not available
+                warn!(id, timeout_secs = Self::INIT_TIMEOUT_SECS, "torrent metadata resolution timed out");
+                // Clean up the stale torrent so it doesn't linger
+                let _ = self
+                    .state
+                    .session
+                    .delete(TorrentIdOrHash::Id(id), true)
+                    .await;
+                return Err(TorrentError::Timeout(Self::INIT_TIMEOUT_SECS));
+            }
+        }
 
         self.state.handles.write().await.insert(id, handle);
 

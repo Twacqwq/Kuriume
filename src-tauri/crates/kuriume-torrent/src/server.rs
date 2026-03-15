@@ -88,7 +88,7 @@ async fn stream_handler(
 
             // Limit reads to the requested range
             let limited = file_stream.take(len);
-            let reader_stream = ReaderStream::new(limited);
+            let reader_stream = ReaderStream::with_capacity(limited, 64 * 1024);
             let body = axum::body::Body::from_stream(reader_stream);
 
             debug!(torrent_id, file_id, start, end, total_len, "serving range");
@@ -105,7 +105,7 @@ async fn stream_handler(
     }
 
     // No Range — serve the full file
-    let reader_stream = ReaderStream::new(file_stream);
+    let reader_stream = ReaderStream::with_capacity(file_stream, 64 * 1024);
     let body = axum::body::Body::from_stream(reader_stream);
 
     debug!(torrent_id, file_id, total_len, "serving full file");

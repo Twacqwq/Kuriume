@@ -36,7 +36,7 @@ export type PlayerEvent =
 // ── Invoke wrappers ─────────────────────────────────────────────
 
 export const playerApi = {
-  init: (wid?: number) => invoke<void>("player_init", { wid: wid ?? null }),
+  init: () => invoke<void>("player_init"),
   play: (url: string) => invoke<void>("player_play", { url }),
   setPaused: (paused: boolean) => invoke<void>("player_set_paused", { paused }),
   seek: (seconds: number) => invoke<void>("player_seek", { seconds }),
@@ -49,4 +49,6 @@ export const playerApi = {
   setSubtitleTrack: (id: number) =>
     invoke<void>("player_set_subtitle_track", { id }),
   destroy: () => invoke<void>("player_destroy"),
+  setGeometry: (x: number, y: number, width: number, height: number) =>
+    invoke<void>("player_set_geometry", { x, y, width, height }),
 };

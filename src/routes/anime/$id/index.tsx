@@ -5,6 +5,7 @@ import {
 } from "@/components/anime-detail";
 import { useQuery } from "@tanstack/react-query";
 import type { AnimeInfo, AnimeEpisodes, AnimeCharacters } from "@/lib/types";
+
 import {
   detailQueryOptions,
   episodesQueryOptions,

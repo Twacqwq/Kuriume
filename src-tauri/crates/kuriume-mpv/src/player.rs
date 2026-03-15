@@ -41,21 +41,26 @@ pub struct MpvPlayer {
 impl MpvPlayer {
     /// Create a new player.
     ///
-    /// - `wid`: Optional native window handle to embed the video output.
-    ///          Pass `None` to use mpv's own window.
-    pub fn new(wid: Option<i64>) -> Result<Self> {
+    /// mpv creates its own window via the macvk backend.
+    /// The caller is responsible for finding and repositioning
+    /// that window (e.g. as a child window of the host app).
+    pub fn new() -> Result<Self> {
         let mpv = Mpv::with_initializer(|init| {
             init.set_option("config", false)?;
             init.set_option("idle", true)?;
             init.set_option("input-default-bindings", false)?;
             init.set_option("osc", false)?;
             init.set_option("ytdl", false)?;
-            init.set_option("terminal", false)?;
             init.set_option("hwdec", "auto")?;
+            init.set_option("vo", "gpu")?;
+            init.set_option("force-window", "immediate")?;
 
-            if let Some(id) = wid {
-                init.set_option("wid", id)?;
-            }
+            // ── Network / streaming cache ────────────────────────
+            init.set_option("cache", true)?;
+            init.set_option("demuxer-max-bytes", "150MiB")?;
+            init.set_option("demuxer-max-back-bytes", "50MiB")?;
+            init.set_option("cache-secs", 2)?;
+            init.set_option("network-timeout", 0)?;
 
             Ok(())
         })?;
