@@ -1,5 +1,6 @@
 use libmpv2::events::{Event, PropertyData};
 use libmpv2::{Format, Mpv};
+use libmpv2_sys::mpv_handle;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use tokio::sync::mpsc;
@@ -71,6 +72,46 @@ impl MpvPlayer {
             wakeup: Arc::new((Mutex::new(false), Condvar::new())),
             event_thread: None,
         })
+    }
+
+    /// Create a player configured for offscreen rendering.
+    ///
+    /// Uses `vo=libmpv` so that mpv renders via the render API
+    /// instead of creating its own window.  Call [`Self::raw_handle`]
+    /// to pass the handle to [`crate::render::OffscreenRenderer`].
+    pub fn new_offscreen() -> Result<Self> {
+        let mpv = Mpv::with_initializer(|init| {
+            init.set_option("config", false)?;
+            init.set_option("idle", true)?;
+            init.set_option("input-default-bindings", false)?;
+            init.set_option("osc", false)?;
+            init.set_option("ytdl", false)?;
+            init.set_option("hwdec", "no")?;
+            init.set_option("vo", "libmpv")?;
+
+            // ── Network / streaming cache ────────────────────────
+            init.set_option("cache", true)?;
+            init.set_option("demuxer-max-bytes", "150MiB")?;
+            init.set_option("demuxer-max-back-bytes", "50MiB")?;
+            init.set_option("cache-secs", 2)?;
+            init.set_option("network-timeout", 0)?;
+
+            Ok(())
+        })?;
+
+        Ok(Self {
+            mpv: Box::new(mpv),
+            running: Arc::new(AtomicBool::new(false)),
+            wakeup: Arc::new((Mutex::new(false), Condvar::new())),
+            event_thread: None,
+        })
+    }
+
+    /// Raw mpv handle pointer for use with `OffscreenRenderer`.
+    ///
+    /// The returned pointer is valid as long as this `MpvPlayer` lives.
+    pub fn raw_handle(&self) -> *mut mpv_handle {
+        self.mpv.ctx.as_ptr()
     }
 
     // ── Playback control ─────────────────────────────────────────

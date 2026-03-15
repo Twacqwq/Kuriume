@@ -4,8 +4,8 @@
  * - Initializes/destroys the player on mount/unmount
  * - Listens to `player-event` from Tauri and keeps reactive state
  * - Exposes imperative controls (play, pause, seek, volume, speed)
- * - Syncs a native mpv overlay view to a container element via
- *   ResizeObserver + scroll tracking
+ * - Provides the WebSocket frame server port for `<MpvCanvas>`
+ * - Syncs the offscreen render resolution to match a container element
  */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -23,6 +23,8 @@ interface PlayerState {
   speed: number;
   buffered: number;
   seeking: boolean;
+  /** WebSocket port for the frame server (0 = not yet available). */
+  framePort: number;
 }
 
 const INITIAL: PlayerState = {
@@ -35,6 +37,7 @@ const INITIAL: PlayerState = {
   speed: 1,
   buffered: 0,
   seeking: false,
+  framePort: 0,
 };
 
 export function usePlayer(containerRef?: React.RefObject<HTMLElement | null>) {
@@ -52,7 +55,8 @@ export function usePlayer(containerRef?: React.RefObject<HTMLElement | null>) {
       initedRef.current = true;
 
       try {
-        await playerApi.init();
+        // player_init now returns the frame server port.
+        const port = await playerApi.init();
 
         // Listen to player events from Rust
         const unlisten = await listen<PlayerEvent>("player-event", (e) => {
@@ -92,7 +96,7 @@ export function usePlayer(containerRef?: React.RefObject<HTMLElement | null>) {
 
         unlistenRef.current = unlisten;
         if (!cancelled) {
-          setState((prev) => ({ ...prev, ready: true }));
+          setState((prev) => ({ ...prev, ready: true, framePort: port }));
         }
       } catch (err) {
         console.error("Failed to init player:", err);
@@ -112,37 +116,33 @@ export function usePlayer(containerRef?: React.RefObject<HTMLElement | null>) {
     };
   }, []);
 
-  // ── Geometry sync ─────────────────────────────────────────────
-  // Keep the native mpv NSView aligned with the container element.
-
-  const syncGeometry = useCallback(() => {
-    const el = containerRef?.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    playerApi.setGeometry(rect.x, rect.y, rect.width, rect.height).catch(() => {});
-  }, [containerRef]);
+  // ── Render size sync ──────────────────────────────────────────
+  // Keep the offscreen render resolution in sync with the container.
 
   useEffect(() => {
     const el = containerRef?.current;
-    if (!el) return;
+    if (!el || !state.ready) return;
 
-    // Initial sync
-    syncGeometry();
+    function syncSize() {
+      const el = containerRef?.current;
+      if (!el) return;
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.round(el.clientWidth * dpr);
+      const h = Math.round(el.clientHeight * dpr);
+      if (w > 0 && h > 0) {
+        playerApi.setRenderSize(w, h).catch(() => {});
+      }
+    }
 
-    // Observe size changes
-    const ro = new ResizeObserver(() => syncGeometry());
+    syncSize();
+
+    const ro = new ResizeObserver(() => syncSize());
     ro.observe(el);
-
-    // Also track scroll / window resize since bounding rect changes
-    window.addEventListener("scroll", syncGeometry, true);
-    window.addEventListener("resize", syncGeometry);
 
     return () => {
       ro.disconnect();
-      window.removeEventListener("scroll", syncGeometry, true);
-      window.removeEventListener("resize", syncGeometry);
     };
-  }, [containerRef, syncGeometry, state.ready]);
+  }, [containerRef, state.ready]);
 
   // ── Controls ───────────────────────────────────────────────────
 

@@ -6,6 +6,7 @@ description = "libmpv wrapper for Kuriume player"
 
 [dependencies]
 libmpv2 = "5"
+libmpv2-sys = "4"
 serde = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

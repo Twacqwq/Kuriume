@@ -5,6 +5,7 @@ use kuriume_provider::Bangumi;
 use std::sync::Arc;
 
 mod commands;
+mod frame_server;
 mod player_commands;
 mod torrent_commands;
 
@@ -43,7 +44,7 @@ pub fn run() {
             crate::player_commands::player_set_audio_track,
             crate::player_commands::player_set_subtitle_track,
             crate::player_commands::player_destroy,
-            crate::player_commands::player_set_geometry,
+            crate::player_commands::player_set_render_size,
             crate::torrent_commands::torrent_add,
             crate::torrent_commands::torrent_list_files,
             crate::torrent_commands::torrent_stream_url,

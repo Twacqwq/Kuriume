@@ -2,7 +2,9 @@ mod error;
 mod event;
 mod player;
 pub mod protocol;
+pub mod render;
 
 pub use error::{MpvError, Result};
 pub use event::PlayerEvent;
 pub use player::MpvPlayer;
+pub use render::{OffscreenRenderer, VideoFrame};

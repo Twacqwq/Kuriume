@@ -4,15 +4,15 @@
  * Orchestrates the torrent streaming pipeline:
  * 1. Add torrent → resolve metadata
  * 2. Auto-select the best video file
- * 3. Stream via local HTTP → mpv
- * 4. Show download progress overlay
+ * 3. Stream via local HTTP → mpv (offscreen render)
+ * 4. Display frames on WebGL canvas via WebSocket
+ * 5. Show download progress overlay
  *
- * Layout matches VideoPlayer for consistency:
+ * Layout:
  * ┌──────────────────────────────────────────┐
  * │  Top bar (back, title, episode info)     │
  * │                                          │
- * │          mpv renders in own window       │
- * │          (status shown in webview)       │
+ * │       <MpvCanvas> (WebGL frames)         │
  * │                                          │
  * │  Torrent stats overlay (progress, speed) │
  * │  Bottom controls (driven by mpv events)  │
@@ -25,6 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { MpvCanvas } from "@/components/mpv-canvas";
 import { formatBytes, formatSpeed } from "@/lib/torrent";
 import { usePlayer } from "@/lib/use-player";
 import { useTorrentStream, type TorrentStreamPhase } from "@/lib/use-torrent-stream";
@@ -84,12 +85,12 @@ export function TorrentPlayer({
   const torrent = useTorrentStream();
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const mpvContainerRef = useRef<HTMLDivElement>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // ── mpv player (renders in child window behind transparent webview) ─
+  // ── mpv player (offscreen render → WebSocket → MpvCanvas) ─────
 
-  const player = usePlayer(mpvContainerRef);
+  const player = usePlayer(canvasContainerRef);
   const { loaded, position, duration, paused, volume } = player.state;
 
   // ── UI state ───────────────────────────────────────────────────
@@ -256,8 +257,10 @@ export function TorrentPlayer({
           />
         )}
 
-        {/* mpv renders behind this transparent area via child window */}
-        <div ref={mpvContainerRef} className="absolute inset-0 z-0" />
+        {/* mpv renders offscreen → WebSocket → WebGL canvas */}
+        <div ref={canvasContainerRef} className="absolute inset-0 z-0">
+          <MpvCanvas port={player.state.framePort} className="h-full w-full" />
+        </div>
 
         {/* ── Top bar ─────────────────────────────────────────── */}
         <div
