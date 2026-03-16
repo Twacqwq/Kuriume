@@ -7,4 +7,4 @@ pub mod render;
 pub use error::{MpvError, Result};
 pub use event::PlayerEvent;
 pub use player::MpvPlayer;
-pub use render::{OffscreenRenderer, VideoFrame};
+pub use render::GpuRenderer;

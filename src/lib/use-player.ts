@@ -4,8 +4,9 @@
  * - Initializes/destroys the player on mount/unmount
  * - Listens to `player-event` from Tauri and keeps reactive state
  * - Exposes imperative controls (play, pause, seek, volume, speed)
- * - Provides the WebSocket frame server port for `<MpvCanvas>`
- * - Syncs the offscreen render resolution to match a container element
+ *
+ * The player renders via a native GPU view embedded below the webview.
+ * No frame transfer or render-size sync is needed.
  */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -23,8 +24,6 @@ interface PlayerState {
   speed: number;
   buffered: number;
   seeking: boolean;
-  /** WebSocket port for the frame server (0 = not yet available). */
-  framePort: number;
 }
 
 const INITIAL: PlayerState = {
@@ -37,10 +36,9 @@ const INITIAL: PlayerState = {
   speed: 1,
   buffered: 0,
   seeking: false,
-  framePort: 0,
 };
 
-export function usePlayer(containerRef?: React.RefObject<HTMLElement | null>) {
+export function usePlayer() {
   const [state, setState] = useState<PlayerState>(INITIAL);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const initedRef = useRef(false);
@@ -55,8 +53,7 @@ export function usePlayer(containerRef?: React.RefObject<HTMLElement | null>) {
       initedRef.current = true;
 
       try {
-        // player_init now returns the frame server port.
-        const port = await playerApi.init();
+        await playerApi.init();
 
         // Listen to player events from Rust
         const unlisten = await listen<PlayerEvent>("player-event", (e) => {
@@ -96,7 +93,7 @@ export function usePlayer(containerRef?: React.RefObject<HTMLElement | null>) {
 
         unlistenRef.current = unlisten;
         if (!cancelled) {
-          setState((prev) => ({ ...prev, ready: true, framePort: port }));
+          setState((prev) => ({ ...prev, ready: true }));
         }
       } catch (err) {
         console.error("Failed to init player:", err);
@@ -115,34 +112,6 @@ export function usePlayer(containerRef?: React.RefObject<HTMLElement | null>) {
       setState(INITIAL);
     };
   }, []);
-
-  // ── Render size sync ──────────────────────────────────────────
-  // Keep the offscreen render resolution in sync with the container.
-
-  useEffect(() => {
-    const el = containerRef?.current;
-    if (!el || !state.ready) return;
-
-    function syncSize() {
-      const el = containerRef?.current;
-      if (!el) return;
-      const dpr = window.devicePixelRatio || 1;
-      const w = Math.round(el.clientWidth * dpr);
-      const h = Math.round(el.clientHeight * dpr);
-      if (w > 0 && h > 0) {
-        playerApi.setRenderSize(w, h).catch(() => {});
-      }
-    }
-
-    syncSize();
-
-    const ro = new ResizeObserver(() => syncSize());
-    ro.observe(el);
-
-    return () => {
-      ro.disconnect();
-    };
-  }, [containerRef, state.ready]);
 
   // ── Controls ───────────────────────────────────────────────────
 

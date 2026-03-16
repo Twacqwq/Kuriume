@@ -1,38 +1,24 @@
-use crate::frame_server::FrameServer;
-use kuriume_mpv::{MpvPlayer, OffscreenRenderer, PlayerEvent};
-use std::sync::Arc;
-use tauri::{command, AppHandle, Emitter, State};
+use crate::native_view::NativeGlView;
+use kuriume_mpv::{MpvPlayer, PlayerEvent};
+use tauri::{command, AppHandle, Emitter, Manager, State, WebviewWindow};
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::Notify;
 
 /// All resources associated with an active player session.
-///
-/// Bundled together so that cleanup order is explicit and guaranteed.
 struct ActivePlayer {
-    /// Frame server (holds Arc<OffscreenRenderer>).  Must be shut down
-    /// first so the broadcast task releases its Arc clone.
-    frame_server: FrameServer,
-    /// Offscreen renderer.  Must be dropped (mpv_render_context_free)
-    /// before the player (mpv_destroy).
-    renderer: Arc<OffscreenRenderer>,
-    /// The mpv player instance.  Dropped last.
     player: MpvPlayer,
+    /// The native GL view mpv renders into (dropped → removed from superview).
+    native_view: NativeGlView,
 }
 
 /// Shared player state managed by Tauri.
-///
-/// Uses a `tokio::sync::Mutex` so the lock can be held across await
-/// points, preventing concurrent init/destroy races.
 pub struct PlayerState {
     inner: tokio::sync::Mutex<Option<ActivePlayer>>,
-    frame_notify: Arc<Notify>,
 }
 
 impl PlayerState {
     pub fn new() -> Self {
         Self {
             inner: tokio::sync::Mutex::new(None),
-            frame_notify: Arc::new(Notify::new()),
         }
     }
 }
@@ -45,98 +31,92 @@ impl Default for PlayerState {
 
 impl Drop for PlayerState {
     fn drop(&mut self) {
-        // Synchronous cleanup for when Tauri drops managed state on app close.
-        // We get &mut self here, so we can bypass the async mutex.
         let inner = self.inner.get_mut();
-        if let Some(active) = inner.take() {
-            // 1. Drop frame_server — abort tasks (sync), releasing Arc clone.
-            drop(active.frame_server);
-            // 2. Drop renderer — triggers OffscreenRenderer::drop
-            //    (stops render thread, calls mpv_render_context_free).
-            drop(active.renderer);
-            // 3. Drop player — calls mpv_destroy (now safe).
+        if let Some(mut active) = inner.take() {
+            active.native_view.destroy(); // free render context first
             drop(active.player);
         }
     }
 }
 
-/// Default offscreen render resolution (can be resized by the frontend).
-const DEFAULT_WIDTH: u32 = 1280;
-const DEFAULT_HEIGHT: u32 = 720;
-
-/// Initialize the mpv player for offscreen rendering.
+/// Initialize the mpv player with GPU rendering via the OpenGL render API.
 ///
-/// Creates the player with `vo=libmpv`, sets up the software renderer,
-/// and starts a WebSocket frame server to deliver frames to the frontend.
-/// Returns the port of the frame server.
+/// 1. Creates `MpvPlayer` (vo=libmpv, hwdec=auto).
+/// 2. On the main thread: creates an NSView + NSOpenGLContext below the
+///    webview, then creates a `GpuRenderer` using the current GL context.
+/// 3. Starts the mpv event loop for property/playback notifications.
+///
+/// The render loop is driven by mpv's update callback → GCD dispatch_async
+/// to the main thread → render into the default FBO → flush.
 #[command]
 pub(crate) async fn player_init(
     state: State<'_, PlayerState>,
     app: AppHandle,
-) -> Result<u16, String> {
+) -> Result<(), String> {
     let mut guard = state.inner.lock().await;
     if guard.is_some() {
         return Err("Player already initialized".into());
     }
 
-    // Create player in offscreen mode.
-    let player = MpvPlayer::new_offscreen().map_err(|e| e.to_string())?;
-    let handle = player.raw_handle();
+    let window: WebviewWindow = app
+        .get_webview_window("main")
+        .ok_or("main window not found")?;
 
-    // Create renderer BEFORE starting event loop to avoid
-    // race between mpv_wait_event and mpv_render_context_create.
-    let renderer = OffscreenRenderer::new(handle, DEFAULT_WIDTH, DEFAULT_HEIGHT)
+    // Create mpv player (vo=libmpv, doesn't touch any window).
+    let mut player = tokio::task::spawn_blocking(MpvPlayer::new_for_render)
+        .await
+        .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
-    let renderer = Arc::new(renderer);
 
-    // Start the render loop — signals frame_notify on each new frame.
-    let notify_for_render = state.frame_notify.clone();
-    renderer
-        .start(move || {
-            notify_for_render.notify_one();
+    // Convert raw pointer to usize for Send across thread boundary.
+    // Safe: the mpv handle outlives this scope (player stays alive).
+    let mpv_handle = player.raw_handle() as usize;
+
+    // On the main thread: create NativeGlView + GpuRenderer,
+    // wire up the render loop, and return the view.
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<NativeGlView, String>>();
+
+    let win = window.clone();
+    window
+        .run_on_main_thread(move || {
+            let result = (|| {
+                #[cfg(target_os = "macos")]
+                {
+                    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                    let handle = win
+                        .window_handle()
+                        .map_err(|e| format!("window handle: {e}"))?;
+                    match handle.as_raw() {
+                        RawWindowHandle::AppKit(h) => {
+                            let ns_view = h.ns_view.as_ptr();
+                            unsafe {
+                                NativeGlView::new(
+                                    ns_view,
+                                    mpv_handle as *mut std::ffi::c_void,
+                                )
+                            }
+                        }
+                        _ => Err("unexpected window handle type".into()),
+                    }
+                }
+            })();
+            let _ = tx.send(result);
         })
         .map_err(|e| e.to_string())?;
 
-    // Start the frame server.
-    let server = FrameServer::start(renderer.clone(), state.frame_notify.clone())
-        .await
-        .map_err(|e| e.to_string())?;
-    let port = server.port;
+    let native_view = rx.await.map_err(|_| "main thread channel closed")??;
 
-    // Store everything together — player is stored last to keep the
-    // Mutex locked for the entire init, preventing concurrent destroy.
-    // Need to start event loop before storing because start_event_loop
-    // takes &mut self.
-    //
-    // We create a temporary mutable binding for the player to call
-    // start_event_loop, then move it into ActivePlayer.
-    let mut player = player;
-    let rx = player.start_event_loop().map_err(|e| e.to_string())?;
+    // Start mpv event loop.
+    let event_rx = player.start_event_loop().map_err(|e| e.to_string())?;
 
     *guard = Some(ActivePlayer {
-        frame_server: server,
-        renderer,
         player,
+        native_view,
     });
 
-    // Drop the lock before spawning the event forwarder.
     drop(guard);
-    spawn_event_forwarder(app, rx);
+    spawn_event_forwarder(app, event_rx);
 
-    Ok(port)
-}
-
-/// Set the offscreen render resolution to match the frontend canvas.
-#[command]
-pub(crate) async fn player_set_render_size(
-    state: State<'_, PlayerState>,
-    width: u32,
-    height: u32,
-) -> Result<(), String> {
-    let guard = state.inner.lock().await;
-    if let Some(active) = guard.as_ref() {
-        active.renderer.set_size(width, height);
-    }
     Ok(())
 }
 
@@ -157,7 +137,10 @@ pub(crate) async fn player_set_paused(
 
 /// Seek to an absolute position in seconds.
 #[command]
-pub(crate) async fn player_seek(state: State<'_, PlayerState>, seconds: f64) -> Result<(), String> {
+pub(crate) async fn player_seek(
+    state: State<'_, PlayerState>,
+    seconds: f64,
+) -> Result<(), String> {
     with_player(&state, |p| p.seek(seconds)).await
 }
 
@@ -169,7 +152,10 @@ pub(crate) async fn player_stop(state: State<'_, PlayerState>) -> Result<(), Str
 
 /// Set volume (0-100).
 #[command]
-pub(crate) async fn player_set_volume(state: State<'_, PlayerState>, volume: i64) -> Result<(), String> {
+pub(crate) async fn player_set_volume(
+    state: State<'_, PlayerState>,
+    volume: i64,
+) -> Result<(), String> {
     with_player(&state, |p| p.set_volume(volume)).await
 }
 
@@ -183,11 +169,14 @@ pub(crate) async fn player_get_volume(state: State<'_, PlayerState>) -> Result<i
 
 /// Set playback speed.
 #[command]
-pub(crate) async fn player_set_speed(state: State<'_, PlayerState>, speed: f64) -> Result<(), String> {
+pub(crate) async fn player_set_speed(
+    state: State<'_, PlayerState>,
+    speed: f64,
+) -> Result<(), String> {
     with_player(&state, |p| p.set_speed(speed)).await
 }
 
-/// Get current playback position and duration.
+/// Get current playback state.
 #[command]
 pub(crate) async fn player_get_state(
     state: State<'_, PlayerState>,
@@ -221,33 +210,48 @@ pub(crate) async fn player_set_subtitle_track(
     with_player(&state, |p| p.set_subtitle_track(id)).await
 }
 
+/// Set hardware decoding mode at runtime.
+///
+/// - `"auto"` — automatic hardware decoding (VideoToolbox on macOS)
+/// - `"no"`   — software decoding only
+#[command]
+pub(crate) async fn player_set_hwdec(
+    state: State<'_, PlayerState>,
+    mode: &str,
+) -> Result<(), String> {
+    with_player(&state, |p| p.set_hwdec(mode)).await
+}
+
+/// Get current hardware decoding mode.
+#[command]
+pub(crate) async fn player_get_hwdec(state: State<'_, PlayerState>) -> Result<String, String> {
+    let guard = state.inner.lock().await;
+    let active = guard.as_ref().ok_or("Player not initialized")?;
+    Ok(active.player.hwdec())
+}
+
 /// Destroy the player and free all resources.
 #[command]
 pub(crate) async fn player_destroy(state: State<'_, PlayerState>) -> Result<(), String> {
     let mut guard = state.inner.lock().await;
-    let Some(active) = guard.take() else {
-        return Ok(()); // nothing to destroy
+    let Some(mut active) = guard.take() else {
+        return Ok(());
     };
-    // Release the lock before doing blocking cleanup.
     drop(guard);
 
-    // 1. Shutdown frame server — awaits spawned tasks so the broadcast
-    //    task's Arc<OffscreenRenderer> clone is dropped.
-    active.frame_server.shutdown().await;
-
-    // 2. Drop renderer then player on a blocking thread so that
-    //    thread-joins don't block the Tokio runtime.
-    //    Order matters: renderer (mpv_render_context_free) before
-    //    player (mpv_destroy).
+    // IMPORTANT: GpuRenderer (inside native_view) holds mpv_render_context
+    // which MUST be freed before the mpv handle (inside player) is destroyed.
     tokio::task::spawn_blocking(move || {
-        drop(active.renderer);
-        drop(active.player);
+        active.native_view.destroy(); // frees mpv_render_context
+        drop(active.player);          // frees mpv handle
     })
     .await
     .map_err(|e| e.to_string())?;
 
     Ok(())
 }
+
+// ── Helpers ──────────────────────────────────────────────────────
 
 #[derive(serde::Serialize)]
 pub struct PlayerStateInfo {

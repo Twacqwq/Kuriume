@@ -10,12 +10,13 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "kuriume",
         "width": 1280,
         "height": 960,
-        "transparent": false
+        "transparent": true
       }
     ],
     "security": {

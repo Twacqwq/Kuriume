@@ -1,6 +1,5 @@
 use libmpv2::events::{Event, PropertyData};
 use libmpv2::{Format, Mpv};
-use libmpv2_sys::mpv_handle;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use tokio::sync::mpsc;
@@ -40,12 +39,12 @@ pub struct MpvPlayer {
 }
 
 impl MpvPlayer {
-    /// Create a new player.
+    /// Create a player configured for the render API (`vo=libmpv`).
     ///
-    /// mpv creates its own window via the macvk backend.
-    /// The caller is responsible for finding and repositioning
-    /// that window (e.g. as a child window of the host app).
-    pub fn new() -> Result<Self> {
+    /// Hardware decoding is enabled by default (`hwdec=auto`).
+    /// Callers must create a `GpuRenderer` with the raw handle
+    /// returned by [`raw_handle()`] and drive the render loop themselves.
+    pub fn new_for_render() -> Result<Self> {
         let mpv = Mpv::with_initializer(|init| {
             init.set_option("config", false)?;
             init.set_option("idle", true)?;
@@ -53,40 +52,7 @@ impl MpvPlayer {
             init.set_option("osc", false)?;
             init.set_option("ytdl", false)?;
             init.set_option("hwdec", "auto")?;
-            init.set_option("vo", "gpu")?;
-            init.set_option("force-window", "immediate")?;
-
-            // ── Network / streaming cache ────────────────────────
-            init.set_option("cache", true)?;
-            init.set_option("demuxer-max-bytes", "150MiB")?;
-            init.set_option("demuxer-max-back-bytes", "50MiB")?;
-            init.set_option("cache-secs", 2)?;
-            init.set_option("network-timeout", 0)?;
-
-            Ok(())
-        })?;
-
-        Ok(Self {
-            mpv: Box::new(mpv),
-            running: Arc::new(AtomicBool::new(false)),
-            wakeup: Arc::new((Mutex::new(false), Condvar::new())),
-            event_thread: None,
-        })
-    }
-
-    /// Create a player configured for offscreen rendering.
-    ///
-    /// Uses `vo=libmpv` so that mpv renders via the render API
-    /// instead of creating its own window.  Call [`Self::raw_handle`]
-    /// to pass the handle to [`crate::render::OffscreenRenderer`].
-    pub fn new_offscreen() -> Result<Self> {
-        let mpv = Mpv::with_initializer(|init| {
-            init.set_option("config", false)?;
-            init.set_option("idle", true)?;
-            init.set_option("input-default-bindings", false)?;
-            init.set_option("osc", false)?;
-            init.set_option("ytdl", false)?;
-            init.set_option("hwdec", "no")?;
+            // vo=libmpv tells mpv to use the render API for output
             init.set_option("vo", "libmpv")?;
 
             // ── Network / streaming cache ────────────────────────
@@ -107,11 +73,27 @@ impl MpvPlayer {
         })
     }
 
-    /// Raw mpv handle pointer for use with `OffscreenRenderer`.
+    /// Return the raw `mpv_handle *` for creating a `GpuRenderer`.
     ///
-    /// The returned pointer is valid as long as this `MpvPlayer` lives.
-    pub fn raw_handle(&self) -> *mut mpv_handle {
-        self.mpv.ctx.as_ptr()
+    /// The pointer is valid for the lifetime of this `MpvPlayer`.
+    pub fn raw_handle(&self) -> *mut std::ffi::c_void {
+        self.mpv.ctx.as_ptr() as *mut std::ffi::c_void
+    }
+
+    /// Set hardware decoding mode at runtime.
+    ///
+    /// - `"auto"` — automatic (VideoToolbox on macOS)
+    /// - `"no"`   — software decoding only
+    pub fn set_hwdec(&self, mode: &str) -> Result<()> {
+        self.mpv.set_property("hwdec", mode)?;
+        Ok(())
+    }
+
+    /// Get current hardware decoding mode.
+    pub fn hwdec(&self) -> String {
+        self.mpv
+            .get_property::<String>("hwdec-current")
+            .unwrap_or_else(|_| "no".into())
     }
 
     // ── Playback control ─────────────────────────────────────────

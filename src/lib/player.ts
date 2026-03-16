@@ -36,8 +36,8 @@ export type PlayerEvent =
 // ── Invoke wrappers ─────────────────────────────────────────────
 
 export const playerApi = {
-  /** Initialize the offscreen player. Returns the WebSocket frame server port. */
-  init: () => invoke<number>("player_init"),
+  /** Initialize the native GPU player (creates native view + mpv). */
+  init: () => invoke<void>("player_init"),
   play: (url: string) => invoke<void>("player_play", { url }),
   setPaused: (paused: boolean) => invoke<void>("player_set_paused", { paused }),
   seek: (seconds: number) => invoke<void>("player_seek", { seconds }),
@@ -50,7 +50,8 @@ export const playerApi = {
   setSubtitleTrack: (id: number) =>
     invoke<void>("player_set_subtitle_track", { id }),
   destroy: () => invoke<void>("player_destroy"),
-  /** Update the offscreen render resolution to match the canvas size. */
-  setRenderSize: (width: number, height: number) =>
-    invoke<void>("player_set_render_size", { width, height }),
+  /** Set hardware decoding mode: "auto" | "no" */
+  setHwdec: (mode: string) => invoke<void>("player_set_hwdec", { mode }),
+  /** Get current hardware decoding mode. */
+  getHwdec: () => invoke<string>("player_get_hwdec"),
 };

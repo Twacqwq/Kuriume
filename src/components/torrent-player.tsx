@@ -4,15 +4,15 @@
  * Orchestrates the torrent streaming pipeline:
  * 1. Add torrent → resolve metadata
  * 2. Auto-select the best video file
- * 3. Stream via local HTTP → mpv (offscreen render)
- * 4. Display frames on WebGL canvas via WebSocket
+ * 3. Stream via local HTTP → mpv (native GPU render)
+ * 4. Transparent webview overlays controls on top of native mpv view
  * 5. Show download progress overlay
  *
  * Layout:
  * ┌──────────────────────────────────────────┐
  * │  Top bar (back, title, episode info)     │
  * │                                          │
- * │       <MpvCanvas> (WebGL frames)         │
+ * │   (native mpv view renders below)        │
  * │                                          │
  * │  Torrent stats overlay (progress, speed) │
  * │  Bottom controls (driven by mpv events)  │
@@ -25,7 +25,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { MpvCanvas } from "@/components/mpv-canvas";
 import { formatBytes, formatSpeed } from "@/lib/torrent";
 import { usePlayer } from "@/lib/use-player";
 import { useTorrentStream, type TorrentStreamPhase, type CacheContext } from "@/lib/use-torrent-stream";
@@ -88,12 +87,11 @@ export function TorrentPlayer({
   const torrent = useTorrentStream();
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasContainerRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // ── mpv player (offscreen render → WebSocket → MpvCanvas) ─────
+  // ── mpv player (native GPU render below transparent webview) ───
 
-  const player = usePlayer(canvasContainerRef);
+  const player = usePlayer();
   const { loaded, position, duration, paused, volume } = player.state;
 
   // ── UI state ───────────────────────────────────────────────────
@@ -260,10 +258,8 @@ export function TorrentPlayer({
           />
         )}
 
-        {/* mpv renders offscreen → WebSocket → WebGL canvas */}
-        <div ref={canvasContainerRef} className="absolute inset-0 z-0">
-          <MpvCanvas port={player.state.framePort} className="h-full w-full" />
-        </div>
+        {/* mpv renders natively below this transparent webview layer */}
+        <div className="absolute inset-0 z-0" />
 
         {/* ── Top bar ─────────────────────────────────────────── */}
         <div
