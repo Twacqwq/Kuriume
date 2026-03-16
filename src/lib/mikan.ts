@@ -125,6 +125,37 @@ export interface EpisodeTorrentMatch {
   size: string;
   /** Subtitle group name. */
   groupName: string;
+  /** Detected resolution (e.g. "1080p", "720p", "4K"). */
+  resolution: string;
+}
+
+// ── Resolution extraction ───────────────────────────────────────
+
+const RESOLUTION_UNKNOWN = "未知";
+
+/**
+ * Extract video resolution from a torrent title string.
+ *
+ * Handles common fansub naming patterns:
+ * - `[1080P]`, `1080p`, `[BD 1080p]`
+ * - `[720P]`, `720p`
+ * - `[4K]`, `[2160p]`, `2160P`
+ * - `[480P]`, `480p`
+ *
+ * Returns a normalised label (e.g. "1080p") or "未知".
+ */
+export function extractResolution(title: string): string {
+  // 4K / UHD
+  if (/4K|2160[pP]/i.test(title)) return "4K";
+  // 1080
+  if (/1080[pPiI]/i.test(title)) return "1080p";
+  // 720
+  if (/720[pPiI]/i.test(title)) return "720p";
+  // 480 / 576
+  if (/480[pPiI]/i.test(title)) return "480p";
+  if (/576[pPiI]/i.test(title)) return "576p";
+
+  return RESOLUTION_UNKNOWN;
 }
 
 /**
@@ -162,6 +193,7 @@ export function matchEpisodesToTorrents(
           torrentTitle: torrent.title,
           size: torrent.size,
           groupName: group.name,
+          resolution: extractResolution(torrent.title),
         });
       }
     }

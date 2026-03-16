@@ -11,15 +11,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AnimeCharacters, AnimeEpisodes } from "@/lib/types";
-import type { SubtitleGroup } from "@/lib/mikan";
+import type { GroupData } from "@/lib/use-mikan-torrents";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
   BookmarkPlus,
   Calendar,
+  ChevronDown,
   Grid3X3,
   Loader2,
+  Monitor,
   Play,
   Rows3,
   Star,
@@ -136,13 +138,24 @@ function formatAirdate(airdate: string): string {
 interface AnimeDetailProps {
   data: AnimeDetailData;
   onBack?: () => void;
-  subtitleGroups?: SubtitleGroup[];
+  groups?: GroupData[];
+  isLoadingGroups?: boolean;
   selectedGroupId?: string | null;
   onSelectGroup?: (id: string) => void;
-  isLoadingGroups?: boolean;
+  preferredResolution?: string | null;
+  onSelectResolution?: (res: string | null) => void;
 }
 
-export function AnimeDetail({ data, onBack, subtitleGroups, selectedGroupId, onSelectGroup, isLoadingGroups }: AnimeDetailProps) {
+export function AnimeDetail({
+  data,
+  onBack,
+  groups,
+  isLoadingGroups,
+  selectedGroupId,
+  onSelectGroup,
+  preferredResolution,
+  onSelectResolution,
+}: AnimeDetailProps) {
   return (
     <TooltipProvider>
       <div className="min-h-screen">
@@ -266,7 +279,7 @@ export function AnimeDetail({ data, onBack, subtitleGroups, selectedGroupId, onS
                       data.episodes.find((e) => (!e.progress || e.progress < 100) && hasAired(e.airdate))?.ep ?? 1
                     ),
                   }}
-                  search={{ groupId: selectedGroupId ?? undefined }}
+                  search={{ groupId: selectedGroupId ?? undefined, resolution: preferredResolution ?? undefined }}
                 >
                   <Button size="lg" className="gap-2 rounded-full px-8 shadow-lg shadow-primary/25">
                     <Play size={18} fill="currentColor" />
@@ -315,10 +328,11 @@ export function AnimeDetail({ data, onBack, subtitleGroups, selectedGroupId, onS
               <EpisodeList
                 episodes={data.episodes}
                 animeId={data.id}
-                subtitleGroups={subtitleGroups}
-                selectedGroupId={selectedGroupId}
-                onSelectGroup={onSelectGroup}
+                groups={groups}
                 isLoadingGroups={isLoadingGroups}
+                onSelectGroup={onSelectGroup}
+                preferredResolution={preferredResolution}
+                onSelectResolution={onSelectResolution}
               />
             </TabsContent>
             <TabsContent value="characters">
@@ -332,59 +346,47 @@ export function AnimeDetail({ data, onBack, subtitleGroups, selectedGroupId, onS
 }
 
 /* ------------------------------------------------------------------ */
-/*  Episode List                                                       */
+/*  Episode List — Group-centric accordion                             */
 /* ------------------------------------------------------------------ */
-type EpisodeViewMode = "card" | "list" | "grid";
+type EpisodeViewMode = "list" | "grid";
 
 function EpisodeList({
   episodes,
   animeId,
-  subtitleGroups,
-  selectedGroupId,
-  onSelectGroup,
+  groups,
   isLoadingGroups,
+  onSelectGroup,
+  preferredResolution,
+  onSelectResolution,
 }: {
   episodes: AnimeEpisodes[];
   animeId: number;
-  subtitleGroups?: SubtitleGroup[];
-  selectedGroupId?: string | null;
-  onSelectGroup?: (id: string) => void;
+  groups?: GroupData[];
   isLoadingGroups?: boolean;
+  onSelectGroup?: (id: string) => void;
+  preferredResolution?: string | null;
+  onSelectResolution?: (res: string | null) => void;
 }) {
   const [viewMode, setViewMode] = useState<EpisodeViewMode>("list");
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
+
+  const hasGroups = groups && groups.length > 0;
+
+  // Auto-expand the first group when data loads
+  useEffect(() => {
+    if (hasGroups && !expandedGroupId) {
+      setExpandedGroupId(groups![0].id);
+    }
+  }, [hasGroups]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroupId((prev) => (prev === groupId ? null : groupId));
+    onSelectGroup?.(groupId);
+  };
 
   return (
     <div className="space-y-6">
-      {/* Subtitle group selector */}
-      {(isLoadingGroups || (subtitleGroups && subtitleGroups.length > 0)) && (
-        <div className="space-y-2.5">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Subtitles size={15} />
-            <span className="font-medium">字幕组</span>
-            {isLoadingGroups && <Loader2 size={14} className="animate-spin text-muted-foreground/50" />}
-          </div>
-          {subtitleGroups && subtitleGroups.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {subtitleGroups.map((group) => (
-                <button
-                  key={group.id}
-                  type="button"
-                  onClick={() => onSelectGroup?.(group.id)}
-                  className={cn(
-                    "rounded-lg px-3 py-1.5 text-sm font-medium transition-all",
-                    selectedGroupId === group.id
-                      ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                      : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70"
-                  )}
-                >
-                  {group.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-foreground">
           全部剧集
@@ -393,7 +395,7 @@ function EpisodeList({
           </span>
         </h2>
 
-        {/* View mode toggle (shadcn ToggleGroup) */}
+        {/* View mode toggle */}
         <ToggleGroup
           type="single"
           value={viewMode}
@@ -401,17 +403,6 @@ function EpisodeList({
           size="sm"
           className="rounded-lg bg-white/4 p-0.5"
         >
-          {/* <Tooltip>
-            <TooltipTrigger asChild>
-              <ToggleGroupItem
-                value="card"
-                className="h-7 w-7 p-0 data-[state=on]:bg-white/10 data-[state=on]:text-primary"
-              >
-                <LayoutList size={15} />
-              </ToggleGroupItem>
-            </TooltipTrigger>
-            <TooltipContent>卡片</TooltipContent>
-          </Tooltip> */}
           <Tooltip>
             <TooltipTrigger asChild>
               <ToggleGroupItem
@@ -437,197 +428,382 @@ function EpisodeList({
         </ToggleGroup>
       </div>
 
-      {/* View: Card (default – with thumbnail) */}
-      {/* {viewMode === "card" && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {episodes.map((ep) => (
-            <Link
-              key={ep.id}
-              to="/anime/$id/episode/$ep"
-              params={{ id: String(animeId), ep: String(ep.ep) }}
-              className="group flex gap-3 rounded-xl bg-card/50 p-3 text-left transition-colors hover:bg-card"
-            >
-              {/* Thumbnail */}
-              {/* <div className="relative aspect-video w-36 shrink-0 overflow-hidden rounded-lg bg-card">
-                <img
-                  src={ep.thumbnail}
-                  alt={ep.title}
-                  loading="lazy"
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                />
-                <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white/90 backdrop-blur-sm">
-                  {ep.duration}
-                </span>
-                <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">
-                  <Play
-                    size={20}
-                    fill="currentColor"
-                    className="text-white opacity-0 transition-opacity group-hover:opacity-100"
-                  />
-                </div>
-                {ep.progress !== undefined && (
-                  <Progress
-                    value={ep.progress}
-                    className="absolute bottom-0 left-0 right-0 h-0.5 rounded-none bg-white/20"
-                  />
-                )}
-              </div>
+      {/* ── Loading state ── */}
+      {isLoadingGroups && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground/60">
+          <Loader2 size={14} className="animate-spin" />
+          <span>正在搜索字幕组...</span>
+        </div>
+      )}
 
-              <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
-                <span className="text-xs font-medium text-primary">
-                  第 {ep.ep} 话
-                </span>
-                <span className="text-sm font-medium text-foreground line-clamp-2 transition-colors group-hover:text-primary">
-                  {ep.title_cn || ep.title}
-                </span>
-                {ep.progress !== undefined && (
-                  <span className="text-[11px] text-muted-foreground">
-                    已看 {ep.progress}%
-                  </span>
-                )}
-              </div>
+      {/* ── No groups found ── */}
+      {!isLoadingGroups && !hasGroups && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground/50">
+            <Subtitles size={14} />
+            <span>暂无字幕组资源</span>
+          </div>
+          {/* Fallback: show episodes without torrent availability */}
+          <EpisodeViewFallback episodes={episodes} viewMode={viewMode} />
+        </div>
+      )}
 
-              <ChevronRight
-                size={16}
-                className="shrink-0 self-center text-muted-foreground/50 transition-transform group-hover:translate-x-0.5"
-              />
-            </Link>
-          ))}
-        </div> */}
-      {/* )} */}
-
-      {/* View: Title list (no thumbnail) */}
-      {viewMode === "list" && (
-        <div className="divide-y divide-white/4">
-          {episodes.map((ep) => {
-            const aired = hasAired(ep.airdate);
-
-            if (!aired) {
-              return (
-                <div
-                  key={ep.id}
-                  className="flex w-full items-center gap-4 py-3 text-left opacity-35"
-                >
-                  <span className="w-8 shrink-0 text-center text-sm font-semibold tabular-nums text-muted-foreground/50">
-                    {ep.ep}
-                  </span>
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="text-sm font-medium text-foreground/50 line-clamp-1">
-                      {ep.title_cn || ep.title || `第 ${ep.ep} 话`}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground">
-                      {formatAirdate(ep.airdate)}
-                    </span>
-                  </div>
-                </div>
-              );
-            }
+      {/* ── Group Accordion ── */}
+      {hasGroups && (
+        <div className="space-y-3">
+          {groups!.map((group) => {
+            const isExpanded = expandedGroupId === group.id;
+            // Current resolution for this group
+            const activeRes = preferredResolution && group.resolutions.includes(preferredResolution)
+              ? preferredResolution
+              : group.resolutions[0] ?? null;
 
             return (
+              <div
+                key={group.id}
+                className={cn(
+                  "rounded-xl border transition-colors",
+                  isExpanded
+                    ? "border-white/10 bg-white/[0.02]"
+                    : "border-white/5 bg-transparent",
+                )}
+              >
+                {/* Group Header */}
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.id)}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/3"
+                >
+                  <div className={cn(
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+                    isExpanded ? "bg-primary/15 text-primary" : "bg-white/6 text-white/40",
+                  )}>
+                    <Subtitles size={14} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className={cn(
+                      "truncate text-sm font-medium",
+                      isExpanded ? "text-primary" : "text-foreground/80",
+                    )}>
+                      {group.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {group.episodeCount} 集
+                      {group.resolutions.length > 0 && (
+                        <span className="text-muted-foreground/50"> · {group.resolutions.join(" / ")}</span>
+                      )}
+                    </p>
+                  </div>
+                  <ChevronDown
+                    size={16}
+                    className={cn(
+                      "shrink-0 text-muted-foreground/50 transition-transform",
+                      isExpanded && "rotate-180",
+                    )}
+                  />
+                </button>
+
+                {/* Expanded: Resolution selector + Episodes */}
+                {isExpanded && (
+                  <div className="space-y-4 px-4 pb-4">
+                    {/* Resolution selector (only if >1 resolution) */}
+                    {group.resolutions.length > 1 && (
+                      <div className="flex items-center gap-2">
+                        <Monitor size={14} className="shrink-0 text-muted-foreground/50" />
+                        <div className="flex flex-wrap gap-1.5">
+                          {group.resolutions.map((res) => (
+                            <button
+                              key={res}
+                              type="button"
+                              onClick={() => onSelectResolution?.(res)}
+                              className={cn(
+                                "rounded-md px-2.5 py-1 text-xs font-medium transition-all",
+                                activeRes === res
+                                  ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                                  : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
+                              )}
+                            >
+                              {res}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Episodes view */}
+                    {viewMode === "list" ? (
+                      <EpisodeListView
+                        episodes={episodes}
+                        animeId={animeId}
+                        groupData={group}
+                        activeRes={activeRes}
+                        groupId={group.id}
+                        resolution={activeRes}
+                      />
+                    ) : (
+                      <EpisodeGridView
+                        episodes={episodes}
+                        animeId={animeId}
+                        groupData={group}
+                        activeRes={activeRes}
+                        groupId={group.id}
+                        resolution={activeRes}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Episode Views (list / grid) for a specific group                   */
+/* ------------------------------------------------------------------ */
+
+function EpisodeListView({
+  episodes,
+  animeId,
+  groupData,
+  activeRes,
+  groupId,
+  resolution,
+}: {
+  episodes: AnimeEpisodes[];
+  animeId: number;
+  groupData: GroupData;
+  activeRes: string | null;
+  groupId: string;
+  resolution: string | null;
+}) {
+  return (
+    <div className="divide-y divide-white/4">
+      {episodes.map((ep) => {
+        const aired = hasAired(ep.airdate);
+        const resMap = groupData.episodes.get(ep.ep);
+        const hasTorrent = resMap ? (activeRes ? resMap.has(activeRes) : resMap.size > 0) : false;
+
+        if (!aired) {
+          return (
+            <div
+              key={ep.id}
+              className="flex w-full items-center gap-4 py-3 text-left opacity-35"
+            >
+              <span className="w-8 shrink-0 text-center text-sm font-semibold tabular-nums text-muted-foreground/50">
+                {ep.ep}
+              </span>
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="text-sm font-medium text-foreground/50 line-clamp-1">
+                  {ep.title_cn || ep.title || `第 ${ep.ep} 话`}
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  {formatAirdate(ep.airdate)}
+                </span>
+              </div>
+            </div>
+          );
+        }
+
+        if (!hasTorrent) {
+          return (
+            <div
+              key={ep.id}
+              className="flex w-full items-center gap-4 py-3 text-left opacity-35"
+            >
+              <span className="w-8 shrink-0 text-center text-sm font-semibold tabular-nums text-muted-foreground/40">
+                {ep.ep}
+              </span>
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="text-sm font-medium text-foreground/40 line-clamp-1">
+                  {ep.title_cn || ep.title || `第 ${ep.ep} 话`}
+                </span>
+                <span className="text-[11px] text-muted-foreground/50">暂无资源</span>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <Link
+            key={ep.id}
+            to="/anime/$id/episode/$ep"
+            params={{ id: String(animeId), ep: String(ep.ep) }}
+            search={{ groupId, resolution: resolution ?? undefined }}
+            className="group flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-white/2"
+          >
+            <span
+              className={cn(
+                "w-8 shrink-0 text-center text-sm font-semibold tabular-nums",
+                ep.progress !== undefined && ep.progress >= 100
+                  ? "text-muted-foreground/50"
+                  : "text-primary",
+              )}
+            >
+              {ep.ep}
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-sm font-medium text-foreground line-clamp-1 transition-colors group-hover:text-primary">
+                {ep.title_cn || ep.title}
+              </span>
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                <span>{ep.duration}</span>
+                {ep.progress !== undefined && (
+                  <>
+                    <span className="text-white/20">·</span>
+                    <span>{ep.progress >= 100 ? "已看完" : `已看 ${ep.progress}%`}</span>
+                  </>
+                )}
+              </div>
+            </div>
+            {ep.progress !== undefined && ep.progress < 100 && (
+              <Progress value={ep.progress} className="h-1 w-16 shrink-0 bg-white/10" />
+            )}
+            <Play
+              size={14}
+              fill="currentColor"
+              className="shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:text-primary group-hover:opacity-100"
+            />
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+function EpisodeGridView({
+  episodes,
+  animeId,
+  groupData,
+  activeRes,
+  groupId,
+  resolution,
+}: {
+  episodes: AnimeEpisodes[];
+  animeId: number;
+  groupData: GroupData;
+  activeRes: string | null;
+  groupId: string;
+  resolution: string | null;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {episodes.map((ep) => {
+        const aired = hasAired(ep.airdate);
+        const resMap = groupData.episodes.get(ep.ep);
+        const hasTorrent = resMap ? (activeRes ? resMap.has(activeRes) : resMap.size > 0) : false;
+        const watched = ep.progress !== undefined && ep.progress >= 100;
+        const watching = ep.progress !== undefined && ep.progress > 0 && ep.progress < 100;
+
+        if (!aired) {
+          return (
+            <Tooltip key={ep.id}>
+              <TooltipTrigger asChild>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums bg-white/2 text-muted-foreground/30 cursor-default">
+                  {ep.ep}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>第 {ep.ep} 话 · {formatAirdate(ep.airdate)}</TooltipContent>
+            </Tooltip>
+          );
+        }
+
+        if (!hasTorrent) {
+          return (
+            <Tooltip key={ep.id}>
+              <TooltipTrigger asChild>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums bg-white/2 text-muted-foreground/25 cursor-default">
+                  {ep.ep}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>第 {ep.ep} 话 · 暂无资源</TooltipContent>
+            </Tooltip>
+          );
+        }
+
+        return (
+          <Tooltip key={ep.id}>
+            <TooltipTrigger asChild>
               <Link
-                key={ep.id}
                 to="/anime/$id/episode/$ep"
                 params={{ id: String(animeId), ep: String(ep.ep) }}
-                search={{ groupId: selectedGroupId ?? undefined }}
-                className="group flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-white/2"
-              >
-                <span
-                  className={cn(
-                    "w-8 shrink-0 text-center text-sm font-semibold tabular-nums",
-                    ep.progress !== undefined && ep.progress >= 100
-                      ? "text-muted-foreground/50"
-                      : "text-primary"
-                  )}
-                >
-                  {ep.ep}
-                </span>
-
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="text-sm font-medium text-foreground line-clamp-1 transition-colors group-hover:text-primary">
-                    {ep.title_cn || ep.title}
-                  </span>
-                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                    <span>{ep.duration}</span>
-                    {ep.progress !== undefined && (
-                      <>
-                        <span className="text-white/20">·</span>
-                        <span>{ep.progress >= 100 ? "已看完" : `已看 ${ep.progress}%`}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {ep.progress !== undefined && ep.progress < 100 && (
-                  <Progress
-                    value={ep.progress}
-                    className="h-1 w-16 shrink-0 bg-white/10"
-                  />
+                search={{ groupId, resolution: resolution ?? undefined }}
+                className={cn(
+                  "relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums transition-all",
+                  watched
+                    ? "bg-white/4 text-muted-foreground/50"
+                    : watching
+                      ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                      : "bg-card/60 text-foreground hover:bg-card hover:text-primary",
                 )}
-
-                <Play
-                  size={14}
-                  fill="currentColor"
-                  className="shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:text-primary group-hover:opacity-100"
-                />
+              >
+                {ep.ep}
+                {watching && (
+                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary shadow-[0_0_4px_var(--primary)]" />
+                )}
               </Link>
-            );
-          })}
+            </TooltipTrigger>
+            <TooltipContent>第 {ep.ep} 话 · {ep.title_cn || ep.title}</TooltipContent>
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Fallback when no group data — show episodes without availability info */
+function EpisodeViewFallback({
+  episodes,
+  viewMode,
+}: {
+  episodes: AnimeEpisodes[];
+  viewMode: EpisodeViewMode;
+}) {
+  if (viewMode === "grid") {
+    return (
+      <div className="flex flex-wrap gap-2">
+        {episodes.map((ep) => {
+          const aired = hasAired(ep.airdate);
+          return (
+            <Tooltip key={ep.id}>
+              <TooltipTrigger asChild>
+                <div className={cn(
+                  "flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums cursor-default",
+                  aired ? "bg-card/60 text-foreground/60" : "bg-white/2 text-muted-foreground/30",
+                )}>
+                  {ep.ep}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                第 {ep.ep} 话 · {aired ? (ep.title_cn || ep.title || "未知") : formatAirdate(ep.airdate)}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-white/4">
+      {episodes.map((ep) => (
+        <div key={ep.id} className={cn("flex w-full items-center gap-4 py-3 text-left", !hasAired(ep.airdate) && "opacity-35")}>
+          <span className="w-8 shrink-0 text-center text-sm font-semibold tabular-nums text-muted-foreground/50">
+            {ep.ep}
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-sm font-medium text-foreground/60 line-clamp-1">
+              {ep.title_cn || ep.title || `第 ${ep.ep} 话`}
+            </span>
+            {!hasAired(ep.airdate) && (
+              <span className="text-[11px] text-muted-foreground">{formatAirdate(ep.airdate)}</span>
+            )}
+          </div>
         </div>
-      )}
-
-      {/* View: Number grid */}
-      {viewMode === "grid" && (
-        <div className="flex flex-wrap gap-2">
-          {episodes.map((ep) => {
-            const aired = hasAired(ep.airdate);
-            const watched = ep.progress !== undefined && ep.progress >= 100;
-            const watching = ep.progress !== undefined && ep.progress > 0 && ep.progress < 100;
-
-            if (!aired) {
-              return (
-                <Tooltip key={ep.id}>
-                  <TooltipTrigger asChild>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums bg-white/2 text-muted-foreground/30 cursor-default">
-                      {ep.ep}
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    第 {ep.ep} 话 · {formatAirdate(ep.airdate)}
-                  </TooltipContent>
-                </Tooltip>
-              );
-            }
-
-            return (
-              <Tooltip key={ep.id}>
-                <TooltipTrigger asChild>
-                  <Link
-                    to="/anime/$id/episode/$ep"
-                    params={{ id: String(animeId), ep: String(ep.ep) }}
-                    search={{ groupId: selectedGroupId ?? undefined }}
-                    className={cn(
-                      "relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums transition-all",
-                      watched
-                        ? "bg-white/4 text-muted-foreground/50"
-                        : watching
-                          ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                          : "bg-card/60 text-foreground hover:bg-card hover:text-primary"
-                    )}
-                  >
-                    {ep.ep}
-                    {watching && (
-                      <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary shadow-[0_0_4px_var(--primary)]" />
-                    )}
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent>
-                  第 {ep.ep} 话 · {ep.title_cn || ep.title}
-                </TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </div>
-      )}
+      ))}
     </div>
   );
 }

@@ -100,10 +100,11 @@ pub(crate) fn cache_lookup(
     bgm_id: &str,
     episode: i32,
     group_name: Option<&str>,
+    resolution: Option<&str>,
 ) -> Result<Option<MediaEntry>, String> {
     state.with_store(&app, |store| {
         let entry = store
-            .lookup(bgm_id, episode, group_name)
+            .lookup(bgm_id, episode, group_name, resolution)
             .map_err(|e| e.to_string())?;
         // Verify the file still exists on disk
         if let Some(ref e) = entry {
@@ -129,6 +130,7 @@ pub(crate) fn cache_register(
     episode: i32,
     anime_title: &str,
     group_name: &str,
+    resolution: &str,
     file_path: &str,
     file_size: i64,
     torrent_source: &str,
@@ -140,6 +142,7 @@ pub(crate) fn cache_register(
                 episode,
                 anime_title,
                 group_name,
+                resolution,
                 file_path,
                 file_size,
                 torrent_source,
@@ -206,7 +209,7 @@ pub(crate) fn cache_clear_all(
 /// Move a downloaded file from the torrent temp dir into the organized cache directory,
 /// register it in the database, and return the new path + entry id.
 ///
-/// Target layout: `{cache_dir}/{anime_title}/{anime_title} - S01E{ep:02} [{group}].ext`
+/// Target layout: `{cache_dir}/{anime_title}/{anime_title} - S01E{ep:02} [{group}] [{resolution}].ext`
 #[command]
 pub(crate) fn cache_organize(
     state: State<'_, StoreState>,
@@ -216,6 +219,7 @@ pub(crate) fn cache_organize(
     episode: i32,
     anime_title: &str,
     group_name: &str,
+    resolution: &str,
     torrent_source: &str,
 ) -> Result<MediaEntry, String> {
     state.with_store(&app, |store| {
@@ -242,6 +246,7 @@ pub(crate) fn cache_organize(
             anime_title,
             episode,
             group_name,
+            resolution,
             original_filename,
         );
 
@@ -269,6 +274,7 @@ pub(crate) fn cache_organize(
                 episode,
                 anime_title,
                 group_name,
+                resolution,
                 &dest_str,
                 file_size,
                 torrent_source,
@@ -281,6 +287,7 @@ pub(crate) fn cache_organize(
             episode,
             anime_title: anime_title.to_string(),
             group_name: group_name.to_string(),
+            resolution: resolution.to_string(),
             file_path: dest_str.into_owned(),
             file_size,
             torrent_source: torrent_source.to_string(),

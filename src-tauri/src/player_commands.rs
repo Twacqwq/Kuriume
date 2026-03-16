@@ -241,12 +241,10 @@ pub(crate) async fn player_destroy(state: State<'_, PlayerState>) -> Result<(), 
 
     // IMPORTANT: GpuRenderer (inside native_view) holds mpv_render_context
     // which MUST be freed before the mpv handle (inside player) is destroyed.
-    tokio::task::spawn_blocking(move || {
-        active.native_view.destroy(); // frees mpv_render_context
-        drop(active.player);          // frees mpv handle
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    // `destroy()` dispatches cleanup to the main queue synchronously,
+    // so it's safe to call from any thread.
+    active.native_view.destroy(); // frees mpv_render_context on main thread
+    drop(active.player);          // frees mpv handle
 
     Ok(())
 }

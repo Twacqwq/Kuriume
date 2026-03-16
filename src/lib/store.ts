@@ -16,6 +16,7 @@ export interface MediaEntry {
   episode: number;
   anime_title: string;
   group_name: string;
+  resolution: string;
   file_path: string;
   file_size: number;
   torrent_source: string;
@@ -38,11 +39,12 @@ export const settingsApi = {
 
 export const cacheApi = {
   /** Look up a cached local file for an anime episode. */
-  lookup: (bgmId: string, episode: number, groupName?: string) =>
+  lookup: (bgmId: string, episode: number, groupName?: string, resolution?: string) =>
     invoke<MediaEntry | null>("cache_lookup", {
       bgmId,
       episode,
       groupName: groupName ?? null,
+      resolution: resolution ?? null,
     }),
 
   /** Register a downloaded file into the cache. */
@@ -51,6 +53,7 @@ export const cacheApi = {
     episode: number;
     animeTitle: string;
     groupName: string;
+    resolution: string;
     filePath: string;
     fileSize: number;
     torrentSource: string;
@@ -76,6 +79,7 @@ export const cacheApi = {
     episode: number;
     animeTitle: string;
     groupName: string;
+    resolution: string;
     torrentSource: string;
   }) => invoke<MediaEntry>("cache_organize", params),
 };

@@ -44,6 +44,8 @@ pub struct MediaEntry {
     pub anime_title: String,
     /// Subtitle group name (for organised folders).
     pub group_name: String,
+    /// Video resolution label (e.g. "1080p", "720p", "4K").
+    pub resolution: String,
     /// Absolute path to the cached file on disk.
     pub file_path: String,
     /// File size in bytes.
@@ -99,18 +101,40 @@ impl Store {
                 episode        INTEGER NOT NULL,
                 anime_title    TEXT    NOT NULL,
                 group_name     TEXT    NOT NULL DEFAULT '',
+                resolution     TEXT    NOT NULL DEFAULT '',
                 file_path      TEXT    NOT NULL,
                 file_size      INTEGER NOT NULL DEFAULT 0,
                 torrent_source TEXT    NOT NULL DEFAULT '',
                 cached_at      TEXT    NOT NULL DEFAULT (datetime('now')),
 
-                UNIQUE(bgm_id, episode, group_name)
+                UNIQUE(bgm_id, episode, group_name, resolution)
             );
 
             CREATE INDEX IF NOT EXISTS idx_media_bgm_ep
                 ON media_cache(bgm_id, episode);
             ",
         )?;
+
+        // Migration: add resolution column if missing (existing DBs)
+        let has_resolution: bool = self
+            .conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('media_cache') WHERE name='resolution'")
+            .and_then(|mut s| s.query_row([], |r| r.get::<_, i64>(0)))
+            .map(|n| n > 0)
+            .unwrap_or(false);
+
+        if !has_resolution {
+            self.conn.execute_batch(
+                "
+                ALTER TABLE media_cache ADD COLUMN resolution TEXT NOT NULL DEFAULT '';
+
+                -- Recreate unique index to include resolution
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_media_unique_v2
+                    ON media_cache(bgm_id, episode, group_name, resolution);
+                ",
+            )?;
+        }
+
         Ok(())
     }
 
@@ -170,28 +194,43 @@ impl Store {
         bgm_id: &str,
         episode: i32,
         group_name: Option<&str>,
+        resolution: Option<&str>,
     ) -> Result<Option<MediaEntry>> {
-        let entry = if let Some(group) = group_name {
-            let mut stmt = self.conn.prepare_cached(
-                "SELECT id, bgm_id, episode, anime_title, group_name,
-                        file_path, file_size, torrent_source, cached_at
-                 FROM media_cache
-                 WHERE bgm_id = ?1 AND episode = ?2 AND group_name = ?3
-                 LIMIT 1",
-            )?;
-            stmt.query_row(params![bgm_id, episode, group], Self::row_to_entry)
-                .ok()
-        } else {
-            let mut stmt = self.conn.prepare_cached(
-                "SELECT id, bgm_id, episode, anime_title, group_name,
-                        file_path, file_size, torrent_source, cached_at
-                 FROM media_cache
-                 WHERE bgm_id = ?1 AND episode = ?2
-                 ORDER BY cached_at DESC
-                 LIMIT 1",
-            )?;
-            stmt.query_row(params![bgm_id, episode], Self::row_to_entry)
-                .ok()
+        let entry = match (group_name, resolution) {
+            (Some(group), Some(res)) => {
+                let mut stmt = self.conn.prepare_cached(
+                    "SELECT id, bgm_id, episode, anime_title, group_name, resolution,
+                            file_path, file_size, torrent_source, cached_at
+                     FROM media_cache
+                     WHERE bgm_id = ?1 AND episode = ?2 AND group_name = ?3 AND resolution = ?4
+                     LIMIT 1",
+                )?;
+                stmt.query_row(params![bgm_id, episode, group, res], Self::row_to_entry)
+                    .ok()
+            }
+            (Some(group), None) => {
+                let mut stmt = self.conn.prepare_cached(
+                    "SELECT id, bgm_id, episode, anime_title, group_name, resolution,
+                            file_path, file_size, torrent_source, cached_at
+                     FROM media_cache
+                     WHERE bgm_id = ?1 AND episode = ?2 AND group_name = ?3
+                     LIMIT 1",
+                )?;
+                stmt.query_row(params![bgm_id, episode, group], Self::row_to_entry)
+                    .ok()
+            }
+            _ => {
+                let mut stmt = self.conn.prepare_cached(
+                    "SELECT id, bgm_id, episode, anime_title, group_name, resolution,
+                            file_path, file_size, torrent_source, cached_at
+                     FROM media_cache
+                     WHERE bgm_id = ?1 AND episode = ?2
+                     ORDER BY cached_at DESC
+                     LIMIT 1",
+                )?;
+                stmt.query_row(params![bgm_id, episode], Self::row_to_entry)
+                    .ok()
+            }
         };
         Ok(entry)
     }
@@ -203,22 +242,23 @@ impl Store {
         episode: i32,
         anime_title: &str,
         group_name: &str,
+        resolution: &str,
         file_path: &str,
         file_size: i64,
         torrent_source: &str,
     ) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO media_cache(bgm_id, episode, anime_title, group_name,
+            "INSERT INTO media_cache(bgm_id, episode, anime_title, group_name, resolution,
                                      file_path, file_size, torrent_source)
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(bgm_id, episode, group_name)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(bgm_id, episode, group_name, resolution)
              DO UPDATE SET
                 anime_title    = excluded.anime_title,
                 file_path      = excluded.file_path,
                 file_size      = excluded.file_size,
                 torrent_source = excluded.torrent_source,
                 cached_at      = datetime('now')",
-            params![bgm_id, episode, anime_title, group_name, file_path, file_size, torrent_source],
+            params![bgm_id, episode, anime_title, group_name, resolution, file_path, file_size, torrent_source],
         )?;
         Ok(self.conn.last_insert_rowid())
     }
@@ -238,7 +278,7 @@ impl Store {
     /// List all cached entries for an anime.
     pub fn list_anime_entries(&self, bgm_id: &str) -> Result<Vec<MediaEntry>> {
         let mut stmt = self.conn.prepare_cached(
-            "SELECT id, bgm_id, episode, anime_title, group_name,
+            "SELECT id, bgm_id, episode, anime_title, group_name, resolution,
                     file_path, file_size, torrent_source, cached_at
              FROM media_cache
              WHERE bgm_id = ?1
@@ -281,10 +321,11 @@ impl Store {
             episode: row.get(2)?,
             anime_title: row.get(3)?,
             group_name: row.get(4)?,
-            file_path: row.get(5)?,
-            file_size: row.get(6)?,
-            torrent_source: row.get(7)?,
-            cached_at: row.get(8)?,
+            resolution: row.get(5)?,
+            file_path: row.get(6)?,
+            file_size: row.get(7)?,
+            torrent_source: row.get(8)?,
+            cached_at: row.get(9)?,
         })
     }
 }
@@ -312,15 +353,16 @@ pub fn anime_dir(cache_dir: &Path, anime_title: &str) -> PathBuf {
 }
 
 /// Build the Jellyfin-style filename for an episode:
-/// `{anime_title} - S01E{ep:02} [{group}].{ext}`
+/// `{anime_title} - S01E{ep:02} [{group}] [{resolution}].{ext}`
 ///
-/// Groups are kept in the filename (not as subdirectories) so the structure
-/// stays flat per anime — easier to browse in file managers and compatible
-/// with media server scrapers that match by S01E pattern.
+/// Groups and resolution are kept in the filename (not as subdirectories)
+/// so the structure stays flat per anime — easier to browse in file managers
+/// and compatible with media server scrapers that match by S01E pattern.
 pub fn episode_filename(
     anime_title: &str,
     episode: i32,
     group_name: &str,
+    resolution: &str,
     original_filename: &str,
 ) -> String {
     let ext = Path::new(original_filename)
@@ -330,12 +372,16 @@ pub fn episode_filename(
 
     let title = sanitize_filename(anime_title);
     let group = sanitize_filename(group_name);
+    let res = sanitize_filename(resolution);
 
-    if group.is_empty() {
-        format!("{title} - S01E{episode:02}.{ext}")
-    } else {
-        format!("{title} - S01E{episode:02} [{group}].{ext}")
+    let mut name = format!("{title} - S01E{episode:02}");
+    if !group.is_empty() {
+        name.push_str(&format!(" [{group}]"));
     }
+    if !res.is_empty() {
+        name.push_str(&format!(" [{res}]"));
+    }
+    format!("{name}.{ext}")
 }
 
 /// Full path for a cached episode file.
@@ -344,8 +390,9 @@ pub fn episode_path(
     anime_title: &str,
     episode: i32,
     group_name: &str,
+    resolution: &str,
     original_filename: &str,
 ) -> PathBuf {
     anime_dir(cache_dir, anime_title)
-        .join(episode_filename(anime_title, episode, group_name, original_filename))
+        .join(episode_filename(anime_title, episode, group_name, resolution, original_filename))
 }

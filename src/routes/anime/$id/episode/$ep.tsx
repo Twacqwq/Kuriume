@@ -19,13 +19,14 @@ import { useMemo } from "react";
 export const Route = createFileRoute("/anime/$id/episode/$ep")({
   validateSearch: (search: Record<string, unknown>) => ({
     groupId: (search.groupId as string) || undefined,
+    resolution: (search.resolution as string) || undefined,
   }),
   component: EpisodePage,
 });
 
 function EpisodePage() {
   const { id, ep } = Route.useParams();
-  const { groupId } = Route.useSearch();
+  const { groupId, resolution } = Route.useSearch();
   const router = useRouter();
   const epNum = Number(ep);
 
@@ -50,7 +51,7 @@ function EpisodePage() {
   // ── Resolve torrent source ─────────────────────────────────────
 
   const animeTitle = animeInfo?.title_cn || animeInfo?.title;
-  const mikan = useMikanTorrents(id, animeTitle, groupId);
+  const mikan = useMikanTorrents(id, animeTitle, groupId, resolution);
   const torrentSource = mikan.getTorrentSource(epNum);
 
   const navBack = () => router.history.back();
@@ -59,7 +60,7 @@ function EpisodePage() {
         router.navigate({
           to: "/anime/$id/episode/$ep",
           params: { id, ep: String(epNum - 1) },
-          search: { groupId },
+          search: { groupId, resolution },
         })
     : undefined;
   const navNext = hasNext
@@ -67,7 +68,7 @@ function EpisodePage() {
         router.navigate({
           to: "/anime/$id/episode/$ep",
           params: { id, ep: String(epNum + 1) },
-          search: { groupId },
+          search: { groupId, resolution },
         })
     : undefined;
 
@@ -84,7 +85,7 @@ function EpisodePage() {
 
   // ── State 2: Error ─────────────────────────────────────────────
 
-  if (mikan.error && mikan.subtitleGroups.length === 0) {
+  if (mikan.error && mikan.groups.length === 0) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-black">
         <TriangleAlert className="h-10 w-10 text-destructive" />
@@ -102,21 +103,9 @@ function EpisodePage() {
   // ── State 3: Groups loaded, needs selection ────────────────────
 
   if (!mikan.selectedGroupId || !torrentSource) {
-    // If a group is selected but fetching torrents, show spinner
-    if (mikan.selectedGroupId && mikan.isFetchingTorrents) {
-      return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-white/50">正在获取种子列表...</p>
-        </div>
-      );
-    }
-
     // Group selected but no torrent for this episode
     const noTorrentForEp =
-      mikan.selectedGroupId &&
-      !mikan.isFetchingTorrents &&
-      !torrentSource;
+      mikan.selectedGroupId && !torrentSource;
 
     return (
       <div className="flex h-full w-full flex-col bg-black">
@@ -144,7 +133,7 @@ function EpisodePage() {
             选择字幕组
           </h2>
           <p className="mb-6 max-w-md text-center text-sm text-white/40">
-            该番剧有 {mikan.subtitleGroups.length} 个字幕组提供资源，请选择你偏好的字幕组
+            该番剧有 {mikan.groups.length} 个字幕组提供资源，请选择你偏好的字幕组
           </p>
 
           {noTorrentForEp && (
@@ -154,7 +143,7 @@ function EpisodePage() {
             </div>
           )}
 
-          {mikan.subtitleGroups.length === 0 ? (
+          {mikan.groups.length === 0 ? (
             <div className="flex flex-col items-center gap-3">
               <p className="text-sm text-white/40">未找到可用的字幕组</p>
               <Button variant="secondary" onClick={navBack} className="gap-2">
@@ -164,7 +153,7 @@ function EpisodePage() {
             </div>
           ) : (
             <div className="grid w-full max-w-lg gap-2">
-              {mikan.subtitleGroups.map((group) => {
+              {mikan.groups.map((group) => {
                 const isSelected = mikan.selectedGroupId === group.id;
                 return (
                   <button
@@ -202,6 +191,9 @@ function EpisodePage() {
                       >
                         {group.name}
                       </p>
+                      <p className="text-xs text-white/40">
+                        {group.episodeCount} 集 · {group.resolutions.join(" / ")}
+                      </p>
                     </div>
                     {isSelected && (
                       <Badge
@@ -228,6 +220,7 @@ function EpisodePage() {
     episode: epNum,
     animeTitle: animeTitle ?? `Unknown-${id}`,
     groupName: mikan.selectedGroupName ?? "",
+    resolution: mikan.preferredResolution ?? "",
     torrentSource,
   };
 

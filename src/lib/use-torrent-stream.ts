@@ -54,6 +54,7 @@ export interface CacheContext {
   episode: number;
   animeTitle: string;
   groupName: string;
+  resolution: string;
   torrentSource: string;
 }
 
@@ -163,6 +164,7 @@ export function useTorrentStream() {
         episode: ctx.episode,
         animeTitle: ctx.animeTitle,
         groupName: ctx.groupName,
+        resolution: ctx.resolution,
         torrentSource: ctx.torrentSource,
       });
     } catch {
@@ -195,6 +197,7 @@ export function useTorrentStream() {
             cacheContext.bgmId,
             cacheContext.episode,
             cacheContext.groupName || undefined,
+            cacheContext.resolution || undefined,
           );
           if (cached) {
             if (!mountedRef.current) return;

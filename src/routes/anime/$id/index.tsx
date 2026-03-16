@@ -66,10 +66,12 @@ function AnimeDetailPage() {
     <AnimeDetail
       data={toAnimeDetailData(info, episodes, characters)}
       onBack={() => router.history.back()}
-      subtitleGroups={mikan.subtitleGroups}
+      groups={mikan.groups}
+      isLoadingGroups={mikan.isLoading}
       selectedGroupId={mikan.selectedGroupId}
       onSelectGroup={mikan.selectGroup}
-      isLoadingGroups={mikan.isLoading}
+      preferredResolution={mikan.preferredResolution}
+      onSelectResolution={mikan.setPreferredResolution}
     />
   );
 }

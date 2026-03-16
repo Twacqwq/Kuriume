@@ -60,6 +60,11 @@ mod macos {
             context: *mut c_void,
             work: unsafe extern "C" fn(*mut c_void),
         );
+        fn dispatch_sync_f(
+            queue: DispatchQueue,
+            context: *mut c_void,
+            work: unsafe extern "C" fn(*mut c_void),
+        );
     }
 
     #[inline]
@@ -241,47 +246,88 @@ mod macos {
         }
 
         /// Clean up render resources. Must be called before drop.
+        ///
+        /// May be called from **any** thread — all GL and AppKit operations
+        /// are dispatched synchronously to the main thread, which also
+        /// guarantees that no pending `render_frame` calls are in flight.
         pub fn destroy(&mut self) {
-            if !self.render_loop.is_null() {
+            if self.render_loop.is_null() {
+                return;
+            }
+
+            unsafe {
+                // Signal the render loop to stop — prevents NEW dispatches.
+                (*self.render_loop).alive.store(false, Ordering::Release);
+            }
+
+            // Pack pointers for the cleanup closure.
+            #[repr(C)]
+            struct CleanupCtx {
+                render_loop: *mut RenderLoopCtx,
+                cgl_ctx: CGLContextObj,
+                view: *mut NSView,
+            }
+
+            let ctx = Box::new(CleanupCtx {
+                render_loop: self.render_loop,
+                cgl_ctx: self.cgl_ctx,
+                view: &*self.view as *const NSView as *mut NSView,
+            });
+
+            /// Runs on the main thread AFTER any pending `render_frame` calls
+            /// (main queue is FIFO).
+            unsafe extern "C" fn do_cleanup(raw: *mut c_void) {
+                let ctx = unsafe { Box::from_raw(raw as *mut CleanupCtx) };
                 unsafe {
-                    // Signal the render loop to stop.
-                    (*self.render_loop).alive.store(false, Ordering::Release);
-                    // GL context must be current when GpuRenderer drops,
-                    // because mpv_render_context_free cleans up GL resources.
-                    CGLSetCurrentContext(self.cgl_ctx);
-                    let loop_ctx = Box::from_raw(self.render_loop);
+                    // Make GL context current so mpv_render_context_free can
+                    // clean up its GL resources.
+                    CGLSetCurrentContext(ctx.cgl_ctx);
+
+                    // Reclaim + drop the render loop:
+                    //   - GpuRenderer::drop → mpv_render_context_free
+                    let loop_ctx = Box::from_raw(ctx.render_loop);
                     let ns_gl = loop_ctx.ns_gl_ctx;
-                    // Drops GpuRenderer → mpv_render_context_free.
                     drop(loop_ctx);
+
                     CGLSetCurrentContext(std::ptr::null_mut());
+
                     // Release NSOpenGLContext (detaches from view).
                     if !ns_gl.is_null() {
                         let _: () = msg_send![ns_gl, release];
                     }
+
+                    // Remove the GL view from the view hierarchy.
+                    let _: () = msg_send![ctx.view, removeFromSuperview];
+
+                    // Destroy the CGL context itself.
+                    CGLDestroyContext(ctx.cgl_ctx);
                 }
-                self.render_loop = std::ptr::null_mut();
             }
+
+            // Dispatch synchronously — blocks until cleanup is done.
+            // Because the main queue is serial FIFO, this runs after
+            // any already-queued `render_frame` invocations.
             unsafe {
-                let _: () = msg_send![&self.view, removeFromSuperview];
-                CGLDestroyContext(self.cgl_ctx);
+                dispatch_sync_f(
+                    dispatch_get_main_queue(),
+                    Box::into_raw(ctx) as *mut c_void,
+                    do_cleanup,
+                );
             }
+
+            self.render_loop = std::ptr::null_mut();
         }
     }
 
     impl Drop for NativeGlView {
         fn drop(&mut self) {
             if !self.render_loop.is_null() {
-                // destroy() should have been called.  Drop as safety net.
+                // `destroy()` should have been called already.
+                // As a safety net during app shutdown, just stop the
+                // render loop.  Leaking the context is acceptable here
+                // because the process is exiting.
                 unsafe {
                     (*self.render_loop).alive.store(false, Ordering::Release);
-                    CGLSetCurrentContext(self.cgl_ctx);
-                    let loop_ctx = Box::from_raw(self.render_loop);
-                    let ns_gl = loop_ctx.ns_gl_ctx;
-                    drop(loop_ctx);
-                    CGLSetCurrentContext(std::ptr::null_mut());
-                    if !ns_gl.is_null() {
-                        let _: () = msg_send![ns_gl, release];
-                    }
                 }
                 self.render_loop = std::ptr::null_mut();
             }
