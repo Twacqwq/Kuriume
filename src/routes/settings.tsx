@@ -1,7 +1,7 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { settingsApi, cacheApi, type Settings } from "@/lib/store";
 import { formatBytes } from "@/lib/torrent";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   ArrowLeft,
@@ -21,6 +21,8 @@ function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [cacheSize, setCacheSize] = useState<number | null>(null);
   const [clearing, setClearing] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Load settings on mount
   useEffect(() => {
@@ -51,7 +53,14 @@ function SettingsPage() {
   }, [settings]);
 
   const clearCache = useCallback(async () => {
-    if (!window.confirm("确定清除所有缓存？此操作不可撤销。")) return;
+    if (!confirmClear) {
+      setConfirmClear(true);
+      clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = setTimeout(() => setConfirmClear(false), 3000);
+      return;
+    }
+    setConfirmClear(false);
+    clearTimeout(confirmTimerRef.current);
     setClearing(true);
     try {
       await cacheApi.clearAll();
@@ -59,7 +68,7 @@ function SettingsPage() {
     } finally {
       setClearing(false);
     }
-  }, []);
+  }, [confirmClear]);
 
   return (
     <div className="min-h-screen">
@@ -162,7 +171,11 @@ function SettingsPage() {
                   className="gap-1.5"
                 >
                   <Trash2 size={14} />
-                  {clearing ? "清除中..." : "清除缓存"}
+                  {clearing
+                    ? "清除中..."
+                    : confirmClear
+                      ? "确认清除？"
+                      : "清除缓存"}
                 </Button>
               </div>
             </div>

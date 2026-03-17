@@ -69,8 +69,9 @@ export const cacheApi = {
   /** Get total cache size in bytes. */
   totalSize: () => invoke<number>("cache_total_size"),
 
-  /** Clear all cache. */
-  clearAll: () => invoke<void>("cache_clear_all"),
+  /** Clear all cache entries and delete files. Optionally also clear torrent temp files. */
+  clearAll: (includeTempFiles = true) =>
+    invoke<void>("cache_clear_all", { includeTemp: includeTempFiles }),
 
   /** Move a downloaded file to the organized cache directory and register it. */
   organize: (params: {

@@ -192,18 +192,43 @@ pub(crate) fn cache_total_size(
 }
 
 /// Clear all cache entries and delete all cached files.
+/// Optionally also clears torrent temp files.
 #[command]
 pub(crate) fn cache_clear_all(
     state: State<'_, StoreState>,
     app: AppHandle,
+    include_temp: Option<bool>,
 ) -> Result<(), String> {
-    state.with_store(&app, |store| {
-        let paths = store.clear_all().map_err(|e| e.to_string())?;
-        for path in paths {
-            let _ = std::fs::remove_file(&path);
+    // Get the cache directory before clearing DB entries
+    let cache_dir = state.with_store(&app, |store| {
+        let settings = store
+            .get_settings(&default_cache_dir(&app))
+            .map_err(|e| e.to_string())?;
+        let _ = store.clear_all().map_err(|e| e.to_string())?;
+        Ok(PathBuf::from(settings.cache_dir))
+    })?;
+
+    // Remove the entire cache directory and recreate it —
+    // this ensures no orphaned files or empty folders remain.
+    if cache_dir.exists() {
+        let _ = std::fs::remove_dir_all(&cache_dir);
+        let _ = std::fs::create_dir_all(&cache_dir);
+    }
+
+    // Also clear torrent temp directory if requested
+    if include_temp.unwrap_or(false) {
+        let temp_dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("torrents");
+        if temp_dir.exists() {
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            let _ = std::fs::create_dir_all(&temp_dir);
         }
-        Ok(())
-    })
+    }
+
+    Ok(())
 }
 
 /// Move a downloaded file from the torrent temp dir into the organized cache directory,
