@@ -51,7 +51,7 @@ function EpisodePage() {
   // ── Resolve torrent source ─────────────────────────────────────
 
   const animeTitle = animeInfo?.title_cn || animeInfo?.title;
-  const mikan = useMikanTorrents(id, animeTitle, groupId, resolution);
+  const mikan = useMikanTorrents(id, animeTitle, groupId, resolution, animeInfo?.total_episodes);
   const torrentSource = mikan.getTorrentSource(epNum);
 
   const navBack = () => router.history.back();

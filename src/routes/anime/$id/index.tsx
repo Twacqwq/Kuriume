@@ -58,7 +58,7 @@ function AnimeDetailPage() {
   });
 
   const animeTitle = info?.title_cn || info?.title;
-  const mikan = useMikanTorrents(id, animeTitle);
+  const mikan = useMikanTorrents(id, animeTitle, undefined, undefined, info?.total_episodes);
 
   if (!info) return null;
 

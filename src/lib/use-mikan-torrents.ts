@@ -77,14 +77,20 @@ function sortResolutions(resolutions: string[]): string[] {
 
 /**
  * Process raw SubtitleGroupTorrents[] into GroupData[].
+ *
+ * @param totalEpisodes - Total episode count from Bangumi metadata.
+ *   When there is only 1 episode (MV, OVA, movie), torrents without
+ *   an explicit episode number are assigned to episode 1.
  */
-function buildGroupData(raw: SubtitleGroupTorrents[]): GroupData[] {
+function buildGroupData(raw: SubtitleGroupTorrents[], totalEpisodes?: number): GroupData[] {
   return raw.map(({ group, torrents }) => {
     const episodes = new Map<number, Map<string, EpisodeTorrentMatch>>();
     const resSet = new Set<string>();
 
     for (const torrent of torrents) {
-      const ep = extractEpisodeNumber(torrent.title);
+      let ep = extractEpisodeNumber(torrent.title);
+      // For single-episode anime, treat unnumbered torrents as episode 1
+      if (ep === null && totalEpisodes === 1) ep = 1;
       if (ep === null) continue;
       const resolution = extractResolution(torrent.title);
       resSet.add(resolution);
@@ -128,6 +134,7 @@ export function useMikanTorrents(
   title: string | undefined,
   initialGroupId?: string,
   initialResolution?: string,
+  totalEpisodes?: number,
 ): UseMikanTorrentsResult {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(initialGroupId ?? null);
   const [preferredResolution, setPreferredResolution] = useState<string | null>(initialResolution ?? null);
@@ -170,8 +177,8 @@ export function useMikanTorrents(
 
   // Step 3: Process into GroupData[]
   const groups = useMemo(
-    () => (rawGroupTorrents ? buildGroupData(rawGroupTorrents) : []),
-    [rawGroupTorrents],
+    () => (rawGroupTorrents ? buildGroupData(rawGroupTorrents, totalEpisodes) : []),
+    [rawGroupTorrents, totalEpisodes],
   );
 
   // Auto-select first group if none selected and data is loaded
