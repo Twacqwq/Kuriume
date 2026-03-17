@@ -79,13 +79,13 @@ pub(crate) async fn get_characters(
 // ---------------------------------------------------------------------------
 
 pub struct MikanState {
-    pub mikan: Mikan,
+    pub mikan: Arc<Mikan>,
 }
 
 impl MikanState {
     pub fn new() -> Self {
         Self {
-            mikan: Mikan::new(),
+            mikan: Arc::new(Mikan::new()),
         }
     }
 }

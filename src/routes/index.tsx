@@ -16,7 +16,9 @@ interface YearPageParam {
 
 async function fetchAnimeList(
   param: YearPageParam,
+  signal?: AbortSignal,
 ): Promise<PagedResult<AnimeInfo>> {
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
   const result = await invoke<PagedResult<AnimeInfo>>("get_list", {
     provider: "Bangumi",
     query: {
@@ -51,7 +53,8 @@ function getNextAnimePageParam(
 
 const bannerQueryOptions = {
   queryKey: ["banner", "Bangumi", START_YEAR],
-  queryFn: async () => {
+  queryFn: async ({ signal }: { signal?: AbortSignal }) => {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     const result = await invoke<PagedResult<AnimeInfo>>("get_list", {
       provider: "Bangumi",
       query: { limit: 5, offset: 0, soft: "Rank", type: 2, year: START_YEAR },
@@ -62,14 +65,24 @@ const bannerQueryOptions = {
 
 const animeListInfiniteQueryOptions = {
   queryKey: ["anime-list", "Bangumi"],
-  queryFn: ({ pageParam }: { pageParam: YearPageParam }) =>
-    fetchAnimeList(pageParam),
+  queryFn: ({ pageParam, signal }: { pageParam: YearPageParam; signal?: AbortSignal }) =>
+    fetchAnimeList(pageParam, signal),
   initialPageParam: { year: START_YEAR, offset: 0 } as YearPageParam,
   getNextPageParam: getNextAnimePageParam,
 };
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/")(
+  {
   loader: async () => {
+    // If we already have cached data (e.g. navigating back),
+    // fire-and-forget background refetch — don't block the route transition.
+    const hasBanner = queryClient.getQueryData(bannerQueryOptions.queryKey);
+    const hasList = queryClient.getQueryData(["anime-list", "Bangumi"]);
+    if (hasBanner && hasList) {
+      queryClient.prefetchQuery(bannerQueryOptions);
+      queryClient.prefetchInfiniteQuery(animeListInfiniteQueryOptions);
+      return;
+    }
     await Promise.all([
       queryClient.prefetchQuery(bannerQueryOptions),
       queryClient.prefetchInfiniteQuery(animeListInfiniteQueryOptions),

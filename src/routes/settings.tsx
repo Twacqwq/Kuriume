@@ -19,13 +19,17 @@ export const Route = createFileRoute("/settings")({
 function SettingsPage() {
   const router = useRouter();
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [cacheSize, setCacheSize] = useState<number>(0);
+  const [cacheSize, setCacheSize] = useState<number | null>(null);
   const [clearing, setClearing] = useState(false);
 
   // Load settings on mount
   useEffect(() => {
-    settingsApi.get().then(setSettings);
-    cacheApi.totalSize().then(setCacheSize);
+    let cancelled = false;
+    settingsApi.get().then((s) => { if (!cancelled) setSettings(s); });
+    cacheApi.totalSize()
+      .then((n) => { if (!cancelled) setCacheSize(n); })
+      .catch(() => { if (!cancelled) setCacheSize(0); });
+    return () => { cancelled = true; };
   }, []);
 
   const toggleCache = useCallback(async () => {
@@ -146,7 +150,7 @@ function SettingsPage() {
                       已用空间
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {formatBytes(cacheSize)}
+                      {cacheSize === null ? "计算中..." : formatBytes(cacheSize)}
                     </p>
                   </div>
                 </div>

@@ -139,9 +139,9 @@ export function useMikanTorrents(
     error: resolveError,
   } = useQuery({
     queryKey: ["mikan-resolve", bgmId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!bgmId || !title) return null;
-      return mikanApi.resolve(title, bgmId);
+      return mikanApi.resolve(title, bgmId, signal);
     },
     enabled: !!bgmId && !!title,
     staleTime: 10 * 60 * 1000,
@@ -158,9 +158,9 @@ export function useMikanTorrents(
     error: fetchError,
   } = useQuery({
     queryKey: ["mikan-all-torrents", mikanId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!mikanId) return [];
-      return mikanApi.getAllTorrents(mikanId);
+      return mikanApi.getAllTorrents(mikanId, signal);
     },
     enabled: !!mikanId,
     staleTime: 5 * 60 * 1000,

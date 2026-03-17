@@ -36,14 +36,24 @@ export interface SubtitleGroupTorrents {
 
 // ── Invoke wrappers ─────────────────────────────────────────────
 
+/**
+ * Wrap an invoke call so that if the TanStack Query signal is already
+ * aborted (component unmounted / query cancelled), we skip the invoke
+ * entirely, preventing orphan Tauri callback IDs.
+ */
+function abortableInvoke<T>(cmd: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+  if (signal?.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
+  return invoke<T>(cmd, args);
+}
+
 export const mikanApi = {
   /** Search Mikan for anime matching the keyword. */
   search: (keyword: string) =>
     invoke<MikanBangumiEntry[]>("mikan_search", { keyword }),
 
   /** Resolve a Mikan entry by searching and matching bgm.tv ID. */
-  resolve: (keyword: string, bgmId: string) =>
-    invoke<MikanBangumiEntry | null>("mikan_resolve", { keyword, bgmId }),
+  resolve: (keyword: string, bgmId: string, signal?: AbortSignal) =>
+    abortableInvoke<MikanBangumiEntry | null>("mikan_resolve", { keyword, bgmId }, signal),
 
   /** List subtitle groups for a Mikan bangumi. */
   getSubgroups: (mikanId: string) =>
@@ -57,8 +67,8 @@ export const mikanApi = {
     }),
 
   /** Get all subtitle groups with their torrents. */
-  getAllTorrents: (mikanId: string) =>
-    invoke<SubtitleGroupTorrents[]>("mikan_get_all_torrents", { mikanId }),
+  getAllTorrents: (mikanId: string, signal?: AbortSignal) =>
+    abortableInvoke<SubtitleGroupTorrents[]>("mikan_get_all_torrents", { mikanId }, signal),
 };
 
 // ── Episode number extraction ───────────────────────────────────

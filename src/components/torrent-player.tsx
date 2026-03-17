@@ -237,6 +237,15 @@ export function TorrentPlayer({
   const isLoading = torrent.phase !== "streaming" && torrent.phase !== "error";
   const hasError = torrent.phase === "error";
 
+  // Detect mid-playback buffering: mpv cache is empty, video is loaded,
+  // not paused, and torrent download is still ongoing
+  const isBuffering =
+    loaded &&
+    !paused &&
+    player.state.buffered < 2 &&
+    torrent.stats != null &&
+    torrent.stats.progress < 1;
+
   return (
     <TooltipProvider delayDuration={200}>
       <div
@@ -296,6 +305,14 @@ export function TorrentPlayer({
 
         {torrent.phase === "streaming" && !loaded && torrent.stats && (
           <BufferingOverlay stats={torrent.stats} />
+        )}
+        {torrent.phase === "streaming" && loaded && isBuffering && (
+          <div className="pointer-events-none absolute inset-0 z-15 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-2 rounded-xl bg-black/60 px-5 py-4 backdrop-blur-sm">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-xs text-white/60">缓冲中...</p>
+            </div>
+          </div>
         )}
         {torrent.phase === "streaming" && paused && loaded && showControls && (
           <div className="pointer-events-none absolute inset-0 z-15 flex items-center justify-center">

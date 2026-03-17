@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::time::Duration;
+
 use reqwest::Client;
 use serde::Serialize;
 
@@ -83,6 +86,8 @@ impl Mikan {
     pub fn new() -> Self {
         let client = Client::builder()
             .user_agent(USER_AGENT)
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(15))
             .build()
             .expect("failed to build HTTP client");
         Self { client }
@@ -123,25 +128,40 @@ impl Mikan {
     /// Search Mikan and find the entry whose bgm.tv subject ID matches.
     ///
     /// 1. Search Mikan by keyword
-    /// 2. For each candidate, fetch detail page to get bgm.tv ID
+    /// 2. Resolve bgm.tv IDs for all candidates in parallel
     /// 3. Return the first match
     pub async fn find_mikan_id_by_bgm(
-        &self,
+        self: &Arc<Self>,
         keyword: &str,
         bgm_subject_id: &str,
     ) -> Result<Option<MikanBangumiEntry>> {
         let candidates = self.search_bangumi(keyword).await?;
 
-        for mut candidate in candidates {
-            if let Some(bgm_id) = self.resolve_bgm_id(&candidate.mikan_id).await? {
-                if bgm_id == bgm_subject_id {
-                    candidate.bgm_id = Some(bgm_id);
-                    return Ok(Some(candidate));
+        let mut set = tokio::task::JoinSet::new();
+        for (i, candidate) in candidates.into_iter().enumerate() {
+            let this = Arc::clone(self);
+            let mid = candidate.mikan_id.clone();
+            set.spawn(async move {
+                let bgm_id = this.resolve_bgm_id(&mid).await?;
+                Ok::<_, ProviderError>((i, candidate, bgm_id))
+            });
+        }
+
+        let mut matches = Vec::new();
+        while let Some(res) = set.join_next().await {
+            let (i, mut candidate, bgm_id) = res
+                .map_err(|e| ProviderError::Source(format!("task join error: {e}")))??;
+            if let Some(ref id) = bgm_id {
+                if id == bgm_subject_id {
+                    candidate.bgm_id = bgm_id;
+                    matches.push((i, candidate));
                 }
             }
         }
 
-        Ok(None)
+        // Return the match with the lowest original index (first in search results)
+        matches.sort_by_key(|(i, _)| *i);
+        Ok(matches.into_iter().next().map(|(_, c)| c))
     }
 
     // -- Subtitle groups ------------------------------------------------------
@@ -186,13 +206,24 @@ impl Mikan {
     }
 
     /// Get all subtitle groups and their torrent entries for a bangumi.
-    pub async fn get_all_torrents(&self, mikan_id: &str) -> Result<Vec<SubtitleGroupTorrents>> {
+    ///
+    /// Fetches all groups in parallel for faster loading.
+    pub async fn get_all_torrents(self: &Arc<Self>, mikan_id: &str) -> Result<Vec<SubtitleGroupTorrents>> {
         let groups = self.get_subtitle_groups(mikan_id).await?;
-        let mut result = Vec::with_capacity(groups.len());
 
+        let mut set = tokio::task::JoinSet::new();
         for group in groups {
-            let torrents = self.get_subgroup_torrents(mikan_id, &group.id).await?;
-            result.push(SubtitleGroupTorrents { group, torrents });
+            let this = Arc::clone(self);
+            let mid = mikan_id.to_owned();
+            set.spawn(async move {
+                let torrents = this.get_subgroup_torrents(&mid, &group.id).await?;
+                Ok::<_, ProviderError>(SubtitleGroupTorrents { group, torrents })
+            });
+        }
+
+        let mut result = Vec::with_capacity(set.len());
+        while let Some(res) = set.join_next().await {
+            result.push(res.map_err(|e| ProviderError::Source(format!("task join error: {e}")))??)
         }
 
         Ok(result)
