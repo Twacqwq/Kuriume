@@ -72,6 +72,8 @@ function AnimeDetailPage() {
       onSelectGroup={mikan.selectGroup}
       preferredResolution={mikan.preferredResolution}
       onSelectResolution={mikan.setPreferredResolution}
+      preferredSubtitle={mikan.preferredSubtitle}
+      onSelectSubtitle={mikan.setPreferredSubtitle}
     />
   );
 }

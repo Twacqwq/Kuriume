@@ -137,6 +137,8 @@ export interface EpisodeTorrentMatch {
   groupName: string;
   /** Detected resolution (e.g. "1080p", "720p", "4K"). */
   resolution: string;
+  /** Detected subtitle language (e.g. "简中", "繁中", "双语"). */
+  subtitle: string;
 }
 
 // ── Resolution extraction ───────────────────────────────────────
@@ -166,6 +168,37 @@ export function extractResolution(title: string): string {
   if (/576[pPiI]/i.test(title)) return "576p";
 
   return RESOLUTION_UNKNOWN;
+}
+
+// ── Subtitle language extraction ─────────────────────────────────
+
+const SUBTITLE_UNKNOWN = "未知";
+
+/**
+ * Extract subtitle language info from a torrent title.
+ *
+ * Common patterns in anime fansub titles:
+ * - 「简日双语」「繁日双语」「简繁日」「简繁」
+ * - 「CHS」「CHT」「CHS&CHT」「GB」「BIG5」
+ * - 「简体」「繁体」「简中」「繁中」
+ * - 「内嵌/内封」「外挂」
+ */
+export function extractSubtitleLang(title: string): string {
+  const t = title;
+
+  // Dual / Multi-language
+  if (/简日双语|简日内嵌|简日/i.test(t)) return "简日双语";
+  if (/繁日双语|繁日内嵌|繁日/i.test(t)) return "繁日双语";
+  if (/简繁日|简繁&?日|CHS&?CHT&?JP/i.test(t)) return "简繁日";
+  if (/简繁内嵌|简繁内封|简繁外挂|简繁|CHS&?CHT/i.test(t)) return "简繁";
+  if (/双语/i.test(t)) return "双语";
+
+  // Simplified Chinese
+  if (/简体|简中|\bCHS\b|\bGB\b|简内嵌|简/i.test(t)) return "简中";
+  // Traditional Chinese
+  if (/繁体|繁中|\bCHT\b|\bBIG5\b|繁内嵌|繁/i.test(t)) return "繁中";
+
+  return SUBTITLE_UNKNOWN;
 }
 
 /**
@@ -204,6 +237,7 @@ export function matchEpisodesToTorrents(
           size: torrent.size,
           groupName: group.name,
           resolution: extractResolution(torrent.title),
+          subtitle: extractSubtitleLang(torrent.title),
         });
       }
     }

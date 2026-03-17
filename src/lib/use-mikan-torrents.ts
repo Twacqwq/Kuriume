@@ -15,6 +15,7 @@ import {
   mikanApi,
   extractEpisodeNumber,
   extractResolution,
+  extractSubtitleLang,
   type EpisodeTorrentMatch,
   type SubtitleGroupTorrents,
 } from "./mikan";
@@ -27,9 +28,14 @@ export interface GroupData {
   name: string;
   /** Available resolutions in this group (sorted by quality). */
   resolutions: string[];
+  /** Available subtitle languages in this group (sorted). */
+  subtitles: string[];
   /** Number of unique episodes available. */
   episodeCount: number;
-  /** ep → (resolution → match). */
+  /**
+   * ep → (variant key → match).
+   * Variant key = `${resolution}|${subtitle}`.
+   */
   episodes: Map<number, Map<string, EpisodeTorrentMatch>>;
 }
 
@@ -54,6 +60,11 @@ interface UseMikanTorrentsResult {
   /** Set preferred resolution. */
   setPreferredResolution: (res: string | null) => void;
 
+  /** Currently preferred subtitle language. */
+  preferredSubtitle: string | null;
+  /** Set preferred subtitle language. */
+  setPreferredSubtitle: (sub: string | null) => void;
+
   /** Get the best torrent source for an episode in the selected group. */
   getTorrentSource: (ep: number) => string | undefined;
   /** Get full match info for an episode in the selected group. */
@@ -75,6 +86,22 @@ function sortResolutions(resolutions: string[]): string[] {
   );
 }
 
+const SUBTITLE_ORDER: Record<string, number> = {
+  "简日双语": 0, "简中": 1, "简繁": 2, "简繁日": 3, "双语": 4,
+  "繁日双语": 5, "繁中": 6, "未知": 99,
+};
+
+function sortSubtitles(subtitles: string[]): string[] {
+  return [...subtitles].sort(
+    (a, b) => (SUBTITLE_ORDER[a] ?? 50) - (SUBTITLE_ORDER[b] ?? 50),
+  );
+}
+
+/** Build the compound map key for a resolution+subtitle variant. */
+function variantKey(resolution: string, subtitle: string): string {
+  return `${resolution}|${subtitle}`;
+}
+
 /**
  * Process raw SubtitleGroupTorrents[] into GroupData[].
  *
@@ -86,6 +113,7 @@ function buildGroupData(raw: SubtitleGroupTorrents[], totalEpisodes?: number): G
   return raw.map(({ group, torrents }) => {
     const episodes = new Map<number, Map<string, EpisodeTorrentMatch>>();
     const resSet = new Set<string>();
+    const subSet = new Set<string>();
 
     for (const torrent of torrents) {
       let ep = extractEpisodeNumber(torrent.title);
@@ -93,17 +121,20 @@ function buildGroupData(raw: SubtitleGroupTorrents[], totalEpisodes?: number): G
       if (ep === null && totalEpisodes === 1) ep = 1;
       if (ep === null) continue;
       const resolution = extractResolution(torrent.title);
+      const subtitle = extractSubtitleLang(torrent.title);
       resSet.add(resolution);
+      subSet.add(subtitle);
 
-      let resMap = episodes.get(ep);
-      if (!resMap) {
-        resMap = new Map();
-        episodes.set(ep, resMap);
+      let varMap = episodes.get(ep);
+      if (!varMap) {
+        varMap = new Map();
+        episodes.set(ep, varMap);
       }
 
-      // Keep first match per (episode, resolution)
-      if (!resMap.has(resolution)) {
-        resMap.set(resolution, {
+      const key = variantKey(resolution, subtitle);
+      // Keep first match per (episode, resolution, subtitle)
+      if (!varMap.has(key)) {
+        varMap.set(key, {
           ep,
           torrentUrl: torrent.torrent_url,
           magnet: torrent.magnet,
@@ -111,6 +142,7 @@ function buildGroupData(raw: SubtitleGroupTorrents[], totalEpisodes?: number): G
           size: torrent.size,
           groupName: group.name,
           resolution,
+          subtitle,
         });
       }
     }
@@ -119,6 +151,7 @@ function buildGroupData(raw: SubtitleGroupTorrents[], totalEpisodes?: number): G
       id: group.id,
       name: group.name,
       resolutions: sortResolutions([...resSet]),
+      subtitles: sortSubtitles([...subSet]),
       episodeCount: episodes.size,
       episodes,
     };
@@ -135,9 +168,11 @@ export function useMikanTorrents(
   initialGroupId?: string,
   initialResolution?: string,
   totalEpisodes?: number,
+  initialSubtitle?: string,
 ): UseMikanTorrentsResult {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(initialGroupId ?? null);
   const [preferredResolution, setPreferredResolution] = useState<string | null>(initialResolution ?? null);
+  const [preferredSubtitle, setPreferredSubtitle] = useState<string | null>(initialSubtitle ?? null);
 
   // Step 1: Resolve Mikan ID from bgm.tv subject ID
   const {
@@ -203,6 +238,15 @@ export function useMikanTorrents(
     return selectedGroupData.resolutions[0] ?? null;
   }, [selectedGroupData, preferredResolution]);
 
+  // Effective subtitle for source lookup
+  const effectiveSubtitle = useMemo(() => {
+    if (!selectedGroupData) return null;
+    if (preferredSubtitle && selectedGroupData.subtitles.includes(preferredSubtitle)) {
+      return preferredSubtitle;
+    }
+    return selectedGroupData.subtitles[0] ?? null;
+  }, [selectedGroupData, preferredSubtitle]);
+
   const isLoading = isResolving || isFetchingAll;
   const error = resolveError
     ? String(resolveError)
@@ -213,19 +257,29 @@ export function useMikanTorrents(
   const selectGroup = useCallback((groupId: string) => {
     setSelectedGroupId(groupId);
     setPreferredResolution(null);
+    setPreferredSubtitle(null);
   }, []);
 
   const getMatch = useCallback(
     (ep: number): EpisodeTorrentMatch | undefined => {
       if (!selectedGroupData) return undefined;
-      const resMap = selectedGroupData.episodes.get(ep);
-      if (!resMap) return undefined;
-      if (effectiveResolution && resMap.has(effectiveResolution)) {
-        return resMap.get(effectiveResolution);
+      const varMap = selectedGroupData.episodes.get(ep);
+      if (!varMap) return undefined;
+      // Try exact resolution+subtitle match first
+      if (effectiveResolution && effectiveSubtitle) {
+        const key = variantKey(effectiveResolution, effectiveSubtitle);
+        if (varMap.has(key)) return varMap.get(key);
       }
-      return resMap.values().next().value ?? undefined;
+      // Fallback: match resolution only
+      if (effectiveResolution) {
+        for (const [k, v] of varMap) {
+          if (k.startsWith(effectiveResolution + "|")) return v;
+        }
+      }
+      // Fallback: first available
+      return varMap.values().next().value ?? undefined;
     },
-    [selectedGroupData, effectiveResolution],
+    [selectedGroupData, effectiveResolution, effectiveSubtitle],
   );
 
   const getTorrentSource = useCallback(
@@ -251,6 +305,8 @@ export function useMikanTorrents(
     selectGroup,
     preferredResolution: effectiveResolution,
     setPreferredResolution,
+    preferredSubtitle: effectiveSubtitle,
+    setPreferredSubtitle,
     getTorrentSource,
     getMatch,
     getGroupData,

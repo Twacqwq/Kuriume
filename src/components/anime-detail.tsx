@@ -19,6 +19,7 @@ import {
   BookmarkPlus,
   Calendar,
   Grid3X3,
+  Languages,
   Loader2,
   Monitor,
   Play,
@@ -143,6 +144,8 @@ interface AnimeDetailProps {
   onSelectGroup?: (id: string) => void;
   preferredResolution?: string | null;
   onSelectResolution?: (res: string | null) => void;
+  preferredSubtitle?: string | null;
+  onSelectSubtitle?: (sub: string | null) => void;
 }
 
 export function AnimeDetail({
@@ -154,6 +157,8 @@ export function AnimeDetail({
   onSelectGroup,
   preferredResolution,
   onSelectResolution,
+  preferredSubtitle,
+  onSelectSubtitle,
 }: AnimeDetailProps) {
   return (
     <TooltipProvider>
@@ -278,7 +283,7 @@ export function AnimeDetail({
                       data.episodes.find((e) => (!e.progress || e.progress < 100) && hasAired(e.airdate))?.ep ?? 1
                     ),
                   }}
-                  search={{ groupId: selectedGroupId ?? undefined, resolution: preferredResolution ?? undefined }}
+                  search={{ groupId: selectedGroupId ?? undefined, resolution: preferredResolution ?? undefined, subtitle: preferredSubtitle ?? undefined }}
                 >
                   <Button size="lg" className="gap-2 rounded-full px-8 shadow-lg shadow-primary/25">
                     <Play size={18} fill="currentColor" />
@@ -333,6 +338,8 @@ export function AnimeDetail({
                 onSelectGroup={onSelectGroup}
                 preferredResolution={preferredResolution}
                 onSelectResolution={onSelectResolution}
+                preferredSubtitle={preferredSubtitle}
+                onSelectSubtitle={onSelectSubtitle}
               />
             </TabsContent>
             <TabsContent value="characters">
@@ -359,6 +366,8 @@ function EpisodeList({
   onSelectGroup,
   preferredResolution,
   onSelectResolution,
+  preferredSubtitle,
+  onSelectSubtitle,
 }: {
   episodes: AnimeEpisodes[];
   animeId: number;
@@ -368,6 +377,8 @@ function EpisodeList({
   onSelectGroup?: (id: string) => void;
   preferredResolution?: string | null;
   onSelectResolution?: (res: string | null) => void;
+  preferredSubtitle?: string | null;
+  onSelectSubtitle?: (sub: string | null) => void;
 }) {
   const [viewMode, setViewMode] = useState<EpisodeViewMode>("list");
 
@@ -386,15 +397,25 @@ function EpisodeList({
     return activeGroup.resolutions[0] ?? null;
   }, [activeGroup, preferredResolution]);
 
+  // Effective subtitle for the selected group
+  const activeSub = useMemo(() => {
+    if (!activeGroup) return null;
+    if (preferredSubtitle && activeGroup.subtitles.includes(preferredSubtitle)) {
+      return preferredSubtitle;
+    }
+    return activeGroup.subtitles[0] ?? null;
+  }, [activeGroup, preferredSubtitle]);
+
   // For each episode, check selected group then find fallback
   const resolveEpisode = useCallback(
     (epNum: number) => {
       if (!activeGroup) return { inGroup: false as const, fallback: null };
-      const resMap = activeGroup.episodes.get(epNum);
-      const inGroup = resMap
-        ? activeRes
-          ? resMap.has(activeRes)
-          : resMap.size > 0
+      const varMap = activeGroup.episodes.get(epNum);
+      // Check if there's an entry matching the compound key (or just any entry)
+      const inGroup = varMap
+        ? activeRes && activeSub
+          ? varMap.has(`${activeRes}|${activeSub}`) || [...varMap.keys()].some((k) => k.startsWith(activeRes + "|"))
+          : varMap.size > 0
         : false;
       if (inGroup) return { inGroup: true as const, fallback: null };
       // Find the best alternative group (most episodes first, already sorted)
@@ -403,7 +424,7 @@ function EpisodeList({
       );
       return { inGroup: false as const, fallback: alt ?? null };
     },
-    [activeGroup, activeRes, groups, selectedGroupId],
+    [activeGroup, activeRes, activeSub, groups, selectedGroupId],
   );
 
   return (
@@ -527,6 +548,38 @@ function EpisodeList({
               </span>
             </div>
           )}
+
+          {/* Subtitle language pills */}
+          {activeGroup && activeGroup.subtitles.length > 1 && (
+            <div className="flex items-center gap-2.5">
+              <Languages size={14} className="shrink-0 text-muted-foreground/50" />
+              <div className="flex flex-wrap gap-1.5">
+                {activeGroup.subtitles.map((sub) => (
+                  <button
+                    key={sub}
+                    type="button"
+                    onClick={() => onSelectSubtitle?.(sub)}
+                    className={cn(
+                      "rounded-md px-2.5 py-1 text-xs font-medium transition-all",
+                      activeSub === sub
+                        ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                        : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
+                    )}
+                  >
+                    {sub}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {activeGroup && activeGroup.subtitles.length === 1 && (
+            <div className="flex items-center gap-2.5">
+              <Languages size={14} className="shrink-0 text-muted-foreground/50" />
+              <span className="rounded-md bg-white/5 px-2.5 py-1 text-xs font-medium text-white/40">
+                {activeGroup.subtitles[0]}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -578,7 +631,7 @@ function EpisodeList({
                   key={ep.id}
                   to="/anime/$id/episode/$ep"
                   params={{ id: String(animeId), ep: String(ep.ep) }}
-                  search={{ groupId: selectedGroupId ?? undefined, resolution: activeRes ?? undefined }}
+                  search={{ groupId: selectedGroupId ?? undefined, resolution: activeRes ?? undefined, subtitle: activeSub ?? undefined }}
                   className="group flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-white/2"
                 >
                   <span className={cn(
@@ -622,7 +675,7 @@ function EpisodeList({
                   key={ep.id}
                   to="/anime/$id/episode/$ep"
                   params={{ id: String(animeId), ep: String(ep.ep) }}
-                  search={{ groupId: fallback.id, resolution: undefined }}
+                  search={{ groupId: fallback.id, resolution: undefined, subtitle: undefined }}
                   className="group flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-white/2"
                 >
                   <span className="w-8 shrink-0 text-center text-sm font-semibold tabular-nums text-foreground/50">
@@ -708,7 +761,7 @@ function EpisodeList({
                     <Link
                       to="/anime/$id/episode/$ep"
                       params={{ id: String(animeId), ep: String(ep.ep) }}
-                      search={{ groupId: selectedGroupId ?? undefined, resolution: activeRes ?? undefined }}
+                      search={{ groupId: selectedGroupId ?? undefined, resolution: activeRes ?? undefined, subtitle: activeSub ?? undefined }}
                       className={cn(
                         "relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums transition-all",
                         watched
@@ -736,7 +789,7 @@ function EpisodeList({
                     <Link
                       to="/anime/$id/episode/$ep"
                       params={{ id: String(animeId), ep: String(ep.ep) }}
-                      search={{ groupId: fallback.id, resolution: undefined }}
+                      search={{ groupId: fallback.id, resolution: undefined, subtitle: undefined }}
                       className="relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums bg-card/40 text-foreground/50 ring-1 ring-dashed ring-white/10 transition-all hover:bg-card/60 hover:text-primary"
                     >
                       {ep.ep}

@@ -20,13 +20,14 @@ export const Route = createFileRoute("/anime/$id/episode/$ep")({
   validateSearch: (search: Record<string, unknown>) => ({
     groupId: (search.groupId as string) || undefined,
     resolution: (search.resolution as string) || undefined,
+    subtitle: (search.subtitle as string) || undefined,
   }),
   component: EpisodePage,
 });
 
 function EpisodePage() {
   const { id, ep } = Route.useParams();
-  const { groupId, resolution } = Route.useSearch();
+  const { groupId, resolution, subtitle: searchSubtitle } = Route.useSearch();
   const router = useRouter();
   const epNum = Number(ep);
 
@@ -51,7 +52,7 @@ function EpisodePage() {
   // ── Resolve torrent source ─────────────────────────────────────
 
   const animeTitle = animeInfo?.title_cn || animeInfo?.title;
-  const mikan = useMikanTorrents(id, animeTitle, groupId, resolution, animeInfo?.total_episodes);
+  const mikan = useMikanTorrents(id, animeTitle, groupId, resolution, animeInfo?.total_episodes, searchSubtitle);
   const torrentSource = mikan.getTorrentSource(epNum);
 
   const navBack = () => router.history.back();
@@ -60,7 +61,7 @@ function EpisodePage() {
         router.navigate({
           to: "/anime/$id/episode/$ep",
           params: { id, ep: String(epNum - 1) },
-          search: { groupId, resolution },
+          search: { groupId, resolution, subtitle: searchSubtitle },
         })
     : undefined;
   const navNext = hasNext
@@ -68,7 +69,7 @@ function EpisodePage() {
         router.navigate({
           to: "/anime/$id/episode/$ep",
           params: { id, ep: String(epNum + 1) },
-          search: { groupId, resolution },
+          search: { groupId, resolution, subtitle: searchSubtitle },
         })
     : undefined;
 
