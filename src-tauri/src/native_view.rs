@@ -11,7 +11,7 @@ mod macos {
     use objc2::runtime::AnyObject;
     use objc2::{msg_send, MainThreadMarker, MainThreadOnly};
     use objc2_app_kit::NSView;
-    use objc2_foundation::NSRect;
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
     use std::ffi::{c_int, c_void};
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -230,6 +230,52 @@ mod macos {
                     cgl_ctx,
                     render_loop,
                 })
+            }
+        }
+
+        /// Resize and reposition the GL view within its parent.
+        ///
+        /// Coordinates use the parent's system (bottom-left origin, points).
+        /// Auto-resize mask is removed so the view stays at the given frame.
+        pub fn set_frame(&self, x: f64, y: f64, width: f64, height: f64) {
+            let view_ptr = Retained::as_ptr(&self.view) as usize;
+
+            #[repr(C)]
+            struct FrameCtx {
+                view: usize,
+                x: f64,
+                y: f64,
+                w: f64,
+                h: f64,
+            }
+
+            let ctx = Box::new(FrameCtx {
+                view: view_ptr,
+                x,
+                y,
+                w: width,
+                h: height,
+            });
+
+            unsafe extern "C" fn apply_frame(raw: *mut c_void) {
+                let ctx = unsafe { Box::from_raw(raw as *mut FrameCtx) };
+                unsafe {
+                    let view = ctx.view as *mut NSView;
+                    let rect = NSRect::new(
+                        NSPoint::new(ctx.x, ctx.y),
+                        NSSize::new(ctx.w, ctx.h),
+                    );
+                    let _: () = msg_send![view, setFrame: rect];
+                    let _: () = msg_send![view, setAutoresizingMask: 0usize];
+                }
+            }
+
+            unsafe {
+                dispatch_async_f(
+                    dispatch_get_main_queue(),
+                    Box::into_raw(ctx) as *mut c_void,
+                    apply_frame,
+                );
             }
         }
 

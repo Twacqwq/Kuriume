@@ -7,14 +7,16 @@ import { useMikanTorrents } from "@/lib/use-mikan-torrents";
 import type { CacheContext } from "@/lib/use-torrent-stream";
 import { cn } from "@/lib/utils";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ArrowLeft,
   Check,
   Loader2,
+  Play,
   Subtitles,
   TriangleAlert,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 export const Route = createFileRoute("/anime/$id/episode/$ep")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -31,6 +33,9 @@ function EpisodePage() {
   const router = useRouter();
   const epNum = Number(ep);
 
+  const [isTheater, setIsTheater] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
   // Pull cached anime info & episodes from TanStack Query
   const animeInfo = queryClient.getQueryData<AnimeInfo>(["anime-detail", id]);
   const episodes =
@@ -45,35 +50,53 @@ function EpisodePage() {
   const hasNext = episodes.some((e) => e.ep === epNum + 1);
 
   const title = currentEp?.title_cn || currentEp?.title || `第 ${epNum} 话`;
-  const subtitle = animeInfo
-    ? `${animeInfo.title_cn || animeInfo.title} · 第 ${epNum} 话`
+  const animeTitle = animeInfo?.title_cn || animeInfo?.title;
+  const subtitle = animeTitle
+    ? `${animeTitle} · 第 ${epNum} 话`
     : `第 ${epNum} 话`;
 
   // ── Resolve torrent source ─────────────────────────────────────
 
-  const animeTitle = animeInfo?.title_cn || animeInfo?.title;
-  const mikan = useMikanTorrents(id, animeTitle, groupId, resolution, animeInfo?.total_episodes, searchSubtitle);
+  const mikan = useMikanTorrents(
+    id,
+    animeTitle,
+    groupId,
+    resolution,
+    animeInfo?.total_episodes,
+    searchSubtitle,
+  );
   const torrentSource = mikan.getTorrentSource(epNum);
 
-  const navBack = () => router.history.back();
-  const navPrev = hasPrev
-    ? () =>
-        router.navigate({
-          to: "/anime/$id/episode/$ep",
-          params: { id, ep: String(epNum - 1) },
-          search: { groupId, resolution, subtitle: searchSubtitle },
-        })
-    : undefined;
-  const navNext = hasNext
-    ? () =>
-        router.navigate({
-          to: "/anime/$id/episode/$ep",
-          params: { id, ep: String(epNum + 1) },
-          search: { groupId, resolution, subtitle: searchSubtitle },
-        })
-    : undefined;
+  const navBack = () => router.navigate({ to: "/anime/$id", params: { id } });
 
-  // ── State 1: Loading (resolving Mikan ID + fetching groups) ────
+  const navigateToEp = useCallback(
+    (targetEp: number) => {
+      router.navigate({
+        to: "/anime/$id/episode/$ep",
+        params: { id, ep: String(targetEp) },
+        search: { groupId, resolution, subtitle: searchSubtitle },
+      });
+    },
+    [router, id, groupId, resolution, searchSubtitle],
+  );
+
+  const navPrev = hasPrev ? () => navigateToEp(epNum - 1) : undefined;
+  const navNext = hasNext ? () => navigateToEp(epNum + 1) : undefined;
+
+  const toggleTheater = useCallback(() => {
+    setIsTheater((v) => !v);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    const win = getCurrentWindow();
+    const fs = await win.isFullscreen();
+    await win.setFullscreen(!fs);
+    setIsFullscreen(!fs);
+    if (!fs) setIsTheater(true);
+    else setIsTheater(false);
+  }, []);
+
+  // ── State 1: Loading ──────────────────────────────────────────
 
   if (mikan.isLoading) {
     return (
@@ -101,16 +124,13 @@ function EpisodePage() {
     );
   }
 
-  // ── State 3: Groups loaded, needs selection ────────────────────
+  // ── State 3: Group selection ──────────────────────────────────
 
   if (!mikan.selectedGroupId || !torrentSource) {
-    // Group selected but no torrent for this episode
-    const noTorrentForEp =
-      mikan.selectedGroupId && !torrentSource;
+    const noTorrentForEp = mikan.selectedGroupId && !torrentSource;
 
     return (
       <div className="flex h-full w-full flex-col bg-black">
-        {/* Header */}
         <div className="flex items-center gap-3 px-6 pt-6 pb-2">
           <button
             type="button"
@@ -127,7 +147,6 @@ function EpisodePage() {
           </div>
         </div>
 
-        {/* Subtitle group selector */}
         <div className="flex flex-1 flex-col items-center justify-center px-6">
           <Subtitles className="mb-4 h-12 w-12 text-white/20" />
           <h2 className="mb-2 text-lg font-medium text-white/90">
@@ -193,7 +212,8 @@ function EpisodePage() {
                         {group.name}
                       </p>
                       <p className="text-xs text-white/40">
-                        {group.episodeCount} 集 · {group.resolutions.join(" / ")}
+                        {group.episodeCount} 集 ·{" "}
+                        {group.resolutions.join(" / ")}
                       </p>
                     </div>
                     {isSelected && (
@@ -214,7 +234,7 @@ function EpisodePage() {
     );
   }
 
-  // ── State 4: Torrent source resolved — play ────────────────────
+  // ── State 4: Playback ─────────────────────────────────────────
 
   const cacheContext: CacheContext = {
     bgmId: id,
@@ -225,18 +245,169 @@ function EpisodePage() {
     torrentSource,
   };
 
+  const expanded = isTheater || isFullscreen;
+
   return (
-    <div className="h-full w-full">
-      <TorrentPlayer
-        key={`${id}-${ep}-${torrentSource}`}
-        source={torrentSource}
-        title={title}
-        subtitle={`${subtitle} · ${mikan.selectedGroupName ?? ""}`}
-        cacheContext={cacheContext}
-        onBack={navBack}
-        onPrev={navPrev}
-        onNext={navNext}
-      />
+    <div className="flex h-full w-full flex-col">
+      {/* ── Header (hidden in theater/fullscreen) ──────────────── */}
+      {!expanded && (
+        <div
+          className="flex items-center gap-3 border-b border-white/5 bg-background/95 px-5 py-2.5 backdrop-blur-xl"
+          data-tauri-drag-region
+        >
+          <button
+            type="button"
+            onClick={navBack}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/6 text-white/60 transition-colors hover:bg-white/12 hover:text-white/90"
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-sm font-semibold text-foreground">
+              {animeTitle}
+            </h1>
+            <p className="truncate text-xs text-muted-foreground">
+              第 {epNum} 话 · {title}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Content ────────────────────────────────────────────── */}
+      <div className="flex min-h-0 flex-1">
+        {/* Player area — NO opaque background so native mpv shows through */}
+        <div className="relative min-w-0 flex-1">
+          <TorrentPlayer
+            key={`${id}-${ep}-${torrentSource}`}
+            source={torrentSource}
+            title={title}
+            subtitle={`${subtitle} · ${mikan.selectedGroupName ?? ""}`}
+            cacheContext={cacheContext}
+            onBack={navBack}
+            onPrev={navPrev}
+            onNext={navNext}
+            isTheater={expanded}
+            onToggleTheater={toggleTheater}
+            onToggleFullscreen={toggleFullscreen}
+            isFullscreen={isFullscreen}
+          />
+        </div>
+
+        {/* Episode sidebar (hidden in theater/fullscreen) */}
+        {!expanded && (
+          <aside className="flex w-80 shrink-0 flex-col border-l border-white/5 bg-background">
+            {/* Source info */}
+            <div className="space-y-2 border-b border-white/5 px-4 py-3">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50">
+                资源
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {mikan.selectedGroupName && (
+                  <Badge
+                    variant="secondary"
+                    className="bg-primary/10 text-primary text-xs"
+                  >
+                    {mikan.selectedGroupName}
+                  </Badge>
+                )}
+                {mikan.preferredResolution && (
+                  <Badge variant="outline" className="text-xs border-white/10">
+                    {mikan.preferredResolution}
+                  </Badge>
+                )}
+                {mikan.preferredSubtitle && (
+                  <Badge variant="outline" className="text-xs border-white/10">
+                    {mikan.preferredSubtitle}
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            {/* Episode list */}
+            <div className="flex items-center justify-between px-4 pt-3 pb-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                选集
+                <span className="ml-1.5 text-muted-foreground/50">
+                  共 {episodes.length} 话
+                </span>
+              </p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-2 pb-3">
+              {episodes.map((e) => {
+                const isCurrent = e.ep === epNum;
+                const hasAired = e.airdate
+                  ? new Date(e.airdate) <= new Date()
+                  : true;
+                const watched =
+                  e.progress !== undefined && e.progress >= 100;
+
+                return (
+                  <button
+                    key={e.id}
+                    type="button"
+                    disabled={!hasAired}
+                    onClick={() => {
+                      if (e.ep !== epNum) navigateToEp(e.ep);
+                    }}
+                    className={cn(
+                      "group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
+                      isCurrent
+                        ? "bg-primary/10 text-primary"
+                        : hasAired
+                          ? "text-foreground/70 hover:bg-white/4 hover:text-foreground"
+                          : "cursor-default text-muted-foreground/30",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold tabular-nums",
+                        isCurrent
+                          ? "bg-primary text-primary-foreground"
+                          : watched
+                            ? "bg-white/4 text-muted-foreground/50"
+                            : "bg-white/4 text-foreground/60",
+                      )}
+                    >
+                      {isCurrent ? (
+                        <Play size={12} fill="currentColor" />
+                      ) : (
+                        e.ep
+                      )}
+                    </span>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium leading-tight">
+                        {e.title_cn || e.title || `第 ${e.ep} 话`}
+                      </p>
+                      {!hasAired && e.airdate && (
+                        <p className="text-[10px] text-muted-foreground/40">
+                          {(() => {
+                            const d = new Date(e.airdate);
+                            return `${d.getMonth() + 1}月${d.getDate()}日`;
+                          })()}
+                        </p>
+                      )}
+                      {hasAired && e.duration && (
+                        <p className="text-[10px] text-muted-foreground/40">
+                          {e.duration}
+                        </p>
+                      )}
+                    </div>
+
+                    {watched && (
+                      <Check
+                        size={12}
+                        className="shrink-0 text-muted-foreground/30"
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+        )}
+      </div>
     </div>
   );
 }

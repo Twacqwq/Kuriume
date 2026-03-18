@@ -230,6 +230,30 @@ pub(crate) async fn player_get_hwdec(state: State<'_, PlayerState>) -> Result<St
     Ok(active.player.hwdec())
 }
 
+/// Set the viewport (position and size) of the player's native GL view.
+///
+/// Coordinates are in CSS pixels, origin at top-left of the window.
+/// `window_height` is the window's inner height in CSS pixels (passed from JS).
+/// Converted internally to NSView coordinates (bottom-left origin).
+#[command]
+pub(crate) async fn player_set_viewport(
+    state: State<'_, PlayerState>,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    window_height: f64,
+) -> Result<(), String> {
+    let guard = state.inner.lock().await;
+    let active = guard.as_ref().ok_or("Player not initialized")?;
+
+    // Convert from CSS (top-left origin) to NSView (bottom-left origin).
+    let ns_y = window_height - y - height;
+
+    active.native_view.set_frame(x, ns_y, width, height);
+    Ok(())
+}
+
 /// Destroy the player and free all resources.
 #[command]
 pub(crate) async fn player_destroy(state: State<'_, PlayerState>) -> Result<(), String> {

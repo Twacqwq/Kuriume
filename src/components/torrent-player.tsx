@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/tooltip";
 import { formatBytes, formatSpeed } from "@/lib/torrent";
 import { usePlayer } from "@/lib/use-player";
+import { playerApi } from "@/lib/player";
 import { useTorrentStream, type TorrentStreamPhase, type CacheContext } from "@/lib/use-torrent-stream";
 import { cn } from "@/lib/utils";
 import {
@@ -35,6 +36,10 @@ import {
   Download,
   HardDrive,
   Loader2,
+  Maximize,
+  Maximize2,
+  Minimize,
+  Minimize2,
   Pause,
   Play,
   SkipBack,
@@ -73,6 +78,14 @@ export interface TorrentPlayerProps {
   onBack?: () => void;
   onPrev?: () => void;
   onNext?: () => void;
+  /** Theater mode (player fills window). */
+  isTheater?: boolean;
+  /** Toggle theater mode. */
+  onToggleTheater?: () => void;
+  /** Toggle system fullscreen. */
+  onToggleFullscreen?: () => void;
+  /** Whether system fullscreen is active. */
+  isFullscreen?: boolean;
 }
 
 export function TorrentPlayer({
@@ -83,6 +96,10 @@ export function TorrentPlayer({
   onBack,
   onPrev,
   onNext,
+  isTheater = false,
+  onToggleTheater,
+  onToggleFullscreen,
+  isFullscreen = false,
 }: TorrentPlayerProps) {
   const torrent = useTorrentStream();
 
@@ -108,6 +125,32 @@ export function TorrentPlayer({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
+
+  // ── Sync native GL view position with container ────────────────
+
+  useEffect(() => {
+    if (!player.state.ready) return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    const sync = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        playerApi.setViewport(rect.left, rect.top, rect.width, rect.height).catch(() => {});
+      }
+    };
+
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    // Also sync on window resize (layout origin may shift)
+    window.addEventListener("resize", sync);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", sync);
+    };
+  }, [player.state.ready]);
 
   // ── Play the streaming URL via mpv when available ──────────────
 
@@ -216,6 +259,19 @@ export function TorrentPlayer({
           toggleMute();
           resetHideTimer();
           break;
+        case "f":
+          e.preventDefault();
+          onToggleFullscreen?.();
+          break;
+        case "t":
+          e.preventDefault();
+          onToggleTheater?.();
+          break;
+        case "Escape":
+          e.preventDefault();
+          if (isFullscreen) onToggleFullscreen?.();
+          else if (isTheater) onToggleTheater?.();
+          break;
       }
     }
 
@@ -229,6 +285,10 @@ export function TorrentPlayer({
     position,
     volume,
     resetHideTimer,
+    onToggleTheater,
+    onToggleFullscreen,
+    isTheater,
+    isFullscreen,
   ]);
 
   // ── Derived state ──────────────────────────────────────────────
@@ -270,7 +330,8 @@ export function TorrentPlayer({
         {/* mpv renders natively below this transparent webview layer */}
         <div className="absolute inset-0 z-0" />
 
-        {/* ── Top bar ─────────────────────────────────────────── */}
+        {/* ── Top bar (theater/fullscreen only) ───────────────── */}
+        {(isTheater || isFullscreen) && (
         <div
           className={cn(
             "pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-4 px-5 pt-4 pb-12 transition-opacity duration-300",
@@ -278,15 +339,17 @@ export function TorrentPlayer({
             showControls ? "opacity-100" : "opacity-0",
           )}
         >
-          {onBack && (
-            <button
-              type="button"
-              onClick={onBack}
-              className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20"
-            >
-              <ArrowLeft size={18} />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (isFullscreen) onToggleFullscreen?.();
+              else if (isTheater) onToggleTheater?.();
+              else onBack?.();
+            }}
+            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20"
+          >
+            <ArrowLeft size={18} />
+          </button>
           <div className="pointer-events-auto min-w-0 flex-1">
             {subtitle && (
               <p className="text-xs font-medium text-primary">{subtitle}</p>
@@ -298,6 +361,7 @@ export function TorrentPlayer({
             )}
           </div>
         </div>
+        )}
 
         {/* ── Center status ───────────────────────────────────── */}
         {isLoading && <LoadingOverlay phase={torrent.phase} />}
@@ -437,6 +501,46 @@ export function TorrentPlayer({
                   {isMuted ? "取消静音" : "静音"}
                 </TooltipContent>
               </Tooltip>
+
+              {/* Theater mode */}
+              {onToggleTheater && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-white/70 hover:bg-white/10 hover:text-white"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleTheater();
+                      }}
+                    >
+                      {isTheater ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{isTheater ? "退出端内全屏" : "端内全屏"}</TooltipContent>
+                </Tooltip>
+              )}
+
+              {/* System fullscreen */}
+              {onToggleFullscreen && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-white/70 hover:bg-white/10 hover:text-white"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleFullscreen();
+                      }}
+                    >
+                      {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{isFullscreen ? "退出全屏" : "全屏"}</TooltipContent>
+                </Tooltip>
+              )}
             </div>
           </div>
         </div>
