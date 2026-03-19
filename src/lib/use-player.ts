@@ -42,6 +42,8 @@ export function usePlayer() {
   const [state, setState] = useState<PlayerState>(INITIAL);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const initedRef = useRef(false);
+  /** Stable ref for the file-ended callback (avoids re-subscribing). */
+  const onEndedRef = useRef<(() => void) | null>(null);
 
   // ── Lifecycle ──────────────────────────────────────────────────
 
@@ -78,6 +80,7 @@ export function usePlayer() {
               case "FileLoaded":
                 return { ...prev, loaded: true };
               case "FileEnded":
+                onEndedRef.current?.();
                 return { ...prev, loaded: false };
               case "Seeking":
                 return { ...prev, seeking: true };
@@ -154,5 +157,7 @@ export function usePlayer() {
     setVolume,
     setSpeed,
     stop,
+    /** Register a callback for when playback of the current file ends. */
+    onEndedRef,
   };
 }

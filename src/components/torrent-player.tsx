@@ -159,6 +159,13 @@ export function TorrentPlayer({
     player.play(torrent.streamUrl);
   }, [torrent.streamUrl, player.state.ready, player.play]);
 
+  // ── Auto-advance to next episode when playback ends ────────────
+
+  useEffect(() => {
+    player.onEndedRef.current = onNext ?? null;
+    return () => { player.onEndedRef.current = null; };
+  }, [onNext, player.onEndedRef]);
+
   // ── Auto-hide controls ─────────────────────────────────────────
 
   const resetHideTimer = useCallback(() => {
