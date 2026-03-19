@@ -1,11 +1,11 @@
 import { TorrentPlayer } from "@/components/torrent-player";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { queryClient } from "@/lib/query-client";
-import type { AnimeEpisodes, AnimeInfo } from "@/lib/types";
 import { useMikanTorrents } from "@/lib/use-mikan-torrents";
 import type { CacheContext } from "@/lib/use-torrent-stream";
 import { cn } from "@/lib/utils";
+import { detailQueryOptions, episodesQueryOptions } from "@/routes/anime/$id";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -36,10 +36,12 @@ function EpisodePage() {
   const [isTheater, setIsTheater] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Pull cached anime info & episodes from TanStack Query
-  const animeInfo = queryClient.getQueryData<AnimeInfo>(["anime-detail", id]);
-  const episodes =
-    queryClient.getQueryData<AnimeEpisodes[]>(["anime-episodes", id]) ?? [];
+  // Subscribe to cached anime info & episodes — useQuery keeps data
+  // reactive across same-route navigations (prev/next episode).
+  const { data: animeInfo } = useQuery(detailQueryOptions(id));
+  const { data: episodes = [] } = useQuery(
+    episodesQueryOptions(id, animeInfo?.total_episodes ?? 100),
+  );
 
   const currentEp = useMemo(
     () => episodes.find((e) => e.ep === epNum),
