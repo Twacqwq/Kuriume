@@ -237,8 +237,11 @@ mod macos {
         ///
         /// Coordinates use the parent's system (bottom-left origin, points).
         /// Auto-resize mask is removed so the view stays at the given frame.
+        /// After setting the frame, immediately re-renders to avoid stale
+        /// content being stretched/compressed to the new size.
         pub fn set_frame(&self, x: f64, y: f64, width: f64, height: f64) {
             let view_ptr = Retained::as_ptr(&self.view) as usize;
+            let render_loop = self.render_loop;
 
             #[repr(C)]
             struct FrameCtx {
@@ -247,7 +250,12 @@ mod macos {
                 y: f64,
                 w: f64,
                 h: f64,
+                render_loop: *mut RenderLoopCtx,
             }
+
+            // SAFETY: RenderLoopCtx is leaked and stable; the pointer is valid
+            // as long as `alive` is true, which we check inside render_frame.
+            unsafe impl Send for FrameCtx {}
 
             let ctx = Box::new(FrameCtx {
                 view: view_ptr,
@@ -255,6 +263,7 @@ mod macos {
                 y,
                 w: width,
                 h: height,
+                render_loop,
             });
 
             unsafe extern "C" fn apply_frame(raw: *mut c_void) {
@@ -267,6 +276,17 @@ mod macos {
                     );
                     let _: () = msg_send![view, setFrame: rect];
                     let _: () = msg_send![view, setAutoresizingMask: 0usize];
+
+                    // Schedule a re-render so the GL content matches the new
+                    // view size. Dispatched async so the view hierarchy fully
+                    // processes the frame change before we render.
+                    if !ctx.render_loop.is_null() {
+                        dispatch_async_f(
+                            dispatch_get_main_queue(),
+                            ctx.render_loop as *mut c_void,
+                            render_frame,
+                        );
+                    }
                 }
             }
 
