@@ -3,11 +3,105 @@ use kuriume_mpv::{MpvPlayer, PlayerEvent};
 use tauri::{command, AppHandle, Emitter, Manager, State, WebviewWindow};
 use tokio::sync::mpsc::UnboundedReceiver;
 
+// ── macOS display-sleep prevention via IOPMAssertion ─────────────
+#[cfg(target_os = "macos")]
+mod power {
+    use std::ffi::c_void;
+
+    // IOKit types
+    type IOPMAssertionID = u32;
+    type CFStringRef = *const c_void;
+    type CFStringEncoding = u32;
+
+    const K_CF_STRING_ENCODING_UTF8: CFStringEncoding = 0x0800_0100;
+    const K_IOPM_ASSERTION_LEVEL_ON: u32 = 255;
+
+    extern "C" {
+        fn CFStringCreateWithBytes(
+            alloc: *const c_void,
+            bytes: *const u8,
+            num_bytes: i64,
+            encoding: CFStringEncoding,
+            is_external: u8,
+        ) -> CFStringRef;
+        fn CFRelease(cf: *const c_void);
+        fn IOPMAssertionCreateWithName(
+            assertion_type: CFStringRef,
+            assertion_level: u32,
+            reason: CFStringRef,
+            assertion_id: *mut IOPMAssertionID,
+        ) -> i32;
+        fn IOPMAssertionRelease(assertion_id: IOPMAssertionID) -> i32;
+    }
+
+    fn cfstr(s: &str) -> CFStringRef {
+        unsafe {
+            CFStringCreateWithBytes(
+                std::ptr::null(),
+                s.as_ptr(),
+                s.len() as i64,
+                K_CF_STRING_ENCODING_UTF8,
+                0,
+            )
+        }
+    }
+
+    /// RAII guard that prevents the display from sleeping.
+    pub struct DisplaySleepGuard {
+        assertion_id: IOPMAssertionID,
+    }
+
+    // The assertion ID is just a u32 token — safe to move across threads.
+    unsafe impl Send for DisplaySleepGuard {}
+    unsafe impl Sync for DisplaySleepGuard {}
+
+    impl DisplaySleepGuard {
+        /// Create an IOPMAssertion of type `PreventUserIdleDisplaySleep`.
+        /// Returns `None` if the system call fails (non-fatal).
+        pub fn new() -> Option<Self> {
+            let assertion_type = cfstr("PreventUserIdleDisplaySleep");
+            let reason = cfstr("Kuriume video playback");
+            let mut assertion_id: IOPMAssertionID = 0;
+
+            let ret = unsafe {
+                IOPMAssertionCreateWithName(
+                    assertion_type,
+                    K_IOPM_ASSERTION_LEVEL_ON,
+                    reason,
+                    &mut assertion_id,
+                )
+            };
+
+            unsafe {
+                CFRelease(assertion_type);
+                CFRelease(reason);
+            }
+
+            if ret == 0 {
+                Some(Self { assertion_id })
+            } else {
+                None
+            }
+        }
+    }
+
+    impl Drop for DisplaySleepGuard {
+        fn drop(&mut self) {
+            unsafe {
+                IOPMAssertionRelease(self.assertion_id);
+            }
+        }
+    }
+}
+
 /// All resources associated with an active player session.
 struct ActivePlayer {
     player: MpvPlayer,
     /// The native GL view mpv renders into (dropped → removed from superview).
     native_view: NativeGlView,
+    /// Prevents display sleep while video is playing (macOS).
+    #[cfg(target_os = "macos")]
+    sleep_guard: Option<power::DisplaySleepGuard>,
 }
 
 /// Shared player state managed by Tauri.
@@ -112,6 +206,8 @@ pub(crate) async fn player_init(
     *guard = Some(ActivePlayer {
         player,
         native_view,
+        #[cfg(target_os = "macos")]
+        sleep_guard: power::DisplaySleepGuard::new(),
     });
 
     drop(guard);
