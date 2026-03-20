@@ -26,9 +26,12 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
     >
       {/* Logo */}
       <div className="flex h-16 items-center justify-center">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary font-bold text-white text-sm shadow-lg shadow-primary/25">
+        <Link
+          to="/"
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary font-bold text-white text-sm shadow-lg shadow-primary/25 transition-opacity hover:opacity-80"
+        >
           K
-        </div>
+        </Link>
       </div>
 
       {/* Search */}
