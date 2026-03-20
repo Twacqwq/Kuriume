@@ -165,3 +165,35 @@ async fn search_basic() {
     assert!(!first.id.is_empty());
     assert!(!first.title.is_empty());
 }
+
+/// Fetch the weekly broadcast calendar.
+#[tokio::test]
+async fn get_calendar() {
+    let provider = Bangumi::new();
+    let calendar = provider
+        .get_calendar()
+        .await
+        .expect("should fetch calendar");
+
+    // The calendar should contain 7 weekday entries
+    assert_eq!(calendar.len(), 7, "calendar should have 7 days");
+
+    for entry in &calendar {
+        // Each entry should have a valid weekday id (1–7)
+        assert!(
+            (1..=7).contains(&entry.weekday.id),
+            "weekday id should be 1–7, got {}",
+            entry.weekday.id
+        );
+        assert!(!entry.weekday.cn.is_empty(), "weekday cn should not be empty");
+
+        // Each day should have at least some items
+        assert!(!entry.items.is_empty(), "day {} should have items", entry.weekday.cn);
+
+        // Spot-check item fields
+        for item in &entry.items {
+            assert!(!item.id.is_empty());
+            assert!(!item.title.is_empty());
+        }
+    }
+}

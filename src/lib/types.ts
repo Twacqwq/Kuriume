@@ -37,3 +37,8 @@ export interface AnimeCharacters {
   avatar: string;
   cvs: string[];
 }
+
+export interface CalendarEntry {
+  weekday: { id: number; cn: string };
+  items: AnimeInfo[];
+}

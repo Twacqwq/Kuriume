@@ -126,3 +126,16 @@ pub struct CharacterInfo {
     // CVs
     pub cvs: Option<Vec<String>>,
 }
+
+/// A single weekday entry in the calendar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalendarEntry {
+    pub weekday: Weekday,
+    pub items: Vec<AnimeInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Weekday {
+    pub id: u8,
+    pub cn: String,
+}

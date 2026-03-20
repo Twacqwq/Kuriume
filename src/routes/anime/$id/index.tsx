@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import {
   AnimeDetail,
   type AnimeDetailData,
@@ -65,7 +65,7 @@ export const Route = createFileRoute("/anime/$id/")({
 });
 
 function AnimeDetailPage() {
-  const navigate = useNavigate();
+  const router = useRouter();
   const { id } = Route.useParams();
 
   const { data: info } = useQuery(detailQueryOptions(id));
@@ -114,7 +114,7 @@ function AnimeDetailPage() {
   return (
     <AnimeDetail
       data={toAnimeDetailData(info, episodes, characters)}
-      onBack={() => navigate({ to: "/" })}
+      onBack={() => router.history.back()}
       groups={mikan.groups}
       isLoadingGroups={mikan.isLoading}
       selectedGroupId={mikan.selectedGroupId}

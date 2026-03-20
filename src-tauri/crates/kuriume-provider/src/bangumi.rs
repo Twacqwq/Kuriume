@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{ProviderError, Result};
 use crate::models::{
-    AnimeInfo, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery, PagedResult,
-    SearchQuery,
+    AnimeInfo, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery,
+    PagedResult, SearchQuery, Weekday,
 };
 use crate::provider::AnimeProvider;
 
@@ -168,6 +168,22 @@ impl AnimeProvider for Bangumi {
             .collect())
     }
 
+    async fn get_calendar(&self) -> Result<Vec<CalendarEntry>> {
+        let url = format!("{BANGUMI_API}/calendar");
+
+        let resp = self.client.get(&url).send().await?;
+        if !resp.status().is_success() {
+            return Err(ProviderError::Source(format!(
+                "Failed to request Bangumi {} API returned {}",
+                &url,
+                resp.status()
+            )));
+        }
+
+        let parsed: Vec<BangumiCalendarEntry> = resp.json().await?;
+        Ok(parsed.into_iter().map(CalendarEntry::from).collect())
+    }
+
     async fn get_characters(&self, id: &str) -> Result<Vec<CharacterInfo>> {
         let url = format!("{BANGUMI_API}/v0/subjects/{id}/characters");
 
@@ -210,12 +226,17 @@ struct BangumiSubject {
     name: String,
     name_cn: Option<String>,
     summary: Option<String>,
+    #[serde(alias = "air_date")]
     date: Option<String>,
-    rating: Rating,
+    rating: Option<Rating>,
     images: Option<BangumiImages>,
     meta_tags: Option<Vec<String>>,
+    #[serde(default)]
     total_episodes: u32,
+    #[serde(default)]
     eps: u32,
+    #[serde(default)]
+    eps_count: u32,
 }
 
 impl From<BangumiSubject> for AnimeInfo {
@@ -235,18 +256,21 @@ impl From<BangumiSubject> for AnimeInfo {
             .and_then(|d| d.split('-').next())
             .and_then(|y| y.parse::<u16>().ok());
 
-        let total_episodes = std::cmp::max(value.total_episodes, value.eps);
+        let total_episodes = *[value.total_episodes, value.eps, value.eps_count]
+            .iter()
+            .max()
+            .unwrap_or(&0);
 
         Self {
             id: value.id.to_string(),
             title: value.name,
             title_cn,
             cover,
-            score: value.rating.score,
+            score: value.rating.and_then(|r| r.score),
             year,
             total_episodes,
             air_date: value.date,
-            genres: value.meta_tags.unwrap(),
+            genres: value.meta_tags.unwrap_or_default(),
             description: value.summary,
         }
     }
@@ -310,6 +334,36 @@ struct BangumiCharacters {
     relation: Option<String>,
     name: Option<String>,
     actors: Option<Vec<Actor>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BangumiCalendarEntry {
+    weekday: BangumiWeekday,
+    items: Option<Vec<BangumiSubject>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BangumiWeekday {
+    id: u8,
+    cn: Option<String>,
+}
+
+impl From<BangumiCalendarEntry> for CalendarEntry {
+    fn from(value: BangumiCalendarEntry) -> Self {
+        let weekday_cn = value.weekday.cn.unwrap_or_default();
+        Self {
+            weekday: Weekday {
+                id: value.weekday.id,
+                cn: weekday_cn,
+            },
+            items: value
+                .items
+                .unwrap_or_default()
+                .into_iter()
+                .map(AnimeInfo::from)
+                .collect(),
+        }
+    }
 }
 
 impl From<BangumiCharacters> for CharacterInfo {

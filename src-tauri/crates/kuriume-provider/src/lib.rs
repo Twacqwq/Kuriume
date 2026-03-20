@@ -32,7 +32,7 @@ pub use mikan::{
     Mikan, MikanBangumiEntry, MikanTorrentEntry, SubtitleGroup, SubtitleGroupTorrents,
 };
 pub use models::{
-    AnimeInfo, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery, PagedResult,
-    SearchQuery, SortBy,
+    AnimeInfo, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery,
+    PagedResult, SearchQuery, SortBy, Weekday,
 };
 pub use provider::AnimeProvider;

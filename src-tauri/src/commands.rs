@@ -1,7 +1,7 @@
 use kuriume_provider::{
-    AnimeInfo, AnimeProvider, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery,
-    Mikan, MikanBangumiEntry, MikanTorrentEntry, PagedResult, SearchQuery, SubtitleGroup,
-    SubtitleGroupTorrents,
+    AnimeInfo, AnimeProvider, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery,
+    GetListQuery, Mikan, MikanBangumiEntry, MikanTorrentEntry, PagedResult, SearchQuery,
+    SubtitleGroup, SubtitleGroupTorrents,
 };
 use std::{collections::HashMap, sync::Arc};
 use tauri::{command, State};
@@ -73,6 +73,15 @@ pub(crate) async fn get_episodes(
         .get_episodes(query)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[command]
+pub(crate) async fn get_calendar(
+    state: State<'_, ProviderState>,
+    provider: &str,
+) -> Result<Vec<CalendarEntry>, String> {
+    let provider = state.get(provider).ok_or("Provider not found")?;
+    provider.get_calendar().await.map_err(|e| e.to_string())
 }
 
 #[command]

@@ -32,6 +32,7 @@ pub fn run() {
             crate::commands::search,
             crate::commands::get_detail,
             crate::commands::get_episodes,
+            crate::commands::get_calendar,
             crate::commands::get_characters,
             crate::commands::mikan_search,
             crate::commands::mikan_resolve,

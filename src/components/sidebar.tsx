@@ -1,10 +1,10 @@
 import { cn } from "@/lib/utils";
 import { Link, useMatches } from "@tanstack/react-router";
-import { Clock, Clapperboard, Library, Search, Settings, TrendingUp } from "lucide-react";
+import { Clock, CalendarDays, Clapperboard, Library, Search, Settings } from "lucide-react";
 
 const navItems = [
   { icon: Clapperboard, label: "番剧", to: "/" },
-  { icon: TrendingUp, label: "排行", to: "/ranking" },
+  { icon: CalendarDays, label: "放送", to: "/calendar" },
   { icon: Library, label: "追番", to: "/watchlist" },
   { icon: Clock, label: "历史", to: "/history" },
 ];

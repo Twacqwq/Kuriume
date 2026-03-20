@@ -2,8 +2,8 @@ use async_trait::async_trait;
 
 use crate::error::Result;
 use crate::models::{
-    AnimeInfo, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery, PagedResult,
-    SearchQuery,
+    AnimeInfo, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery,
+    PagedResult, SearchQuery,
 };
 
 /// Unified interface for anime data sources.
@@ -29,4 +29,7 @@ pub trait AnimeProvider: Send + Sync {
 
     /// Get anime characters
     async fn get_characters(&self, id: &str) -> Result<Vec<CharacterInfo>>;
+
+    /// Get weekly broadcast calendar.
+    async fn get_calendar(&self) -> Result<Vec<CalendarEntry>>;
 }
