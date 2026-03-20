@@ -185,7 +185,7 @@ export function AnimeDetail({
     <TooltipProvider>
       <div className="min-h-screen">
         {/* ============ Hero Section ============ */}
-        <section className="relative overflow-x-hidden">
+        <section className="relative overflow-hidden">
           {/* Blurred background */}
           <div className="absolute inset-0">
             <img
