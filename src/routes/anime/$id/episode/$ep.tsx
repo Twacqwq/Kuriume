@@ -18,7 +18,7 @@ import {
   Subtitles,
   TriangleAlert,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export const Route = createFileRoute("/anime/$id/episode/$ep")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -38,6 +38,11 @@ function EpisodePage() {
 
   const [isTheater, setIsTheater] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Sync fullscreen state with system on mount (e.g. macOS green button)
+  useEffect(() => {
+    getCurrentWindow().isFullscreen().then(setIsFullscreen);
+  }, []);
 
   // Subscribe to cached anime info & episodes — useQuery keeps data
   // reactive across same-route navigations (prev/next episode).
@@ -113,10 +118,17 @@ function EpisodePage() {
   const toggleFullscreen = useCallback(async () => {
     const win = getCurrentWindow();
     const fs = await win.isFullscreen();
-    await win.setFullscreen(!fs);
-    setIsFullscreen(!fs);
-    if (!fs) setIsTheater(true);
-    else setIsTheater(false);
+    if (fs) {
+      // Already fullscreen — exit
+      await win.setFullscreen(false);
+      setIsFullscreen(false);
+      setIsTheater(false);
+    } else {
+      // Enter fullscreen + theater
+      await win.setFullscreen(true);
+      setIsFullscreen(true);
+      setIsTheater(true);
+    }
   }, []);
 
   // ── State 1: Loading ──────────────────────────────────────────

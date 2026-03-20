@@ -48,6 +48,13 @@ function RootComponent() {
 
   return (
     <div className={`flex h-full ${isPlayerPage ? '' : 'bg-background'}`}>
+      {/* macOS title bar drag region — spans full width above content */}
+      {!isPlayerPage && (
+        <div
+          className="fixed inset-x-0 top-0 z-50 h-8"
+          data-tauri-drag-region
+        />
+      )}
       {!isPlayerPage && <Sidebar onSearchClick={openSearch} />}
       <SearchPanel open={searchOpen} onClose={closeSearch} />
       <main

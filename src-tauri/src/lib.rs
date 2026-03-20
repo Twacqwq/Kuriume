@@ -5,6 +5,7 @@ use crate::torrent_commands::TorrentState;
 use kuriume_provider::Bangumi;
 use std::sync::Arc;
 use tauri::Manager;
+use tauri::menu::Menu;
 
 mod commands;
 mod native_view;
@@ -22,6 +23,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .menu(|handle| Menu::new(handle))
         .manage(state)
         .manage(PlayerState::new())
         .manage(MikanState::new())
