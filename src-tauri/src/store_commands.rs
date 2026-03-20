@@ -78,6 +78,67 @@ pub(crate) fn set_cache_dir(
     })
 }
 
+/// Change cache directory and optionally migrate existing files.
+///
+/// When `migrate` is true, moves all cached files from the old directory
+/// to the new one, preserving the relative path structure, and updates
+/// the database entries to point to the new paths.
+#[command]
+pub(crate) fn cache_migrate_dir(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    new_dir: &str,
+    migrate: bool,
+) -> Result<(), String> {
+    let old_dir = state.with_store(&app, |store| {
+        let settings = store
+            .get_settings(&default_cache_dir(&app))
+            .map_err(|e| e.to_string())?;
+        Ok(settings.cache_dir)
+    })?;
+
+    if migrate && old_dir != new_dir {
+        let old_path = Path::new(&old_dir);
+        let new_path = Path::new(new_dir);
+
+        state.with_store(&app, |store| {
+            let entries = store.list_all_entries().map_err(|e| e.to_string())?;
+            for entry in &entries {
+                let file = Path::new(&entry.file_path);
+                // Only migrate files that live under the old cache dir
+                if let Ok(rel) = file.strip_prefix(old_path) {
+                    let dest = new_path.join(rel);
+                    if let Some(parent) = dest.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    // Try rename first (fast, same filesystem), fall back to copy
+                    if std::fs::rename(file, &dest).is_ok()
+                        || std::fs::copy(file, &dest)
+                            .map(|_| { let _ = std::fs::remove_file(file); })
+                            .is_ok()
+                    {
+                        let _ = store.update_file_path(
+                            entry.id,
+                            &dest.to_string_lossy(),
+                        );
+                    }
+                }
+            }
+            Ok(())
+        })?;
+
+        // Clean up empty directories in old cache
+        if old_path.exists() {
+            let _ = std::fs::remove_dir_all(old_path);
+        }
+    }
+
+    // Update the setting
+    state.with_store(&app, |store| {
+        store.set_cache_dir(new_dir).map_err(|e| e.to_string())
+    })
+}
+
 #[command]
 pub(crate) fn set_cache_enabled(
     state: State<'_, StoreState>,

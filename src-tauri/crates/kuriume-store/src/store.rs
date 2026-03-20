@@ -290,6 +290,29 @@ impl Store {
         Ok(entries)
     }
 
+    /// List ALL cached entries across all anime.
+    pub fn list_all_entries(&self) -> Result<Vec<MediaEntry>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, bgm_id, episode, anime_title, group_name, resolution,
+                    file_path, file_size, torrent_source, cached_at
+             FROM media_cache
+             ORDER BY anime_title ASC, episode ASC",
+        )?;
+        let entries = stmt
+            .query_map([], Self::row_to_entry)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(entries)
+    }
+
+    /// Update the file_path for a specific cache entry.
+    pub fn update_file_path(&self, id: i64, new_path: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE media_cache SET file_path = ?1 WHERE id = ?2",
+            params![new_path, id],
+        )?;
+        Ok(())
+    }
+
     /// Total cache size in bytes.
     pub fn total_cache_size(&self) -> Result<i64> {
         let size: i64 = self.conn.query_row(

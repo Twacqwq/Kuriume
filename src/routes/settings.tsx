@@ -3,10 +3,13 @@ import { settingsApi, cacheApi, type Settings } from "@/lib/store";
 import { formatBytes } from "@/lib/torrent";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { open } from "@tauri-apps/plugin-dialog";
+import { ask } from "@tauri-apps/plugin-dialog";
 import {
   ArrowLeft,
   FolderOpen,
   HardDrive,
+  Loader2,
   Trash2,
   ToggleLeft,
   ToggleRight,
@@ -21,6 +24,7 @@ function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [cacheSize, setCacheSize] = useState<number | null>(null);
   const [clearing, setClearing] = useState(false);
+  const [migrating, setMigrating] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -42,15 +46,38 @@ function SettingsPage() {
   }, [settings]);
 
   const selectCacheDir = useCallback(async () => {
-    // Use prompt-based approach since we don't have tauri dialog plugin
-    const dir = window.prompt(
-      "输入新的缓存目录路径",
-      settings?.cache_dir ?? "",
-    );
-    if (!dir) return;
-    await settingsApi.setCacheDir(dir);
-    setSettings((s) => (s ? { ...s, cache_dir: dir } : s));
-  }, [settings]);
+    if (!settings) return;
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      defaultPath: settings.cache_dir,
+      title: "选择缓存目录",
+    });
+    if (!selected) return;
+
+    const newDir = selected as string;
+    if (newDir === settings.cache_dir) return;
+
+    // Ask user whether to migrate existing files
+    let shouldMigrate = false;
+    if (cacheSize && cacheSize > 0) {
+      shouldMigrate = await ask(
+        `当前缓存目录有 ${formatBytes(cacheSize)} 的文件，是否将它们迁移到新目录？\n\n选择「是」迁移文件，选择「否」仅更改目录（旧文件保留在原位置）。`,
+        { title: "迁移缓存文件", kind: "info", okLabel: "是", cancelLabel: "否" },
+      );
+    }
+
+    setMigrating(true);
+    try {
+      await settingsApi.migrateDir(newDir, shouldMigrate);
+      setSettings((s) => (s ? { ...s, cache_dir: newDir } : s));
+      // Refresh cache size after migration
+      const size = await cacheApi.totalSize().catch(() => 0);
+      setCacheSize(size);
+    } finally {
+      setMigrating(false);
+    }
+  }, [settings, cacheSize]);
 
   const clearCache = useCallback(async () => {
     if (!confirmClear) {
@@ -144,9 +171,17 @@ function SettingsPage() {
                   variant="secondary"
                   size="sm"
                   onClick={selectCacheDir}
+                  disabled={migrating}
                   className="shrink-0"
                 >
-                  更改
+                  {migrating ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      迁移中...
+                    </>
+                  ) : (
+                    "更改"
+                  )}
                 </Button>
               </div>
 

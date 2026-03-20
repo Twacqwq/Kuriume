@@ -31,6 +31,10 @@ export const settingsApi = {
   setCacheDir: (dir: string) =>
     invoke<void>("set_cache_dir", { dir }),
 
+  /** Change cache directory and optionally migrate existing files. */
+  migrateDir: (newDir: string, migrate: boolean) =>
+    invoke<void>("cache_migrate_dir", { newDir, migrate }),
+
   setCacheEnabled: (enabled: boolean) =>
     invoke<void>("set_cache_enabled", { enabled }),
 };

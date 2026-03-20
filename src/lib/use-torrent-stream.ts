@@ -95,8 +95,12 @@ export function useTorrentStream() {
     if (id !== null) {
       torrentIdRef.current = null;
       try {
-        // Keep files if caching is enabled, delete if not
-        await torrentApi.remove(id, !cacheEnabledRef.current);
+        // Only keep files if caching is enabled AND the file was
+        // successfully registered in cache (i.e. download completed
+        // and cache_organize moved it).  Otherwise always delete —
+        // partial/incomplete downloads in the temp dir are useless.
+        const shouldKeep = cacheEnabledRef.current && registeredRef.current;
+        await torrentApi.remove(id, !shouldKeep);
       } catch {
         /* torrent might already be removed */
       }

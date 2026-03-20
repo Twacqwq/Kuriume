@@ -101,7 +101,7 @@ struct ActivePlayer {
     native_view: NativeGlView,
     /// Prevents display sleep while video is playing (macOS).
     #[cfg(target_os = "macos")]
-    sleep_guard: Option<power::DisplaySleepGuard>,
+    _sleep_guard: Option<power::DisplaySleepGuard>,
 }
 
 /// Shared player state managed by Tauri.
@@ -207,7 +207,7 @@ pub(crate) async fn player_init(
         player,
         native_view,
         #[cfg(target_os = "macos")]
-        sleep_guard: power::DisplaySleepGuard::new(),
+        _sleep_guard: power::DisplaySleepGuard::new(),
     });
 
     drop(guard);

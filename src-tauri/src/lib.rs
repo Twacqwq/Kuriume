@@ -4,6 +4,7 @@ use crate::store_commands::StoreState;
 use crate::torrent_commands::TorrentState;
 use kuriume_provider::Bangumi;
 use std::sync::Arc;
+use tauri::Manager;
 
 mod commands;
 mod native_view;
@@ -20,6 +21,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .manage(PlayerState::new())
         .manage(MikanState::new())
@@ -66,7 +68,18 @@ pub fn run() {
             crate::store_commands::cache_total_size,
             crate::store_commands::cache_clear_all,
             crate::store_commands::cache_organize,
+            crate::store_commands::cache_migrate_dir,
         ])
+        .setup(|app| {
+            // Clean up orphaned torrent temp files from previous sessions.
+            if let Ok(data_dir) = app.path().app_data_dir() {
+                let temp_dir = data_dir.join("torrents");
+                if temp_dir.exists() {
+                    let _ = std::fs::remove_dir_all(&temp_dir);
+                }
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
