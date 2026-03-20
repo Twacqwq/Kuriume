@@ -411,6 +411,7 @@ export function TorrentPlayer({
             position={position}
             duration={duration}
             progress={progress}
+            bufferProgress={torrent.stats && torrent.stats.progress < 1 ? torrent.stats.progress * 100 : undefined}
             onSeek={handleSeek}
             onInteracting={resetHideTimer}
           />
@@ -726,12 +727,15 @@ function SeekBar({
   position: _position,
   duration,
   progress,
+  bufferProgress,
   onSeek,
   onInteracting,
 }: {
   position: number;
   duration: number;
   progress: number;
+  /** Torrent download progress 0-100, shown as buffer bar. */
+  bufferProgress?: number;
   onSeek: (seconds: number) => void;
   onInteracting: () => void;
 }) {
@@ -818,6 +822,13 @@ function SeekBar({
           (isDragging || hoverX !== null) && "h-1.5",
         )}
       >
+        {/* Buffer (torrent download progress) */}
+        {bufferProgress !== undefined && (
+          <div
+            className="absolute inset-y-0 left-0 rounded-full bg-white/25 transition-all duration-500"
+            style={{ width: `${bufferProgress}%` }}
+          />
+        )}
         {/* Progress */}
         <div
           className="absolute inset-y-0 left-0 rounded-full bg-primary"
