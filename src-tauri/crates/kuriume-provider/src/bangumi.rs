@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::{ProviderError, Result};
 use crate::models::{
@@ -38,12 +38,45 @@ impl AnimeProvider for Bangumi {
         "Bangumi"
     }
 
-    async fn search(&self, _: SearchQuery) -> Result<PagedResult<AnimeInfo>> {
+    async fn search(&self, query: SearchQuery) -> Result<PagedResult<AnimeInfo>> {
+        let url = format!("{BANGUMI_API}/v0/search/subjects");
+
+        let body = SearchRequestBody {
+            keyword: &query.keyword,
+            sort: "rank",
+            filter: SearchFilter {
+                r#type: vec![2],
+                nsfw: true,
+            },
+        };
+
+        let resp = self
+            .client
+            .post(&url)
+            .query(&[("limit", query.limit), ("offset", query.offset)])
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(ProviderError::Source(format!(
+                "Failed to request Bangumi {} API returned {}",
+                &url,
+                resp.status()
+            )));
+        }
+
+        let parsed: GetBangumiListResponse<BangumiSubject> = resp.json().await?;
         Ok(PagedResult {
-            data: Vec::new(),
-            total: 0,
-            limit: 0,
-            offset: 0,
+            data: parsed
+                .data
+                .unwrap_or_default()
+                .into_iter()
+                .map(AnimeInfo::from)
+                .collect(),
+            total: parsed.total,
+            limit: parsed.limit,
+            offset: parsed.offset,
         })
     }
 
@@ -151,6 +184,25 @@ impl AnimeProvider for Bangumi {
         Ok(parsed_resp.into_iter().map(CharacterInfo::from).collect())
     }
 }
+
+// ---------------------------------------------------------------------------
+// Search request body
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct SearchRequestBody<'a> {
+    keyword: &'a str,
+    sort: &'a str,
+    filter: SearchFilter,
+}
+
+#[derive(Serialize)]
+struct SearchFilter {
+    r#type: Vec<u8>,
+    nsfw: bool,
+}
+
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
 struct BangumiSubject {

@@ -1,6 +1,7 @@
 use kuriume_provider::{
     AnimeInfo, AnimeProvider, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery,
-    Mikan, MikanBangumiEntry, MikanTorrentEntry, PagedResult, SubtitleGroup, SubtitleGroupTorrents,
+    Mikan, MikanBangumiEntry, MikanTorrentEntry, PagedResult, SearchQuery, SubtitleGroup,
+    SubtitleGroupTorrents,
 };
 use std::{collections::HashMap, sync::Arc};
 use tauri::{command, State};
@@ -39,6 +40,16 @@ pub(crate) async fn get_list(
 ) -> Result<PagedResult<AnimeInfo>, String> {
     let provider = state.get(provider).ok_or("Provider not found")?;
     provider.get_list(query).await.map_err(|e| e.to_string())
+}
+
+#[command]
+pub(crate) async fn search(
+    state: State<'_, ProviderState>,
+    provider: &str,
+    query: SearchQuery,
+) -> Result<PagedResult<AnimeInfo>, String> {
+    let provider = state.get(provider).ok_or("Provider not found")?;
+    provider.search(query).await.map_err(|e| e.to_string())
 }
 
 #[command]

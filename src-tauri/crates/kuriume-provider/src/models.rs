@@ -26,7 +26,7 @@ pub struct AnimeInfo {
 }
 
 /// Search request parameters.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct SearchQuery {
     /// Search keyword.
     pub keyword: String,

@@ -29,6 +29,7 @@ pub fn run() {
         .manage(StoreState::new())
         .invoke_handler(tauri::generate_handler![
             crate::commands::get_list,
+            crate::commands::search,
             crate::commands::get_detail,
             crate::commands::get_episodes,
             crate::commands::get_characters,

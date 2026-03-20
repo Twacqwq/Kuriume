@@ -1,5 +1,5 @@
 use kuriume_provider::{
-    AnimeProvider, Bangumi, GetEpisodesQuery, GetListQuery, PagedResult, SortBy,
+    AnimeProvider, Bangumi, GetEpisodesQuery, GetListQuery, PagedResult, SearchQuery, SortBy,
 };
 
 #[test]
@@ -139,4 +139,29 @@ async fn get_characters() {
 
     let result = provider.get_characters(&493016.to_string()).await.unwrap();
     assert!(!result.is_empty())
+}
+
+/// Search anime by keyword and verify results.
+#[tokio::test]
+async fn search_basic() {
+    let provider = Bangumi::new();
+    let query = SearchQuery {
+        keyword: "葬送的芙莉莲".to_string(),
+        limit: 5,
+        offset: 0,
+    };
+
+    let result: PagedResult<_> = provider
+        .search(query)
+        .await
+        .expect("search should succeed");
+
+    assert!(result.total > 0, "should find results for this keyword");
+    assert!(!result.data.is_empty(), "data should not be empty");
+    assert!(result.data.len() <= 5, "should respect limit");
+
+    // The top result should be related to the search keyword
+    let first = &result.data[0];
+    assert!(!first.id.is_empty());
+    assert!(!first.title.is_empty());
 }

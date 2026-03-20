@@ -1,7 +1,8 @@
 import { Outlet, createRootRoute, useMatches } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { Sidebar } from "@/components/sidebar";
-import { useEffect } from "react";
+import { SearchPanel } from "@/components/search-panel";
+import { useCallback, useEffect, useState } from "react";
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -9,6 +10,22 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   const matches = useMatches();
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  const openSearch = useCallback(() => setSearchOpen(true), []);
+  const closeSearch = useCallback(() => setSearchOpen(false), []);
+
+  // Cmd+K / Ctrl+K to toggle search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   // Hide sidebar & make main non-scrollable on player pages
   const isPlayerPage = matches.some((m) =>
@@ -24,7 +41,8 @@ function RootComponent() {
 
   return (
     <div className={`flex h-full ${isPlayerPage ? '' : 'bg-background'}`}>
-      {!isPlayerPage && <Sidebar />}
+      {!isPlayerPage && <Sidebar onSearchClick={openSearch} />}
+      <SearchPanel open={searchOpen} onClose={closeSearch} />
       <main
         className={
           isPlayerPage

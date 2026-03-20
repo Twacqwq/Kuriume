@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Link, useMatches } from "@tanstack/react-router";
-import { Clock, Clapperboard, Library, Settings, TrendingUp } from "lucide-react";
+import { Clock, Clapperboard, Library, Search, Settings, TrendingUp } from "lucide-react";
 
 const navItems = [
   { icon: Clapperboard, label: "番剧", to: "/" },
@@ -9,7 +9,11 @@ const navItems = [
   { icon: Clock, label: "历史", to: "/history" },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  onSearchClick?: () => void;
+}
+
+export function Sidebar({ onSearchClick }: SidebarProps) {
   const matches = useMatches();
   const currentPath = matches[matches.length - 1]?.pathname ?? "/";
 
@@ -25,6 +29,18 @@ export function Sidebar() {
         <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary font-bold text-white text-sm shadow-lg shadow-primary/25">
           K
         </div>
+      </div>
+
+      {/* Search */}
+      <div className="flex flex-col items-center px-2">
+        <button
+          type="button"
+          onClick={onSearchClick}
+          className="flex w-full flex-col items-center gap-1 rounded-xl py-2.5 text-muted-foreground transition-colors hover:bg-white/4 hover:text-foreground"
+        >
+          <Search size={20} strokeWidth={1.8} />
+          <span className="text-[10px] leading-none font-medium">搜索</span>
+        </button>
       </div>
 
       {/* Navigation */}
