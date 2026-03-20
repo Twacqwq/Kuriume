@@ -16,7 +16,9 @@
         "title": "kuriume",
         "width": 1280,
         "height": 960,
-        "transparent": true
+        "transparent": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {

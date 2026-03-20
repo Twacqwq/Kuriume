@@ -104,7 +104,9 @@ function SettingsPage() {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-white/6 bg-background/80 px-8 py-4 backdrop-blur-xl">
+      <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-white/6 bg-background/80 px-8 pt-2 pb-4 backdrop-blur-xl"
+           data-tauri-drag-region
+      >
         <button
           type="button"
           onClick={() => router.history.back()}

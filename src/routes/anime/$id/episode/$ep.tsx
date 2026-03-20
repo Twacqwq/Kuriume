@@ -289,7 +289,7 @@ function EpisodePage() {
       {/* ── Header (hidden in theater/fullscreen) ──────────────── */}
       {!expanded && (
         <div
-          className="flex items-center gap-3 border-b border-white/5 bg-background/95 px-5 py-2.5 backdrop-blur-xl"
+          className="flex items-center gap-3 border-b border-white/5 bg-background/95 px-5 pt-10 pb-2.5 backdrop-blur-xl"
           data-tauri-drag-region
         >
           <button

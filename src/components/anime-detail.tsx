@@ -183,7 +183,7 @@ export function AnimeDetail({
 }: AnimeDetailProps) {
   return (
     <TooltipProvider>
-      <div className="min-h-screen">
+      <div className="-mt-8 min-h-screen">
         {/* ============ Hero Section ============ */}
         <section className="relative overflow-hidden">
           {/* Blurred background */}
@@ -211,7 +211,7 @@ export function AnimeDetail({
               <TooltipTrigger asChild>
                 <button
                   onClick={onBack}
-                  className="absolute left-6 top-6 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20"
+                  className="absolute left-6 top-14 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20"
                 >
                   <ArrowLeft size={18} />
                 </button>

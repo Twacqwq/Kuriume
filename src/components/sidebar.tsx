@@ -24,8 +24,11 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
         "border-r border-white/8 bg-sidebar backdrop-blur-xl transition-all duration-300"
       )}
     >
+      {/* macOS traffic light spacer + drag region */}
+      <div className="h-8 shrink-0" data-tauri-drag-region />
+
       {/* Logo */}
-      <div className="flex h-16 items-center justify-center">
+      <div className="flex h-10 items-center justify-center">
         <Link
           to="/"
           className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary font-bold text-white text-sm shadow-lg shadow-primary/25 transition-opacity hover:opacity-80"

@@ -55,7 +55,7 @@ function RootComponent() {
         className={
           isPlayerPage
             ? "flex-1 overflow-hidden"
-            : "flex-1 overflow-y-auto transition-all duration-300 peer-data-collapsed"
+            : "relative flex-1 overflow-y-auto pt-8 transition-all duration-300 peer-data-collapsed"
         }
       >
         <Outlet />

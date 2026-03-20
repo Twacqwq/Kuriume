@@ -87,9 +87,11 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
 
       {/* Gradient overlay for bottom fade */}
       <div className="absolute inset-0 bg-linear-to-t from-background via-transparent to-transparent" />
+      {/* Top gradient for titlebar readability */}
+      <div className="absolute inset-x-0 top-0 h-20 bg-linear-to-b from-black/40 to-transparent" />
 
       {/* Spotlight layout */}
-      <div className="relative flex min-h-120 items-center px-8 py-16 md:px-16 lg:px-24">
+      <div className="relative flex min-h-120 items-center px-8 pt-20 pb-16 md:px-16 lg:px-24">
         {/* Left: text info */}
         <div
           key={`info-${current}`}
