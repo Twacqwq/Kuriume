@@ -82,6 +82,14 @@ mod macos {
         renderer: GpuRenderer,
         view: *mut NSView,
         alive: AtomicBool,
+        /// Prevents multiple render_frame dispatches from piling up
+        /// on the main queue.  Only ONE dispatch is in-flight at a time.
+        render_scheduled: AtomicBool,
+        /// Set by the mpv callback when a new frame is ready.
+        needs_render: AtomicBool,
+        /// When true, render_frame and on_mpv_needs_render skip work.
+        /// Used to freeze GL rendering during fullscreen transitions.
+        rendering_suspended: AtomicBool,
     }
 
     /// A native `NSView` + OpenGL context for mpv GPU rendering.
@@ -205,6 +213,9 @@ mod macos {
                     renderer,
                     view: view_raw,
                     alive: AtomicBool::new(true),
+                    render_scheduled: AtomicBool::new(true),
+                    needs_render: AtomicBool::new(true),
+                    rendering_suspended: AtomicBool::new(false),
                 });
                 let render_loop = Box::into_raw(loop_ctx);
 
@@ -277,15 +288,10 @@ mod macos {
                     let _: () = msg_send![view, setFrame: rect];
                     let _: () = msg_send![view, setAutoresizingMask: 0usize];
 
-                    // Schedule a re-render so the GL content matches the new
-                    // view size. Dispatched async so the view hierarchy fully
-                    // processes the frame change before we render.
+                    // Re-render immediately — we're already on the main thread,
+                    // so a direct call avoids queuing a redundant dispatch.
                     if !ctx.render_loop.is_null() {
-                        dispatch_async_f(
-                            dispatch_get_main_queue(),
-                            ctx.render_loop as *mut c_void,
-                            render_frame,
-                        );
+                        render_frame(ctx.render_loop as *mut c_void);
                     }
                 }
             }
@@ -308,6 +314,44 @@ mod macos {
                     self.render_loop as *mut c_void,
                     render_frame,
                 );
+            }
+        }
+
+        /// Suspend GL rendering (freeze on last frame).
+        /// mpv continues decoding but render_frame becomes a no-op.
+        pub fn suspend_rendering(&self) {
+            if !self.render_loop.is_null() {
+                unsafe {
+                    (*self.render_loop)
+                        .rendering_suspended
+                        .store(true, Ordering::Release);
+                }
+            }
+        }
+
+        /// Resume GL rendering and immediately schedule a frame.
+        pub fn resume_rendering(&self) {
+            if !self.render_loop.is_null() {
+                unsafe {
+                    (*self.render_loop)
+                        .rendering_suspended
+                        .store(false, Ordering::Release);
+                    (*self.render_loop)
+                        .needs_render
+                        .store(true, Ordering::Release);
+                    // Kick a render dispatch so the next frame shows immediately.
+                    if (*self.render_loop)
+                        .render_scheduled
+                        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                        .is_ok()
+                    {
+                        dispatch_async_f(
+                            dispatch_get_main_queue(),
+                            self.render_loop as *mut c_void,
+                            render_frame,
+                        );
+                    }
+                }
             }
         }
 
@@ -400,11 +444,25 @@ mod macos {
         }
     }
 
-    /// mpv update callback — dispatches render to the main thread.
+    /// mpv update callback — coalesces render dispatches to the main thread.
     /// Called from mpv's internal thread whenever a new frame is ready.
     unsafe extern "C" fn on_mpv_needs_render(ctx: *mut c_void) {
         let loop_ctx = unsafe { &*(ctx as *const RenderLoopCtx) };
-        if loop_ctx.alive.load(Ordering::Acquire) {
+        if !loop_ctx.alive.load(Ordering::Acquire) {
+            return;
+        }
+        // Mark that a render is needed.
+        loop_ctx.needs_render.store(true, Ordering::Release);
+        // Skip dispatch if rendering is suspended (fullscreen transition).
+        if loop_ctx.rendering_suspended.load(Ordering::Acquire) {
+            return;
+        }
+        // Only dispatch if no render_frame is already queued (CAS false→true).
+        if loop_ctx
+            .render_scheduled
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
             unsafe {
                 dispatch_async_f(
                     dispatch_get_main_queue(),
@@ -421,6 +479,15 @@ mod macos {
         if !ctx.alive.load(Ordering::Acquire) {
             return;
         }
+
+        // If rendering is suspended, clear the scheduled flag and bail.
+        if ctx.rendering_suspended.load(Ordering::Acquire) {
+            ctx.render_scheduled.store(false, Ordering::Release);
+            return;
+        }
+
+        // Clear the "needs render" flag before rendering.
+        ctx.needs_render.store(false, Ordering::Release);
 
         unsafe {
             CGLLockContext(ctx.cgl_ctx);
@@ -441,6 +508,26 @@ mod macos {
 
             CGLFlushDrawable(ctx.cgl_ctx);
             CGLUnlockContext(ctx.cgl_ctx);
+        }
+
+        // Allow new dispatches from on_mpv_needs_render.
+        ctx.render_scheduled.store(false, Ordering::Release);
+
+        // If mpv flagged another frame while we were rendering, reschedule.
+        if ctx.needs_render.load(Ordering::Acquire) {
+            if ctx
+                .render_scheduled
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                unsafe {
+                    dispatch_async_f(
+                        dispatch_get_main_queue(),
+                        ctx_ptr,
+                        render_frame,
+                    );
+                }
+            }
         }
     }
 }

@@ -66,4 +66,8 @@ export const playerApi = {
       height,
       windowHeight: window.innerHeight,
     }),
+  /** Freeze GL rendering (e.g. during fullscreen transitions). */
+  suspendRender: () => invoke<void>("player_suspend_render"),
+  /** Resume GL rendering after a transition. */
+  resumeRender: () => invoke<void>("player_resume_render"),
 };

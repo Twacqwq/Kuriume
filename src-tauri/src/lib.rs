@@ -56,6 +56,8 @@ pub fn run() {
             crate::player_commands::player_get_hwdec,
             crate::player_commands::player_set_buffer_size,
             crate::player_commands::player_set_viewport,
+            crate::player_commands::player_suspend_render,
+            crate::player_commands::player_resume_render,
             crate::player_commands::player_destroy,
             crate::torrent_commands::torrent_add,
             crate::torrent_commands::torrent_list_files,

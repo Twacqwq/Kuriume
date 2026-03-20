@@ -3,6 +3,7 @@ import type { HistoryContext } from "@/components/torrent-player";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { historyApi } from "@/lib/store";
+import { playerApi } from "@/lib/player";
 import { useMikanTorrents } from "@/lib/use-mikan-torrents";
 import type { CacheContext } from "@/lib/use-torrent-stream";
 import { cn } from "@/lib/utils";
@@ -36,7 +37,6 @@ function EpisodePage() {
   const router = useRouter();
   const epNum = Number(ep);
 
-  const [isTheater, setIsTheater] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Sync fullscreen state with system on mount (e.g. macOS green button)
@@ -111,24 +111,18 @@ function EpisodePage() {
   const navPrev = hasPrev ? () => navigateToEp(epNum - 1) : undefined;
   const navNext = hasNext ? () => navigateToEp(epNum + 1) : undefined;
 
-  const toggleTheater = useCallback(() => {
-    setIsTheater((v) => !v);
-  }, []);
-
   const toggleFullscreen = useCallback(async () => {
     const win = getCurrentWindow();
     const fs = await win.isFullscreen();
-    if (fs) {
-      // Already fullscreen — exit
-      await win.setFullscreen(false);
-      setIsFullscreen(false);
-      setIsTheater(false);
-    } else {
-      // Enter fullscreen + theater
-      await win.setFullscreen(true);
-      setIsFullscreen(true);
-      setIsTheater(true);
-    }
+    // Freeze GL rendering during the macOS fullscreen animation
+    // to prevent CGL lock contention and main-thread jank.
+    await playerApi.suspendRender().catch(() => {});
+    await win.setFullscreen(!fs);
+    setIsFullscreen(!fs);
+    // Resume after animation settles (~600ms on macOS).
+    setTimeout(async () => {
+      await playerApi.resumeRender().catch(() => {});
+    }, 600);
   }, []);
 
   // ── State 1: Loading ──────────────────────────────────────────
@@ -294,12 +288,10 @@ function EpisodePage() {
     [id, epNum, animeTitle, title, animeInfo?.cover, groupId, resolution, searchSubtitle],
   );
 
-  const expanded = isTheater || isFullscreen;
-
   return (
     <div className="flex h-full w-full flex-col">
-      {/* ── Header (hidden in theater/fullscreen) ──────────────── */}
-      {!expanded && (
+      {/* ── Header (hidden in fullscreen) ─────────────────────── */}
+      {!isFullscreen && (
         <div
           className="flex items-center gap-3 border-b border-white/5 bg-background/95 px-5 pt-10 pb-2.5 backdrop-blur-xl"
           data-tauri-drag-region
@@ -337,15 +329,13 @@ function EpisodePage() {
             onBack={navBack}
             onPrev={navPrev}
             onNext={navNext}
-            isTheater={expanded}
-            onToggleTheater={toggleTheater}
             onToggleFullscreen={toggleFullscreen}
             isFullscreen={isFullscreen}
           />
         </div>
 
-        {/* Episode sidebar (hidden in theater/fullscreen) */}
-        {!expanded && (
+        {/* Episode sidebar (hidden in fullscreen) */}
+        {!isFullscreen && (
           <aside className="flex w-80 shrink-0 flex-col border-l border-white/5 bg-background">
             {/* Source info */}
             <div className="space-y-2 border-b border-white/5 px-4 py-3">

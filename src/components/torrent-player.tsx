@@ -38,9 +38,7 @@ import {
   HardDrive,
   Loader2,
   Maximize,
-  Maximize2,
   Minimize,
-  Minimize2,
   Pause,
   Play,
   SkipBack,
@@ -91,10 +89,6 @@ export interface TorrentPlayerProps {
   onBack?: () => void;
   onPrev?: () => void;
   onNext?: () => void;
-  /** Theater mode (player fills window). */
-  isTheater?: boolean;
-  /** Toggle theater mode. */
-  onToggleTheater?: () => void;
   /** Toggle system fullscreen. */
   onToggleFullscreen?: () => void;
   /** Whether system fullscreen is active. */
@@ -113,8 +107,6 @@ export function TorrentPlayer({
   onBack,
   onPrev,
   onNext,
-  isTheater = false,
-  onToggleTheater,
   onToggleFullscreen,
   isFullscreen = false,
   historyContext,
@@ -164,29 +156,49 @@ export function TorrentPlayer({
 
   // ── Sync native GL view position with container ────────────────
 
+  const syncViewport = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      playerApi.setViewport(rect.left, rect.top, rect.width, rect.height).catch(() => {});
+    }
+  }, []);
+
+  // Continuous sync via ResizeObserver + window resize
   useEffect(() => {
     if (!player.state.ready) return;
     const el = containerRef.current;
     if (!el) return;
 
-    const sync = () => {
-      const rect = el.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        playerApi.setViewport(rect.left, rect.top, rect.width, rect.height).catch(() => {});
-      }
+    let timerId: ReturnType<typeof setTimeout> | undefined;
+    const debouncedSync = () => {
+      clearTimeout(timerId);
+      timerId = setTimeout(syncViewport, 30);
     };
 
-    sync();
-    const ro = new ResizeObserver(sync);
+    syncViewport();
+    const ro = new ResizeObserver(debouncedSync);
     ro.observe(el);
-    // Also sync on window resize (layout origin may shift)
-    window.addEventListener("resize", sync);
+    window.addEventListener("resize", debouncedSync);
 
     return () => {
+      clearTimeout(timerId);
       ro.disconnect();
-      window.removeEventListener("resize", sync);
+      window.removeEventListener("resize", debouncedSync);
     };
-  }, [player.state.ready]);
+  }, [player.state.ready, syncViewport]);
+
+  // Re-sync when fullscreen changes — macOS animation takes ~500ms
+  // and RAFs may be suspended during the space transition.
+  useEffect(() => {
+    if (!player.state.ready) return;
+    syncViewport();
+    const t1 = setTimeout(syncViewport, 100);
+    const t2 = setTimeout(syncViewport, 350);
+    const t3 = setTimeout(syncViewport, 600);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [isFullscreen, player.state.ready, syncViewport]);
 
   // ── Play the streaming URL via mpv when available ──────────────
 
@@ -360,14 +372,9 @@ export function TorrentPlayer({
           e.preventDefault();
           onToggleFullscreen?.();
           break;
-        case "t":
-          e.preventDefault();
-          onToggleTheater?.();
-          break;
         case "Escape":
           e.preventDefault();
           if (isFullscreen) onToggleFullscreen?.();
-          else if (isTheater) onToggleTheater?.();
           break;
       }
     }
@@ -382,9 +389,7 @@ export function TorrentPlayer({
     position,
     volume,
     resetHideTimer,
-    onToggleTheater,
     onToggleFullscreen,
-    isTheater,
     isFullscreen,
   ]);
 
@@ -427,8 +432,8 @@ export function TorrentPlayer({
         {/* mpv renders natively below this transparent webview layer */}
         <div className="absolute inset-0 z-0" />
 
-        {/* ── Top bar (theater/fullscreen only) ───────────────── */}
-        {(isTheater || isFullscreen) && (
+        {/* ── Top bar (fullscreen only) ───────────────────── */}
+        {isFullscreen && (
         <div
           className={cn(
             "pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-4 px-5 pt-4 pb-12 transition-opacity duration-300",
@@ -440,7 +445,6 @@ export function TorrentPlayer({
             type="button"
             onClick={() => {
               if (isFullscreen) onToggleFullscreen?.();
-              else if (isTheater) onToggleTheater?.();
               else onBack?.();
             }}
             className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20"
@@ -599,26 +603,6 @@ export function TorrentPlayer({
                   {isMuted ? "取消静音" : "静音"}
                 </TooltipContent>
               </Tooltip>
-
-              {/* Theater mode */}
-              {onToggleTheater && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-white/70 hover:bg-white/10 hover:text-white"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleTheater();
-                      }}
-                    >
-                      {isTheater ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{isTheater ? "退出端内全屏" : "端内全屏"}</TooltipContent>
-                </Tooltip>
-              )}
 
               {/* System fullscreen */}
               {onToggleFullscreen && (

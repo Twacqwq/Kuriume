@@ -359,6 +359,24 @@ pub(crate) async fn player_set_viewport(
     Ok(())
 }
 
+/// Suspend GL rendering (freeze on last frame during fullscreen transitions).
+#[command]
+pub(crate) async fn player_suspend_render(state: State<'_, PlayerState>) -> Result<(), String> {
+    let guard = state.inner.lock().await;
+    let active = guard.as_ref().ok_or("Player not initialized")?;
+    active.native_view.suspend_rendering();
+    Ok(())
+}
+
+/// Resume GL rendering after a fullscreen transition.
+#[command]
+pub(crate) async fn player_resume_render(state: State<'_, PlayerState>) -> Result<(), String> {
+    let guard = state.inner.lock().await;
+    let active = guard.as_ref().ok_or("Player not initialized")?;
+    active.native_view.resume_rendering();
+    Ok(())
+}
+
 /// Destroy the player and free all resources.
 #[command]
 pub(crate) async fn player_destroy(state: State<'_, PlayerState>) -> Result<(), String> {
