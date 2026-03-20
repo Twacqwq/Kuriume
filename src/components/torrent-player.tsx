@@ -28,6 +28,7 @@ import {
 import { formatBytes, formatSpeed } from "@/lib/torrent";
 import { usePlayer } from "@/lib/use-player";
 import { playerApi } from "@/lib/player";
+import { historyApi } from "@/lib/store";
 import { useTorrentStream, type TorrentStreamPhase, type CacheContext } from "@/lib/use-torrent-stream";
 import { cn } from "@/lib/utils";
 import {
@@ -65,6 +66,18 @@ function formatTime(seconds: number): string {
 
 // ── Types ────────────────────────────────────────────────────────
 
+/** Context for saving watch history. */
+export interface HistoryContext {
+  bgmId: string;
+  episode: number;
+  animeTitle: string;
+  episodeTitle: string;
+  cover: string | null;
+  groupId: string | null;
+  resolution: string | null;
+  subtitle: string | null;
+}
+
 export interface TorrentPlayerProps {
   /** Magnet URI or .torrent URL. */
   source: string;
@@ -86,6 +99,10 @@ export interface TorrentPlayerProps {
   onToggleFullscreen?: () => void;
   /** Whether system fullscreen is active. */
   isFullscreen?: boolean;
+  /** Context for saving watch history (progress tracking). */
+  historyContext?: HistoryContext;
+  /** Start playback from this position (seconds) for resume. */
+  startTime?: number;
 }
 
 export function TorrentPlayer({
@@ -100,6 +117,8 @@ export function TorrentPlayer({
   onToggleTheater,
   onToggleFullscreen,
   isFullscreen = false,
+  historyContext,
+  startTime,
 }: TorrentPlayerProps) {
   const torrent = useTorrentStream();
 
@@ -165,6 +184,60 @@ export function TorrentPlayer({
     player.onEndedRef.current = onNext ?? null;
     return () => { player.onEndedRef.current = null; };
   }, [onNext, player.onEndedRef]);
+
+  // ── Resume playback from startTime ─────────────────────────────
+
+  const hasResumed = useRef(false);
+  useEffect(() => {
+    if (!loaded || hasResumed.current || !startTime || startTime <= 0) return;
+    hasResumed.current = true;
+    player.seek(startTime);
+  }, [loaded, startTime, player]);
+
+  // ── Auto-save watch history (every 10s + on unmount) ───────────
+
+  const historyRef = useRef(historyContext);
+  historyRef.current = historyContext;
+  const posRef = useRef(position);
+  posRef.current = position;
+  const durRef = useRef(duration);
+  durRef.current = duration;
+
+  const saveHistory = useCallback(() => {
+    const ctx = historyRef.current;
+    const dur = durRef.current;
+    const pos = posRef.current;
+    if (!ctx || dur <= 0) return;
+    historyApi.upsert({
+      bgmId: ctx.bgmId,
+      episode: ctx.episode,
+      animeTitle: ctx.animeTitle,
+      episodeTitle: ctx.episodeTitle,
+      cover: ctx.cover,
+      position: pos,
+      duration: dur,
+      groupId: ctx.groupId,
+      resolution: ctx.resolution,
+      subtitle: ctx.subtitle,
+    }).catch(console.error);
+  }, []);
+
+  // Save periodically while playing + on unmount
+  useEffect(() => {
+    if (!historyContext || !loaded) return;
+    const id = setInterval(saveHistory, 10_000);
+    return () => {
+      clearInterval(id);
+      saveHistory();
+    };
+  }, [historyContext, loaded, saveHistory]);
+
+  // Also save whenever paused (user interaction) and we have valid data
+  useEffect(() => {
+    if (paused && loaded && duration > 0 && position > 0 && historyContext) {
+      saveHistory();
+    }
+  }, [paused, loaded, duration, position, historyContext, saveHistory]);
 
   // ── Auto-hide controls ─────────────────────────────────────────
 

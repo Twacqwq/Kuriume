@@ -127,3 +127,45 @@ export const watchlistApi = {
   list: (status?: WatchStatus) =>
     invoke<WatchlistEntry[]>("watchlist_list", { status: status ?? null }),
 };
+
+// ── Watch History types ─────────────────────────────────────────
+
+export interface WatchHistoryEntry {
+  id: number;
+  bgm_id: string;
+  episode: number;
+  anime_title: string;
+  episode_title: string;
+  cover: string | null;
+  position: number;
+  duration: number;
+  group_id: string | null;
+  resolution: string | null;
+  subtitle: string | null;
+  watched_at: string;
+}
+
+// ── Watch History API ───────────────────────────────────────────
+
+export const historyApi = {
+  upsert: (params: {
+    bgmId: string;
+    episode: number;
+    animeTitle: string;
+    episodeTitle: string;
+    cover: string | null;
+    position: number;
+    duration: number;
+    groupId: string | null;
+    resolution: string | null;
+    subtitle: string | null;
+  }) => invoke<void>("history_upsert", params),
+
+  list: (limit: number, offset: number) =>
+    invoke<WatchHistoryEntry[]>("history_list", { limit, offset }),
+
+  remove: (bgmId: string, episode: number) =>
+    invoke<void>("history_remove", { bgmId, episode }),
+
+  clear: () => invoke<void>("history_clear"),
+};

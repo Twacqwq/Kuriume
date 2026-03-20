@@ -1,6 +1,8 @@
 import { TorrentPlayer } from "@/components/torrent-player";
+import type { HistoryContext } from "@/components/torrent-player";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { historyApi } from "@/lib/store";
 import { useMikanTorrents } from "@/lib/use-mikan-torrents";
 import type { CacheContext } from "@/lib/use-torrent-stream";
 import { cn } from "@/lib/utils";
@@ -23,13 +25,14 @@ export const Route = createFileRoute("/anime/$id/episode/$ep")({
     groupId: (search.groupId as string) || undefined,
     resolution: (search.resolution as string) || undefined,
     subtitle: (search.subtitle as string) || undefined,
+    t: Number(search.t) || undefined,
   }),
   component: EpisodePage,
 });
 
 function EpisodePage() {
   const { id, ep } = Route.useParams();
-  const { groupId, resolution, subtitle: searchSubtitle } = Route.useSearch();
+  const { groupId, resolution, subtitle: searchSubtitle, t: startTime } = Route.useSearch();
   const router = useRouter();
   const epNum = Number(ep);
 
@@ -47,6 +50,24 @@ function EpisodePage() {
     () => episodes.find((e) => e.ep === epNum),
     [episodes, epNum],
   );
+
+  // ── Auto-resume: query saved position if no explicit `t` param ─
+
+  const { data: historyEntries } = useQuery({
+    queryKey: ["history-entry", id, epNum],
+    queryFn: () => historyApi.list(200, 0),
+    select: (entries) => entries.find((e) => e.bgm_id === id && e.episode === epNum),
+    staleTime: Infinity,
+  });
+
+  const effectiveStartTime = useMemo(() => {
+    if (startTime !== undefined) return startTime;
+    if (!historyEntries) return undefined;
+    const { position, duration } = historyEntries;
+    // Don't resume if nearly finished (>95%) or too early (<5s)
+    if (position <= 5 || (duration > 0 && position / duration > 0.95)) return undefined;
+    return position;
+  }, [startTime, historyEntries]);
 
   const hasPrev = epNum > 1;
   const hasNext = episodes.some((e) => e.ep === epNum + 1);
@@ -69,14 +90,14 @@ function EpisodePage() {
   );
   const torrentSource = mikan.getTorrentSource(epNum);
 
-  const navBack = () => router.navigate({ to: "/anime/$id", params: { id } });
+  const navBack = () => router.history.back();
 
   const navigateToEp = useCallback(
     (targetEp: number) => {
       router.navigate({
         to: "/anime/$id/episode/$ep",
         params: { id, ep: String(targetEp) },
-        search: { groupId, resolution, subtitle: searchSubtitle },
+        search: { groupId, resolution, subtitle: searchSubtitle, t: undefined },
       });
     },
     [router, id, groupId, resolution, searchSubtitle],
@@ -247,6 +268,20 @@ function EpisodePage() {
     torrentSource,
   };
 
+  const historyContext = useMemo<HistoryContext>(
+    () => ({
+      bgmId: id,
+      episode: epNum,
+      animeTitle: animeTitle ?? "",
+      episodeTitle: title,
+      cover: animeInfo?.cover ?? null,
+      groupId: groupId ?? null,
+      resolution: resolution ?? null,
+      subtitle: searchSubtitle ?? null,
+    }),
+    [id, epNum, animeTitle, title, animeInfo?.cover, groupId, resolution, searchSubtitle],
+  );
+
   const expanded = isTheater || isFullscreen;
 
   return (
@@ -285,6 +320,8 @@ function EpisodePage() {
             title={title}
             subtitle={`${subtitle} · ${mikan.selectedGroupName ?? ""}`}
             cacheContext={cacheContext}
+            historyContext={historyContext}
+            startTime={effectiveStartTime}
             onBack={navBack}
             onPrev={navPrev}
             onNext={navNext}

@@ -81,6 +81,34 @@ pub struct WatchlistEntry {
     pub updated_at: String,
 }
 
+/// A watch history entry — records playback progress for resume.
+#[derive(Debug, Clone, Serialize)]
+pub struct WatchHistoryEntry {
+    pub id: i64,
+    /// Bangumi subject ID.
+    pub bgm_id: String,
+    /// Episode number.
+    pub episode: i32,
+    /// Anime title (for display).
+    pub anime_title: String,
+    /// Episode title (for display).
+    pub episode_title: String,
+    /// Cover image URL.
+    pub cover: Option<String>,
+    /// Playback position in seconds.
+    pub position: f64,
+    /// Total duration in seconds.
+    pub duration: f64,
+    /// Subtitle group ID (for resume with same source).
+    pub group_id: Option<String>,
+    /// Resolution preference (for resume).
+    pub resolution: Option<String>,
+    /// Subtitle preference (for resume).
+    pub subtitle: Option<String>,
+    /// ISO-8601 timestamp of last watch.
+    pub watched_at: String,
+}
+
 /// A cached media file entry.
 #[derive(Debug, Clone, Serialize)]
 pub struct MediaEntry {
@@ -172,6 +200,26 @@ impl Store {
                 added_at        TEXT    NOT NULL DEFAULT (datetime('now')),
                 updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS watch_history (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                bgm_id          TEXT    NOT NULL,
+                episode         INTEGER NOT NULL,
+                anime_title     TEXT    NOT NULL,
+                episode_title   TEXT    NOT NULL DEFAULT '',
+                cover           TEXT,
+                position        REAL    NOT NULL DEFAULT 0,
+                duration        REAL    NOT NULL DEFAULT 0,
+                group_id        TEXT,
+                resolution      TEXT,
+                subtitle        TEXT,
+                watched_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+
+                UNIQUE(bgm_id, episode)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_history_watched
+                ON watch_history(watched_at DESC);
             ",
         )?;
 
@@ -483,6 +531,89 @@ impl Store {
             status: row.get(5)?,
             added_at: row.get(6)?,
             updated_at: row.get(7)?,
+        })
+    }
+
+    // ── Watch History ─────────────────────────────────────────────
+
+    /// Upsert a watch history entry (insert or update progress).
+    pub fn history_upsert(
+        &self,
+        bgm_id: &str,
+        episode: i32,
+        anime_title: &str,
+        episode_title: &str,
+        cover: Option<&str>,
+        position: f64,
+        duration: f64,
+        group_id: Option<&str>,
+        resolution: Option<&str>,
+        subtitle: Option<&str>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO watch_history(bgm_id, episode, anime_title, episode_title, cover,
+                                       position, duration, group_id, resolution, subtitle)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(bgm_id, episode) DO UPDATE SET
+                anime_title   = excluded.anime_title,
+                episode_title = excluded.episode_title,
+                cover         = excluded.cover,
+                position      = excluded.position,
+                duration      = excluded.duration,
+                group_id      = excluded.group_id,
+                resolution    = excluded.resolution,
+                subtitle      = excluded.subtitle,
+                watched_at    = datetime('now')",
+            params![bgm_id, episode, anime_title, episode_title, cover,
+                    position, duration, group_id, resolution, subtitle],
+        )?;
+        Ok(())
+    }
+
+    /// List watch history entries, most recent first.
+    pub fn history_list(&self, limit: i32, offset: i32) -> Result<Vec<WatchHistoryEntry>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, bgm_id, episode, anime_title, episode_title, cover,
+                    position, duration, group_id, resolution, subtitle, watched_at
+             FROM watch_history
+             ORDER BY watched_at DESC
+             LIMIT ?1 OFFSET ?2",
+        )?;
+        let entries = stmt
+            .query_map(params![limit, offset], Self::row_to_history)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(entries)
+    }
+
+    /// Remove a single history entry.
+    pub fn history_remove(&self, bgm_id: &str, episode: i32) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM watch_history WHERE bgm_id = ?1 AND episode = ?2",
+            params![bgm_id, episode],
+        )?;
+        Ok(())
+    }
+
+    /// Clear all history.
+    pub fn history_clear(&self) -> Result<()> {
+        self.conn.execute("DELETE FROM watch_history", [])?;
+        Ok(())
+    }
+
+    fn row_to_history(row: &rusqlite::Row) -> rusqlite::Result<WatchHistoryEntry> {
+        Ok(WatchHistoryEntry {
+            id: row.get(0)?,
+            bgm_id: row.get(1)?,
+            episode: row.get(2)?,
+            anime_title: row.get(3)?,
+            episode_title: row.get(4)?,
+            cover: row.get(5)?,
+            position: row.get(6)?,
+            duration: row.get(7)?,
+            group_id: row.get(8)?,
+            resolution: row.get(9)?,
+            subtitle: row.get(10)?,
+            watched_at: row.get(11)?,
         })
     }
 

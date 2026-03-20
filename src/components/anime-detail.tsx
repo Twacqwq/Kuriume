@@ -306,7 +306,7 @@ export function AnimeDetail({
                       data.episodes.find((e) => (!e.progress || e.progress < 100) && hasAired(e.airdate))?.ep ?? 1
                     ),
                   }}
-                  search={{ groupId: selectedGroupId ?? undefined, resolution: preferredResolution ?? undefined, subtitle: preferredSubtitle ?? undefined }}
+                  search={{ groupId: selectedGroupId ?? undefined, resolution: preferredResolution ?? undefined, subtitle: preferredSubtitle ?? undefined, t: undefined }}
                 >
                   <Button size="lg" className="gap-2 rounded-full px-8 shadow-lg shadow-primary/25">
                     <Play size={18} fill="currentColor" />
@@ -698,7 +698,7 @@ function EpisodeList({
                   key={ep.id}
                   to="/anime/$id/episode/$ep"
                   params={{ id: String(animeId), ep: String(ep.ep) }}
-                  search={{ groupId: selectedGroupId ?? undefined, resolution: activeRes ?? undefined, subtitle: activeSub ?? undefined }}
+                  search={{ groupId: selectedGroupId ?? undefined, resolution: activeRes ?? undefined, subtitle: activeSub ?? undefined, t: undefined }}
                   className="group flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-white/2"
                 >
                   <span className={cn(
@@ -742,7 +742,7 @@ function EpisodeList({
                   key={ep.id}
                   to="/anime/$id/episode/$ep"
                   params={{ id: String(animeId), ep: String(ep.ep) }}
-                  search={{ groupId: fallback.id, resolution: undefined, subtitle: undefined }}
+                  search={{ groupId: fallback.id, resolution: undefined, subtitle: undefined, t: undefined }}
                   className="group flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-white/2"
                 >
                   <span className="w-8 shrink-0 text-center text-sm font-semibold tabular-nums text-foreground/50">
@@ -828,7 +828,7 @@ function EpisodeList({
                     <Link
                       to="/anime/$id/episode/$ep"
                       params={{ id: String(animeId), ep: String(ep.ep) }}
-                      search={{ groupId: selectedGroupId ?? undefined, resolution: activeRes ?? undefined, subtitle: activeSub ?? undefined }}
+                      search={{ groupId: selectedGroupId ?? undefined, resolution: activeRes ?? undefined, subtitle: activeSub ?? undefined, t: undefined }}
                       className={cn(
                         "relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums transition-all",
                         watched
@@ -856,7 +856,7 @@ function EpisodeList({
                     <Link
                       to="/anime/$id/episode/$ep"
                       params={{ id: String(animeId), ep: String(ep.ep) }}
-                      search={{ groupId: fallback.id, resolution: undefined, subtitle: undefined }}
+                      search={{ groupId: fallback.id, resolution: undefined, subtitle: undefined, t: undefined }}
                       className="relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums bg-card/40 text-foreground/50 ring-1 ring-dashed ring-white/10 transition-all hover:bg-card/60 hover:text-primary"
                     >
                       {ep.ep}

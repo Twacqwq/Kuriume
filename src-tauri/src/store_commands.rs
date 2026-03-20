@@ -1,4 +1,4 @@
-use kuriume_store::{episode_path, MediaEntry, Settings, Store, WatchStatus, WatchlistEntry};
+use kuriume_store::{episode_path, MediaEntry, Settings, Store, WatchHistoryEntry, WatchStatus, WatchlistEntry};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{command, AppHandle, Manager, State};
@@ -444,5 +444,66 @@ pub(crate) fn watchlist_list(
 ) -> Result<Vec<WatchlistEntry>, String> {
     state.with_store(&app, |store| {
         store.watchlist_list(status).map_err(|e| e.to_string())
+    })
+}
+
+// ── Watch History commands ───────────────────────────────────────
+
+#[command]
+pub(crate) fn history_upsert(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    bgm_id: &str,
+    episode: i32,
+    anime_title: &str,
+    episode_title: &str,
+    cover: Option<&str>,
+    position: f64,
+    duration: f64,
+    group_id: Option<&str>,
+    resolution: Option<&str>,
+    subtitle: Option<&str>,
+) -> Result<(), String> {
+    state.with_store(&app, |store| {
+        store
+            .history_upsert(
+                bgm_id, episode, anime_title, episode_title, cover,
+                position, duration, group_id, resolution, subtitle,
+            )
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[command]
+pub(crate) fn history_list(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    limit: i32,
+    offset: i32,
+) -> Result<Vec<WatchHistoryEntry>, String> {
+    state.with_store(&app, |store| {
+        store.history_list(limit, offset).map_err(|e| e.to_string())
+    })
+}
+
+#[command]
+pub(crate) fn history_remove(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    bgm_id: &str,
+    episode: i32,
+) -> Result<(), String> {
+    state.with_store(&app, |store| {
+        store.history_remove(bgm_id, episode).map_err(|e| e.to_string())
+    })
+}
+
+#[command]
+pub(crate) fn history_clear(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    state.with_store(&app, |store| {
+        store.history_clear().map_err(|e| e.to_string())
     })
 }
