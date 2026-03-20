@@ -6,6 +6,7 @@ export interface AnimeInfo {
   score: number | null;
   year: number | null;
   total_episodes: number;
+  air_date: string | null;
   genres: string[];
   description: string | null;
 }

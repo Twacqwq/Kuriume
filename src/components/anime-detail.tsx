@@ -48,7 +48,7 @@ export interface AnimeDetailData {
   score: number;
   ratingCount: number;
   year: number;
-  status: "连载中" | "已完结";
+  status: "连载中" | "已完结" | "未播出";
   totalEpisodes: number;
   currentEpisodes: number;
   genre: string[];
@@ -251,6 +251,8 @@ export function AnimeDetail({
                 <Badge variant="outline" className="border-white/15 text-white/70">
                   {data.status === "连载中" ? (
                     <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+                  ) : data.status === "未播出" ? (
+                    <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-yellow-400" />
                   ) : (
                     <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-blue-400" />
                   )}

@@ -193,6 +193,7 @@ impl From<BangumiSubject> for AnimeInfo {
             score: value.rating.score,
             year,
             total_episodes,
+            air_date: value.date,
             genres: value.meta_tags.unwrap(),
             description: value.summary,
         }

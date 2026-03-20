@@ -17,6 +17,8 @@ pub struct AnimeInfo {
     pub year: Option<u16>,
     /// Total number of episodes.
     pub total_episodes: u32,
+    /// Premiere date (e.g. "2024-01-07").
+    pub air_date: Option<String>,
     /// Genre tags.
     pub genres: Vec<String>,
     /// Synopsis / description.
