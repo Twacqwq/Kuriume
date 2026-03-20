@@ -54,6 +54,9 @@ export const playerApi = {
   setHwdec: (mode: string) => invoke<void>("player_set_hwdec", { mode }),
   /** Get current hardware decoding mode. */
   getHwdec: () => invoke<string>("player_get_hwdec"),
+  /** Set demuxer forward buffer size in MiB. */
+  setBufferSize: (sizeMib: number) =>
+    invoke<void>("player_set_buffer_size", { sizeMib }),
   /** Reposition the native GL view to match a CSS rect (top-left origin). */
   setViewport: (x: number, y: number, width: number, height: number) =>
     invoke<void>("player_set_viewport", {

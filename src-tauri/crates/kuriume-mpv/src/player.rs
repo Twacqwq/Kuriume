@@ -96,6 +96,12 @@ impl MpvPlayer {
             .unwrap_or_else(|_| "no".into())
     }
 
+    /// Set the demuxer forward buffer size at runtime (in bytes).
+    pub fn set_demuxer_max_bytes(&self, bytes: i64) -> Result<()> {
+        self.mpv.set_property("demuxer-max-bytes", bytes)?;
+        Ok(())
+    }
+
     // ── Playback control ─────────────────────────────────────────
 
     /// Load and play a media URL or file path.

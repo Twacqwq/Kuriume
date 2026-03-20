@@ -326,6 +326,15 @@ pub(crate) async fn player_get_hwdec(state: State<'_, PlayerState>) -> Result<St
     Ok(active.player.hwdec())
 }
 
+/// Set demuxer forward buffer size in MiB.
+#[command]
+pub(crate) async fn player_set_buffer_size(
+    state: State<'_, PlayerState>,
+    size_mib: i64,
+) -> Result<(), String> {
+    with_player(&state, |p| p.set_demuxer_max_bytes(size_mib * 1024 * 1024)).await
+}
+
 /// Set the viewport (position and size) of the player's native GL view.
 ///
 /// Coordinates are in CSS pixels, origin at top-left of the window.

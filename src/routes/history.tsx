@@ -161,8 +161,8 @@ function HistoryCard({
   return (
     <div
       className={cn(
-        "group relative flex items-center gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-3 transition-colors",
-        "hover:border-white/10 hover:bg-white/[0.04]",
+        "group relative flex items-center gap-4 rounded-xl border border-white/5 bg-white/2 p-3 transition-colors",
+        "hover:border-white/10 hover:bg-white/4",
       )}
     >
       {/* Cover thumbnail */}
@@ -210,7 +210,7 @@ function HistoryCard({
           <button
             type="button"
             onClick={onRemove}
-            className="shrink-0 rounded-md p-1 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50 hover:!text-destructive"
+            className="shrink-0 rounded-md p-1 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50 hover:text-destructive!"
           >
             <X size={14} />
           </button>
@@ -220,7 +220,7 @@ function HistoryCard({
         <div className="mt-2 flex items-center gap-2">
           <Progress
             value={progress}
-            className="h-1 flex-1 bg-white/[0.06]"
+            className="h-1 flex-1 bg-white/6"
           />
           <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60">
             {isFinished ? "已看完" : `看到 ${formatTime(entry.position)}`}

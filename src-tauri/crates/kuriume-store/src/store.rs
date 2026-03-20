@@ -26,10 +26,19 @@ type Result<T> = std::result::Result<T, StoreError>;
 #[derive(Debug, Clone, Serialize)]
 pub struct Settings {
     /// Root directory for cached media files.
-    /// Defaults to `{download_dir}/Kuriume` on each platform.
     pub cache_dir: String,
     /// Whether caching is enabled at all.
     pub cache_enabled: bool,
+    /// Hardware decoding mode: "auto" or "no".
+    pub hwdec: String,
+    /// Default volume (0–100).
+    pub default_volume: i64,
+    /// Default playback speed multiplier (e.g. 1.0, 1.5).
+    pub default_speed: f64,
+    /// Demuxer max buffer size in MiB (e.g. 50, 150, 300).
+    pub buffer_size: i64,
+    /// Whether to auto-play next episode.
+    pub auto_next: bool,
 }
 
 /// Watchlist status.
@@ -276,10 +285,34 @@ impl Store {
             .get_setting("cache_enabled")?
             .map(|v| v == "true")
             .unwrap_or(true);
+        let hwdec = self
+            .get_setting("hwdec")?
+            .unwrap_or_else(|| "auto".to_string());
+        let default_volume = self
+            .get_setting("default_volume")?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(100);
+        let default_speed = self
+            .get_setting("default_speed")?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1.0);
+        let buffer_size = self
+            .get_setting("buffer_size")?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(150);
+        let auto_next = self
+            .get_setting("auto_next")?
+            .map(|v| v == "true")
+            .unwrap_or(true);
 
         Ok(Settings {
             cache_dir,
             cache_enabled,
+            hwdec,
+            default_volume,
+            default_speed,
+            buffer_size,
+            auto_next,
         })
     }
 
@@ -289,6 +322,26 @@ impl Store {
 
     pub fn set_cache_enabled(&self, enabled: bool) -> Result<()> {
         self.set_setting("cache_enabled", if enabled { "true" } else { "false" })
+    }
+
+    pub fn set_hwdec(&self, mode: &str) -> Result<()> {
+        self.set_setting("hwdec", mode)
+    }
+
+    pub fn set_default_volume(&self, volume: i64) -> Result<()> {
+        self.set_setting("default_volume", &volume.to_string())
+    }
+
+    pub fn set_default_speed(&self, speed: f64) -> Result<()> {
+        self.set_setting("default_speed", &speed.to_string())
+    }
+
+    pub fn set_buffer_size(&self, size: i64) -> Result<()> {
+        self.set_setting("buffer_size", &size.to_string())
+    }
+
+    pub fn set_auto_next(&self, enabled: bool) -> Result<()> {
+        self.set_setting("auto_next", if enabled { "true" } else { "false" })
     }
 
     // ── Media cache ──────────────────────────────────────────────

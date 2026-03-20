@@ -8,6 +8,11 @@ import { invoke } from "@tauri-apps/api/core";
 export interface Settings {
   cache_dir: string;
   cache_enabled: boolean;
+  hwdec: string;
+  default_volume: number;
+  default_speed: number;
+  buffer_size: number;
+  auto_next: boolean;
 }
 
 export interface MediaEntry {
@@ -37,6 +42,21 @@ export const settingsApi = {
 
   setCacheEnabled: (enabled: boolean) =>
     invoke<void>("set_cache_enabled", { enabled }),
+
+  setHwdec: (mode: string) =>
+    invoke<void>("set_hwdec", { mode }),
+
+  setDefaultVolume: (volume: number) =>
+    invoke<void>("set_default_volume", { volume }),
+
+  setDefaultSpeed: (speed: number) =>
+    invoke<void>("set_default_speed", { speed }),
+
+  setBufferSize: (size: number) =>
+    invoke<void>("set_buffer_size", { size }),
+
+  setAutoNext: (enabled: boolean) =>
+    invoke<void>("set_auto_next", { enabled }),
 };
 
 // ── Cache API ───────────────────────────────────────────────────

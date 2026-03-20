@@ -152,6 +152,61 @@ pub(crate) fn set_cache_enabled(
     })
 }
 
+#[command]
+pub(crate) fn set_hwdec(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    mode: &str,
+) -> Result<(), String> {
+    state.with_store(&app, |store| {
+        store.set_hwdec(mode).map_err(|e| e.to_string())
+    })
+}
+
+#[command]
+pub(crate) fn set_default_volume(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    volume: i64,
+) -> Result<(), String> {
+    state.with_store(&app, |store| {
+        store.set_default_volume(volume).map_err(|e| e.to_string())
+    })
+}
+
+#[command]
+pub(crate) fn set_default_speed(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    speed: f64,
+) -> Result<(), String> {
+    state.with_store(&app, |store| {
+        store.set_default_speed(speed).map_err(|e| e.to_string())
+    })
+}
+
+#[command]
+pub(crate) fn set_buffer_size(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    size: i64,
+) -> Result<(), String> {
+    state.with_store(&app, |store| {
+        store.set_buffer_size(size).map_err(|e| e.to_string())
+    })
+}
+
+#[command]
+pub(crate) fn set_auto_next(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    enabled: bool,
+) -> Result<(), String> {
+    state.with_store(&app, |store| {
+        store.set_auto_next(enabled).map_err(|e| e.to_string())
+    })
+}
+
 // ── Cache lookup / management commands ───────────────────────────
 
 #[command]

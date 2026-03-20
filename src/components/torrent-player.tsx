@@ -28,7 +28,7 @@ import {
 import { formatBytes, formatSpeed } from "@/lib/torrent";
 import { usePlayer } from "@/lib/use-player";
 import { playerApi } from "@/lib/player";
-import { historyApi } from "@/lib/store";
+import { historyApi, settingsApi } from "@/lib/store";
 import { useTorrentStream, type TorrentStreamPhase, type CacheContext } from "@/lib/use-torrent-stream";
 import { cn } from "@/lib/utils";
 import {
@@ -135,6 +135,23 @@ export function TorrentPlayer({
   const [showControls, setShowControls] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [prevVolume, setPrevVolume] = useState(100);
+  const [autoNext, setAutoNext] = useState(true);
+
+  // ── Apply saved player settings on init ────────────────────────
+
+  useEffect(() => {
+    if (!player.state.ready) return;
+    let cancelled = false;
+    settingsApi.get().then((s) => {
+      if (cancelled) return;
+      playerApi.setVolume(s.default_volume).catch(() => {});
+      playerApi.setSpeed(s.default_speed).catch(() => {});
+      playerApi.setHwdec(s.hwdec).catch(() => {});
+      playerApi.setBufferSize(s.buffer_size).catch(() => {});
+      setAutoNext(s.auto_next);
+    });
+    return () => { cancelled = true; };
+  }, [player.state.ready]);
 
   // ── Auto-start torrent on mount ────────────────────────────────
 
@@ -181,9 +198,9 @@ export function TorrentPlayer({
   // ── Auto-advance to next episode when playback ends ────────────
 
   useEffect(() => {
-    player.onEndedRef.current = onNext ?? null;
+    player.onEndedRef.current = autoNext && onNext ? onNext : null;
     return () => { player.onEndedRef.current = null; };
-  }, [onNext, player.onEndedRef]);
+  }, [onNext, autoNext, player.onEndedRef]);
 
   // ── Resume playback from startTime ─────────────────────────────
 

@@ -3,6 +3,7 @@ import { settingsApi, cacheApi, type Settings } from "@/lib/store";
 import { formatBytes } from "@/lib/torrent";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
@@ -13,6 +14,9 @@ import {
   Trash2,
   ToggleLeft,
   ToggleRight,
+  Cpu,
+  Database,
+  SkipForward,
 } from "lucide-react";
 
 export const Route = createFileRoute("/settings")({
@@ -116,8 +120,7 @@ function SettingsPage() {
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-foreground">缓存</h2>
           <p className="text-sm text-muted-foreground">
-            启用后，播放过的视频会保存到本地。再次播放同一集时直接从本地读取，无需重新下载。
-            文件按 Jellyfin 刮削格式组织，可直接被媒体服务器识别。
+            启用后，播放过的视频会保存到本地。再次播放同一集时直接从本地读取
           </p>
 
           {settings && (
@@ -217,10 +220,108 @@ function SettingsPage() {
           )}
         </section>
 
-        {/* Placeholder for future settings */}
-        <section className="space-y-4 opacity-40">
+        {/* ── Player section ── */}
+        <section className="space-y-4">
           <h2 className="text-lg font-semibold text-foreground">播放器</h2>
-          <p className="text-sm text-muted-foreground">即将推出</p>
+          <p className="text-sm text-muted-foreground">
+            调整播放器的默认行为。更改在下次播放时生效
+          </p>
+
+          {settings && (
+            <div className="space-y-3">
+              {/* Hardware decoding */}
+              <div className="flex items-center justify-between rounded-xl bg-card/50 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <Cpu size={20} className="text-muted-foreground" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">硬件解码</p>
+                    <p className="text-xs text-muted-foreground">
+                      使用 GPU 加速视频解码，降低 CPU 占用（默认：自动）
+                    </p>
+                  </div>
+                </div>
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  size="sm"
+                  value={settings.hwdec}
+                  onValueChange={async (value) => {
+                    if (!value) return;
+                    await settingsApi.setHwdec(value);
+                    setSettings((s) => (s ? { ...s, hwdec: value } : s));
+                  }}
+                >
+                  <ToggleGroupItem value="auto">自动</ToggleGroupItem>
+                  <ToggleGroupItem value="auto-copy">兼容</ToggleGroupItem>
+                  <ToggleGroupItem value="no">关闭</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+
+              {/* Buffer size */}
+              <div className="flex items-center justify-between rounded-xl bg-card/50 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <Database size={20} className="text-muted-foreground" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">缓冲大小</p>
+                    <p className="text-xs text-muted-foreground">
+                      更大的缓冲减少卡顿，但占用更多内存（默认：150 MiB）
+                    </p>
+                  </div>
+                </div>
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  size="sm"
+                  value={String(settings.buffer_size)}
+                  onValueChange={async (value) => {
+                    if (!value) return;
+                    const size = Number(value);
+                    await settingsApi.setBufferSize(size);
+                    setSettings((s) => (s ? { ...s, buffer_size: size } : s));
+                  }}
+                >
+                  <ToggleGroupItem value="50">50</ToggleGroupItem>
+                  <ToggleGroupItem value="150">150</ToggleGroupItem>
+                  <ToggleGroupItem value="300">300</ToggleGroupItem>
+                  <ToggleGroupItem value="500">500</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+
+              {/* Auto next episode */}
+              <div className="flex items-center justify-between rounded-xl bg-card/50 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  {settings.auto_next ? (
+                    <SkipForward size={20} className="text-primary" />
+                  ) : (
+                    <SkipForward size={20} className="text-muted-foreground" />
+                  )}
+                  <div>
+                    <p className="text-sm font-medium text-foreground">自动播放下一集</p>
+                    <p className="text-xs text-muted-foreground">
+                      {settings.auto_next ? "已启用" : "已禁用"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const next = !settings.auto_next;
+                    await settingsApi.setAutoNext(next);
+                    setSettings((s) => (s ? { ...s, auto_next: next } : s));
+                  }}
+                  className={`relative h-6 w-11 rounded-full transition-colors ${
+                    settings.auto_next ? "bg-primary" : "bg-white/15"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                      settings.auto_next ? "translate-x-5" : ""
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       </div>
     </div>
