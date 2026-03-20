@@ -88,3 +88,42 @@ export const cacheApi = {
     torrentSource: string;
   }) => invoke<MediaEntry>("cache_organize", params),
 };
+
+// ── Watchlist types ─────────────────────────────────────────────
+
+export type WatchStatus = "unwatched" | "watching" | "completed";
+
+export interface WatchlistEntry {
+  id: number;
+  bgm_id: string;
+  anime_title: string;
+  cover: string | null;
+  total_episodes: number;
+  status: WatchStatus;
+  added_at: string;
+  updated_at: string;
+}
+
+// ── Watchlist API ───────────────────────────────────────────────
+
+export const watchlistApi = {
+  add: (bgmId: string, animeTitle: string, cover: string | null, totalEpisodes: number) =>
+    invoke<WatchlistEntry>("watchlist_add", {
+      bgmId,
+      animeTitle,
+      cover,
+      totalEpisodes,
+    }),
+
+  remove: (bgmId: string) =>
+    invoke<void>("watchlist_remove", { bgmId }),
+
+  get: (bgmId: string) =>
+    invoke<WatchlistEntry | null>("watchlist_get", { bgmId }),
+
+  setStatus: (bgmId: string, status: WatchStatus) =>
+    invoke<void>("watchlist_set_status", { bgmId, status }),
+
+  list: (status?: WatchStatus) =>
+    invoke<WatchlistEntry[]>("watchlist_list", { status: status ?? null }),
+};

@@ -1,3 +1,3 @@
 mod store;
 
-pub use store::{episode_path, MediaEntry, Settings, Store};
+pub use store::{episode_path, MediaEntry, Settings, Store, WatchStatus, WatchlistEntry};

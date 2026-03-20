@@ -1,18 +1,17 @@
 import { cn } from "@/lib/utils";
-import { Link } from "@tanstack/react-router";
-import { Compass, Heart, Clock, Settings, TrendingUp, Library } from "lucide-react";
-import { useState } from "react";
+import { Link, useMatches } from "@tanstack/react-router";
+import { Clock, Clapperboard, Library, Settings, TrendingUp } from "lucide-react";
 
 const navItems = [
-  { icon: Compass, label: "发现", active: true },
-  { icon: TrendingUp, label: "排行" },
-  { icon: Library, label: "追番" },
-  { icon: Heart, label: "收藏" },
-  { icon: Clock, label: "历史" },
+  { icon: Clapperboard, label: "番剧", to: "/" },
+  { icon: TrendingUp, label: "排行", to: "/ranking" },
+  { icon: Library, label: "追番", to: "/watchlist" },
+  { icon: Clock, label: "历史", to: "/history" },
 ];
 
 export function Sidebar() {
-  const [activeIndex, setActiveIndex] = useState(0);
+  const matches = useMatches();
+  const currentPath = matches[matches.length - 1]?.pathname ?? "/";
 
   return (
     <aside
@@ -30,12 +29,14 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="mt-2 flex flex-1 flex-col items-center gap-1 px-2">
-        {navItems.map((item, i) => {
-          const isActive = i === activeIndex;
+        {navItems.map((item) => {
+          const isActive = item.to === "/"
+            ? currentPath === "/"
+            : currentPath.startsWith(item.to);
           return (
-            <button
+            <Link
               key={item.label}
-              onClick={() => setActiveIndex(i)}
+              to={item.to}
               className={cn(
                 "group relative flex w-full flex-col items-center gap-1 rounded-xl py-2.5 transition-all duration-200",
                 isActive
@@ -49,7 +50,7 @@ export function Sidebar() {
               )}
               <item.icon size={20} strokeWidth={isActive ? 2.2 : 1.8} />
               <span className="text-[10px] leading-none font-medium">{item.label}</span>
-            </button>
+            </Link>
           );
         })}
       </nav>
@@ -58,9 +59,14 @@ export function Sidebar() {
       <div className="flex flex-col items-center gap-1 px-2 pb-4">
         <Link
           to="/settings"
-          className="flex w-full flex-col items-center gap-1 rounded-xl py-2.5 text-muted-foreground transition-colors hover:bg-white/4 hover:text-foreground"
+          className={cn(
+            "flex w-full flex-col items-center gap-1 rounded-xl py-2.5 transition-colors",
+            currentPath === "/settings"
+              ? "bg-white/8 text-primary"
+              : "text-muted-foreground hover:bg-white/4 hover:text-foreground"
+          )}
         >
-          <Settings size={20} strokeWidth={1.8} />
+          <Settings size={20} strokeWidth={currentPath === "/settings" ? 2.2 : 1.8} />
           <span className="text-[10px] leading-none font-medium">设置</span>
         </Link>
       </div>

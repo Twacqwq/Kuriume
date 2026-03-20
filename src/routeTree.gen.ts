@@ -9,12 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnimeIdRouteImport } from './routes/anime/$id'
 import { Route as AnimeIdIndexRouteImport } from './routes/anime/$id/index'
 import { Route as AnimeIdEpisodeEpRouteImport } from './routes/anime/$id/episode/$ep'
 
+const WatchlistRoute = WatchlistRouteImport.update({
+  id: '/watchlist',
+  path: '/watchlist',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -44,6 +50,7 @@ const AnimeIdEpisodeEpRoute = AnimeIdEpisodeEpRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
+  '/watchlist': typeof WatchlistRoute
   '/anime/$id': typeof AnimeIdRouteWithChildren
   '/anime/$id/': typeof AnimeIdIndexRoute
   '/anime/$id/episode/$ep': typeof AnimeIdEpisodeEpRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
+  '/watchlist': typeof WatchlistRoute
   '/anime/$id': typeof AnimeIdIndexRoute
   '/anime/$id/episode/$ep': typeof AnimeIdEpisodeEpRoute
 }
@@ -58,6 +66,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
+  '/watchlist': typeof WatchlistRoute
   '/anime/$id': typeof AnimeIdRouteWithChildren
   '/anime/$id/': typeof AnimeIdIndexRoute
   '/anime/$id/episode/$ep': typeof AnimeIdEpisodeEpRoute
@@ -67,15 +76,17 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/settings'
+    | '/watchlist'
     | '/anime/$id'
     | '/anime/$id/'
     | '/anime/$id/episode/$ep'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/settings' | '/anime/$id' | '/anime/$id/episode/$ep'
+  to: '/' | '/settings' | '/watchlist' | '/anime/$id' | '/anime/$id/episode/$ep'
   id:
     | '__root__'
     | '/'
     | '/settings'
+    | '/watchlist'
     | '/anime/$id'
     | '/anime/$id/'
     | '/anime/$id/episode/$ep'
@@ -84,11 +95,19 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SettingsRoute: typeof SettingsRoute
+  WatchlistRoute: typeof WatchlistRoute
   AnimeIdRoute: typeof AnimeIdRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/watchlist': {
+      id: '/watchlist'
+      path: '/watchlist'
+      fullPath: '/watchlist'
+      preLoaderRoute: typeof WatchlistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -143,6 +162,7 @@ const AnimeIdRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SettingsRoute: SettingsRoute,
+  WatchlistRoute: WatchlistRoute,
   AnimeIdRoute: AnimeIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport

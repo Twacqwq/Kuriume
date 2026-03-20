@@ -11,13 +11,18 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AnimeCharacters, AnimeEpisodes } from "@/lib/types";
+import type { WatchStatus } from "@/lib/store";
 import type { GroupData } from "@/lib/use-mikan-torrents";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
+  BookmarkCheck,
   BookmarkPlus,
   Calendar,
+  Check,
+  Eye,
+  EyeOff,
   Grid3X3,
   Languages,
   Loader2,
@@ -26,6 +31,7 @@ import {
   Rows3,
   Star,
   Subtitles,
+  Trash2,
   Tv,
   Users,
 } from "lucide-react";
@@ -146,7 +152,19 @@ interface AnimeDetailProps {
   onSelectResolution?: (res: string | null) => void;
   preferredSubtitle?: string | null;
   onSelectSubtitle?: (sub: string | null) => void;
+  /** Current watchlist status (null = not tracked). */
+  watchStatus?: WatchStatus | null;
+  /** Called when user adds/changes tracking. */
+  onWatchStatusChange?: (status: WatchStatus) => void;
+  /** Called when user removes from tracking. */
+  onWatchRemove?: () => void;
 }
+
+const WATCH_STATUS_OPTIONS: { value: WatchStatus; label: string; icon: typeof Eye }[] = [
+  { value: "unwatched", label: "未看", icon: EyeOff },
+  { value: "watching", label: "正在看", icon: Eye },
+  { value: "completed", label: "已看完", icon: Check },
+];
 
 export function AnimeDetail({
   data,
@@ -159,12 +177,15 @@ export function AnimeDetail({
   onSelectResolution,
   preferredSubtitle,
   onSelectSubtitle,
+  watchStatus,
+  onWatchStatusChange,
+  onWatchRemove,
 }: AnimeDetailProps) {
   return (
     <TooltipProvider>
       <div className="min-h-screen">
         {/* ============ Hero Section ============ */}
-        <section className="relative overflow-hidden">
+        <section className="relative overflow-x-hidden">
           {/* Blurred background */}
           <div className="absolute inset-0">
             <img
@@ -292,14 +313,58 @@ export function AnimeDetail({
                     开始播放
                   </Button>
                 </Link>
-                <Button
-                  size="lg"
-                  variant="secondary"
-                  className="gap-2 rounded-full border-0 bg-white/10 px-6 hover:bg-white/20"
-                >
-                  <BookmarkPlus size={18} />
-                  追番
-                </Button>
+                {/* Watchlist button with hover dropdown */}
+                <div className="group/watch relative">
+                  <Button
+                    size="lg"
+                    variant="secondary"
+                    className={cn(
+                      "gap-2 rounded-full border-0 px-6",
+                      watchStatus
+                        ? "bg-primary/15 text-primary hover:bg-primary/25"
+                        : "bg-white/10 hover:bg-white/20",
+                    )}
+                    onClick={() => {
+                      if (!watchStatus) {
+                        onWatchStatusChange?.("watching");
+                      }
+                    }}
+                  >
+                    {watchStatus ? <BookmarkCheck size={18} /> : <BookmarkPlus size={18} />}
+                    {watchStatus
+                      ? WATCH_STATUS_OPTIONS.find((o) => o.value === watchStatus)?.label ?? "追番"
+                      : "追番"}
+                  </Button>
+                  {watchStatus && (
+                    <div className="invisible absolute left-0 bottom-full z-50 pb-1 opacity-0 transition-all duration-150 group-hover/watch:visible group-hover/watch:opacity-100">
+                      <div className="w-36 rounded-lg border border-white/10 bg-popover p-1 shadow-xl">
+                        {WATCH_STATUS_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => onWatchStatusChange?.(opt.value)}
+                            className={cn(
+                              "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+                              watchStatus === opt.value
+                                ? "bg-primary/10 text-primary"
+                                : "text-foreground hover:bg-muted",
+                            )}
+                          >
+                            <opt.icon size={14} />
+                            {opt.label}
+                          </button>
+                        ))}
+                        <div className="my-1 h-px bg-border" />
+                        <button
+                          onClick={() => onWatchRemove?.()}
+                          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-red-400 transition-colors hover:bg-red-500/10"
+                        >
+                          <Trash2 size={14} />
+                          取消追番
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

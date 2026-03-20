@@ -32,6 +32,55 @@ pub struct Settings {
     pub cache_enabled: bool,
 }
 
+/// Watchlist status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum WatchStatus {
+    /// 未看
+    Unwatched,
+    /// 正在看
+    Watching,
+    /// 已看完
+    Completed,
+}
+
+impl WatchStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Unwatched => "unwatched",
+            Self::Watching => "watching",
+            Self::Completed => "completed",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "unwatched" => Self::Unwatched,
+            "completed" => Self::Completed,
+            _ => Self::Watching,
+        }
+    }
+}
+
+/// An entry in the user's watchlist.
+#[derive(Debug, Clone, Serialize)]
+pub struct WatchlistEntry {
+    pub id: i64,
+    /// Bangumi subject ID.
+    pub bgm_id: String,
+    /// Anime title (for display without re-fetching).
+    pub anime_title: String,
+    /// Cover image URL.
+    pub cover: Option<String>,
+    /// Total episodes.
+    pub total_episodes: i32,
+    /// Watch status.
+    pub status: String,
+    /// ISO-8601 timestamp when added.
+    pub added_at: String,
+    /// ISO-8601 timestamp of last status update.
+    pub updated_at: String,
+}
+
 /// A cached media file entry.
 #[derive(Debug, Clone, Serialize)]
 pub struct MediaEntry {
@@ -112,6 +161,17 @@ impl Store {
 
             CREATE INDEX IF NOT EXISTS idx_media_bgm_ep
                 ON media_cache(bgm_id, episode);
+
+            CREATE TABLE IF NOT EXISTS watchlist (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                bgm_id          TEXT    NOT NULL UNIQUE,
+                anime_title     TEXT    NOT NULL,
+                cover           TEXT,
+                total_episodes  INTEGER NOT NULL DEFAULT 0,
+                status          TEXT    NOT NULL DEFAULT 'watching',
+                added_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+                updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+            );
             ",
         )?;
 
@@ -333,6 +393,97 @@ impl Store {
             .collect::<std::result::Result<Vec<_>, _>>()?;
         self.conn.execute("DELETE FROM media_cache", [])?;
         Ok(paths)
+    }
+
+    // ── Watchlist ─────────────────────────────────────────────────
+
+    /// Add an anime to the watchlist (default status: watching).
+    /// If already exists, returns the existing entry.
+    pub fn watchlist_add(
+        &self,
+        bgm_id: &str,
+        anime_title: &str,
+        cover: Option<&str>,
+        total_episodes: i32,
+    ) -> Result<WatchlistEntry> {
+        self.conn.execute(
+            "INSERT INTO watchlist(bgm_id, anime_title, cover, total_episodes)
+             VALUES(?1, ?2, ?3, ?4)
+             ON CONFLICT(bgm_id) DO UPDATE SET
+                anime_title    = excluded.anime_title,
+                cover          = excluded.cover,
+                total_episodes = excluded.total_episodes,
+                updated_at     = datetime('now')",
+            params![bgm_id, anime_title, cover, total_episodes],
+        )?;
+        self.watchlist_get(bgm_id)?
+            .ok_or_else(|| StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows))
+    }
+
+    /// Remove an anime from the watchlist.
+    pub fn watchlist_remove(&self, bgm_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM watchlist WHERE bgm_id = ?1",
+            params![bgm_id],
+        )?;
+        Ok(())
+    }
+
+    /// Get a single watchlist entry by bgm_id.
+    pub fn watchlist_get(&self, bgm_id: &str) -> Result<Option<WatchlistEntry>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, bgm_id, anime_title, cover, total_episodes, status, added_at, updated_at
+             FROM watchlist WHERE bgm_id = ?1",
+        )?;
+        let entry = stmt
+            .query_row(params![bgm_id], Self::row_to_watchlist)
+            .ok();
+        Ok(entry)
+    }
+
+    /// Update the watch status of an anime.
+    pub fn watchlist_set_status(&self, bgm_id: &str, status: WatchStatus) -> Result<()> {
+        self.conn.execute(
+            "UPDATE watchlist SET status = ?1, updated_at = datetime('now') WHERE bgm_id = ?2",
+            params![status.as_str(), bgm_id],
+        )?;
+        Ok(())
+    }
+
+    /// List all watchlist entries, optionally filtered by status.
+    pub fn watchlist_list(&self, status: Option<&str>) -> Result<Vec<WatchlistEntry>> {
+        if let Some(s) = status {
+            let mut stmt = self.conn.prepare_cached(
+                "SELECT id, bgm_id, anime_title, cover, total_episodes, status, added_at, updated_at
+                 FROM watchlist WHERE status = ?1 ORDER BY updated_at DESC",
+            )?;
+            let entries = stmt
+                .query_map(params![s], Self::row_to_watchlist)?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            Ok(entries)
+        } else {
+            let mut stmt = self.conn.prepare_cached(
+                "SELECT id, bgm_id, anime_title, cover, total_episodes, status, added_at, updated_at
+                 FROM watchlist ORDER BY updated_at DESC",
+            )?;
+            let entries = stmt
+                .query_map([], Self::row_to_watchlist)?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            Ok(entries)
+        }
+    }
+
+    fn row_to_watchlist(row: &rusqlite::Row) -> rusqlite::Result<WatchlistEntry> {
+        Ok(WatchlistEntry {
+            id: row.get(0)?,
+            bgm_id: row.get(1)?,
+            anime_title: row.get(2)?,
+            cover: row.get(3)?,
+            total_episodes: row.get(4)?,
+            status: row.get(5)?,
+            added_at: row.get(6)?,
+            updated_at: row.get(7)?,
+        })
     }
 
     // ── Helpers ──────────────────────────────────────────────────

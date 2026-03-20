@@ -3,8 +3,9 @@ import {
   AnimeDetail,
   type AnimeDetailData,
 } from "@/components/anime-detail";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { AnimeInfo, AnimeEpisodes, AnimeCharacters } from "@/lib/types";
+import { watchlistApi, type WatchStatus } from "@/lib/store";
 import { useMikanTorrents } from "@/lib/use-mikan-torrents";
 
 import {
@@ -80,6 +81,34 @@ function AnimeDetailPage() {
   const animeTitle = info?.title_cn || info?.title;
   const mikan = useMikanTorrents(id, animeTitle, undefined, undefined, info?.total_episodes);
 
+  // ── Watchlist ──
+  const qc = useQueryClient();
+  const { data: watchEntry } = useQuery({
+    queryKey: ["watchlist", id],
+    queryFn: () => watchlistApi.get(id),
+  });
+
+  const invalidateWatchlist = () => {
+    qc.invalidateQueries({ queryKey: ["watchlist", id] });
+    qc.invalidateQueries({ queryKey: ["watchlist-list"] });
+  };
+
+  const addOrUpdate = useMutation({
+    mutationFn: async (status: WatchStatus) => {
+      if (watchEntry) {
+        await watchlistApi.setStatus(id, status);
+      } else {
+        await watchlistApi.add(id, info?.title_cn || info?.title || "", info?.cover ?? null, info?.total_episodes ?? 0);
+      }
+    },
+    onSuccess: invalidateWatchlist,
+  });
+
+  const remove = useMutation({
+    mutationFn: () => watchlistApi.remove(id),
+    onSuccess: invalidateWatchlist,
+  });
+
   if (!info) return null;
 
   return (
@@ -94,6 +123,9 @@ function AnimeDetailPage() {
       onSelectResolution={mikan.setPreferredResolution}
       preferredSubtitle={mikan.preferredSubtitle}
       onSelectSubtitle={mikan.setPreferredSubtitle}
+      watchStatus={watchEntry?.status as WatchStatus | undefined ?? null}
+      onWatchStatusChange={(status) => addOrUpdate.mutate(status)}
+      onWatchRemove={() => remove.mutate()}
     />
   );
 }

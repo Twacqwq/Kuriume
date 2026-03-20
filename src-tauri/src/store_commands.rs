@@ -1,4 +1,4 @@
-use kuriume_store::{episode_path, MediaEntry, Settings, Store};
+use kuriume_store::{episode_path, MediaEntry, Settings, Store, WatchStatus, WatchlistEntry};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{command, AppHandle, Manager, State};
@@ -379,5 +379,70 @@ pub(crate) fn cache_organize(
             torrent_source: torrent_source.to_string(),
             cached_at: String::new(),
         })
+    })
+}
+
+// ── Watchlist commands ───────────────────────────────────────────
+
+#[command]
+pub(crate) fn watchlist_add(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    bgm_id: &str,
+    anime_title: &str,
+    cover: Option<&str>,
+    total_episodes: i32,
+) -> Result<WatchlistEntry, String> {
+    state.with_store(&app, |store| {
+        store
+            .watchlist_add(bgm_id, anime_title, cover, total_episodes)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[command]
+pub(crate) fn watchlist_remove(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    bgm_id: &str,
+) -> Result<(), String> {
+    state.with_store(&app, |store| {
+        store.watchlist_remove(bgm_id).map_err(|e| e.to_string())
+    })
+}
+
+#[command]
+pub(crate) fn watchlist_get(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    bgm_id: &str,
+) -> Result<Option<WatchlistEntry>, String> {
+    state.with_store(&app, |store| {
+        store.watchlist_get(bgm_id).map_err(|e| e.to_string())
+    })
+}
+
+#[command]
+pub(crate) fn watchlist_set_status(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    bgm_id: &str,
+    status: &str,
+) -> Result<(), String> {
+    state.with_store(&app, |store| {
+        store
+            .watchlist_set_status(bgm_id, WatchStatus::from_str(status))
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[command]
+pub(crate) fn watchlist_list(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    status: Option<&str>,
+) -> Result<Vec<WatchlistEntry>, String> {
+    state.with_store(&app, |store| {
+        store.watchlist_list(status).map_err(|e| e.to_string())
     })
 }

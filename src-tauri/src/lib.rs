@@ -69,6 +69,11 @@ pub fn run() {
             crate::store_commands::cache_clear_all,
             crate::store_commands::cache_organize,
             crate::store_commands::cache_migrate_dir,
+            crate::store_commands::watchlist_add,
+            crate::store_commands::watchlist_remove,
+            crate::store_commands::watchlist_get,
+            crate::store_commands::watchlist_set_status,
+            crate::store_commands::watchlist_list,
         ])
         .setup(|app| {
             // Clean up orphaned torrent temp files from previous sessions.
