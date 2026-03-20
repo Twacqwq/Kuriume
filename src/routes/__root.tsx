@@ -2,7 +2,7 @@ import { Outlet, createRootRoute, useMatches } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { Sidebar } from "@/components/sidebar";
 import { SearchPanel } from "@/components/search-panel";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -11,6 +11,13 @@ export const Route = createRootRoute({
 function RootComponent() {
   const matches = useMatches();
   const [searchOpen, setSearchOpen] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+
+  // Scroll to top on route change
+  const pathname = matches[matches.length - 1]?.pathname;
+  useEffect(() => {
+    mainRef.current?.scrollTo(0, 0);
+  }, [pathname]);
 
   const openSearch = useCallback(() => setSearchOpen(true), []);
   const closeSearch = useCallback(() => setSearchOpen(false), []);
@@ -44,6 +51,7 @@ function RootComponent() {
       {!isPlayerPage && <Sidebar onSearchClick={openSearch} />}
       <SearchPanel open={searchOpen} onClose={closeSearch} />
       <main
+        ref={mainRef}
         className={
           isPlayerPage
             ? "flex-1 overflow-hidden"
