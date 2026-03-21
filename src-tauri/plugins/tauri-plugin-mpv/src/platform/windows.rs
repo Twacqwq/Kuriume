@@ -40,6 +40,7 @@ const WS_EX_LAYERED: DWORD = 0x0008_0000;
 const CS_OWNDC: UINT = 0x0020;
 const SWP_NOACTIVATE: UINT = 0x0010;
 const SWP_NOZORDER: UINT = 0x0004;
+const GWL_EXSTYLE: i32 = -20;
 
 const AC_SRC_OVER: u8 = 0x00;
 const AC_SRC_ALPHA: u8 = 0x01;
@@ -218,6 +219,9 @@ extern "system" {
         pblend: *const BLENDFUNCTION,
         dw_flags: u32,
     ) -> BOOL;
+    fn SetWindowLongPtrA(hwnd: HWND, index: i32, new_long: isize) -> isize;
+    fn GetWindowLongPtrA(hwnd: HWND, index: i32) -> isize;
+
     fn wglCreateContext(hdc: HDC) -> HGLRC;
     fn wglMakeCurrent(hdc: HDC, hglrc: HGLRC) -> BOOL;
     fn wglDeleteContext(hglrc: HGLRC) -> BOOL;
@@ -458,7 +462,7 @@ impl NativeVideoView {
             RegisterClassExA(&wc);
 
             let child_hwnd = CreateWindowExA(
-                WS_EX_LAYERED,
+                0,
                 class_name.as_ptr(),
                 b"mpv\0".as_ptr(),
                 WS_CHILD | WS_VISIBLE,
@@ -590,6 +594,12 @@ impl NativeVideoView {
                 .map_err(|e| format!("GpuRenderer::new: {e}"))?;
 
             wglMakeCurrent(std::ptr::null_mut(), std::ptr::null_mut());
+
+            // ── Add WS_EX_LAYERED now that WGL context is created ─
+            // Must be done AFTER WGL setup because ChoosePixelFormat /
+            // SetPixelFormat need a non-layered window DC.
+            let ex_style = GetWindowLongPtrA(child_hwnd, GWL_EXSTYLE);
+            SetWindowLongPtrA(child_hwnd, GWL_EXSTYLE, ex_style | WS_EX_LAYERED as isize);
 
             // ── DIB section for UpdateLayeredWindow ──────────────
             let (mem_dc, dib_bitmap, dib_bits) = create_dib_section(init_w, init_h)
