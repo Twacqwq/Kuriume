@@ -398,6 +398,24 @@ pub(crate) async fn player_set_viewport(
     Ok(())
 }
 
+/// Show or hide the native video popup (Windows only; no-op on macOS).
+#[command]
+pub(crate) async fn player_set_visible(
+    state: State<'_, PlayerState>,
+    visible: bool,
+) -> Result<(), String> {
+    let guard = state.inner.lock().await;
+    let active = guard.as_ref().ok_or("Player not initialized")?;
+
+    #[cfg(target_os = "windows")]
+    active.native_view.set_visible(visible);
+
+    #[cfg(not(target_os = "windows"))]
+    let _ = (visible, active);
+
+    Ok(())
+}
+
 /// Destroy the player and free all resources.
 #[command]
 pub(crate) async fn player_destroy(state: State<'_, PlayerState>) -> Result<(), String> {

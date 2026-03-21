@@ -4,7 +4,9 @@
 //! 1. mpv renders via its OpenGL render API into an offscreen FBO.
 //! 2. PBO double-buffering asynchronously reads pixels from the FBO.
 //! 3. Pixels are uploaded to a D3D11 staging texture, then copied to the back buffer.
-//! 4. DXGI SwapChain presents the frame on a child HWND layered below the WebView2.
+//! 4. DXGI SwapChain presents the frame on a popup window positioned behind
+//!    the Tauri main window. DWM composites the popup (video) and the main
+//!    window (transparent WebView2) with proper per-pixel alpha.
 
 use kuriume_mpv::GpuRenderer;
 use std::ffi::c_void;
@@ -26,15 +28,17 @@ type LRESULT = isize;
 type DWORD = u32;
 type LPCSTR = *const u8;
 
-const WS_CHILD: DWORD = 0x4000_0000;
+const WS_POPUP: DWORD = 0x8000_0000;
 const WS_VISIBLE: DWORD = 0x1000_0000;
 const WS_CLIPSIBLINGS: DWORD = 0x0400_0000;
-const WS_EX_TRANSPARENT: DWORD = 0x0000_0020;
+const WS_EX_TOOLWINDOW: DWORD = 0x0000_0080;
+const WS_EX_NOACTIVATE: DWORD = 0x0800_0000;
 const CS_OWNDC: UINT = 0x0020;
 const SWP_NOMOVE: UINT = 0x0002;
 const SWP_NOSIZE: UINT = 0x0001;
 const SWP_NOACTIVATE: UINT = 0x0010;
-const HWND_TOP: HWND = 0 as HWND;
+const SW_HIDE: i32 = 0;
+const SW_SHOWNA: i32 = 8;
 
 const WM_NCHITTEST: UINT = 0x0084;
 const HTTRANSPARENT: LRESULT = -1;
@@ -112,6 +116,12 @@ struct RECT {
     bottom: i32,
 }
 
+#[repr(C)]
+struct POINT {
+    x: i32,
+    y: i32,
+}
+
 extern "system" {
     fn GetModuleHandleA(name: LPCSTR) -> HINSTANCE;
     fn RegisterClassExA(wc: *const WNDCLASSEXA) -> ATOM;
@@ -147,6 +157,9 @@ extern "system" {
     fn ChoosePixelFormat(hdc: HDC, ppfd: *const PIXELFORMATDESCRIPTOR) -> i32;
     fn SetPixelFormat(hdc: HDC, format: i32, ppfd: *const PIXELFORMATDESCRIPTOR) -> BOOL;
     fn SwapBuffers(hdc: HDC) -> BOOL;
+
+    fn ClientToScreen(hwnd: HWND, point: *mut POINT) -> BOOL;
+    fn ShowWindow(hwnd: HWND, cmd_show: i32) -> BOOL;
 
     fn wglCreateContext(hdc: HDC) -> HGLRC;
     fn wglMakeCurrent(hdc: HDC, hglrc: HGLRC) -> BOOL;
@@ -202,7 +215,7 @@ unsafe extern "system" fn wnd_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    // Pass all mouse hit-tests through to the WebView2 beneath.
+    // Safety net: pass hit-tests through if popup is ever exposed.
     if msg == WM_NCHITTEST {
         return HTTRANSPARENT;
     }
@@ -420,6 +433,7 @@ struct RenderCtx {
     swap_chain: ComPtr,
 
     // -- HWND --
+    parent_hwnd: HWND,
     child_hwnd: HWND,
 
     // -- Dimensions --
@@ -492,16 +506,20 @@ impl NativeVideoView {
             };
             RegisterClassExA(&wc);
 
+            // Convert parent client origin to screen coordinates.
+            let mut origin = POINT { x: 0, y: 0 };
+            ClientToScreen(parent_hwnd, &mut origin);
+
             let child_hwnd = CreateWindowExA(
-                WS_EX_TRANSPARENT,
+                WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                 class_name.as_ptr(),
                 b"mpv\0".as_ptr(),
-                WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
-                0,
-                0,
+                WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS,
+                origin.x,
+                origin.y,
                 init_w,
                 init_h,
-                parent_hwnd,
+                std::ptr::null_mut(), // no owner — popup must sit below main window
                 std::ptr::null_mut(),
                 h_instance,
                 std::ptr::null_mut(),
@@ -510,12 +528,11 @@ impl NativeVideoView {
                 return Err("CreateWindowExA failed".into());
             }
 
-            // Place child above WebView2 — Windows doesn't alpha-composite
-            // sibling child HWNDs, so the video must be on top to be visible.
-            // WS_EX_TRANSPARENT + HTTRANSPARENT passes input to WebView2.
+            // Place popup behind the main window in z-order.
+            // DWM composites the popup (video) below the transparent WebView2.
             SetWindowPos(
                 child_hwnd,
-                HWND_TOP,
+                parent_hwnd,
                 0,
                 0,
                 0,
@@ -712,6 +729,7 @@ impl NativeVideoView {
                 device,
                 device_ctx,
                 swap_chain,
+                parent_hwnd,
                 child_hwnd,
                 surface_width: AtomicI32::new(init_w),
                 surface_height: AtomicI32::new(init_h),
@@ -765,14 +783,29 @@ impl NativeVideoView {
         }
 
         unsafe {
+            // Convert client-area coordinates to screen coordinates.
+            let mut pt = POINT { x: px, y: py };
+            ClientToScreen(self.render_ctx.parent_hwnd, &mut pt);
+
+            // Reposition the popup behind the main window.
             SetWindowPos(
                 self.render_ctx.child_hwnd,
-                HWND_TOP,
-                px,
-                py,
+                self.render_ctx.parent_hwnd,
+                pt.x,
+                pt.y,
                 pw,
                 ph,
                 SWP_NOACTIVATE,
+            );
+        }
+    }
+
+    /// Show or hide the video popup window.
+    pub fn set_visible(&self, visible: bool) {
+        unsafe {
+            ShowWindow(
+                self.render_ctx.child_hwnd,
+                if visible { SW_SHOWNA } else { SW_HIDE },
             );
         }
     }
@@ -948,6 +981,16 @@ fn render_loop(ctx: Arc<RenderCtx>) {
             unsafe {
                 resize_surface(&ctx, tw, th);
             }
+        }
+
+        // Keep the popup behind the main window on every wake-up.
+        unsafe {
+            SetWindowPos(
+                ctx.child_hwnd,
+                ctx.parent_hwnd,
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
         }
 
         if !ctx.needs_render.swap(false, Ordering::AcqRel) {

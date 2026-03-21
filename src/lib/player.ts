@@ -66,4 +66,7 @@ export const playerApi = {
       height,
       windowHeight: window.innerHeight,
     }),
+  /** Show or hide the native video popup (Windows; no-op on macOS). */
+  setVisible: (visible: boolean) =>
+    invoke<void>("plugin:mpv|player_set_visible", { visible }),
 };
