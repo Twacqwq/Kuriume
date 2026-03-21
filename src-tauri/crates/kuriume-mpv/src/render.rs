@@ -149,7 +149,7 @@ impl GpuRenderer {
             internal_format: 0,
         };
 
-        let mut flip_y: c_int = 1;
+        let mut flip_y: c_int = 0;
 
         let mut params: [mpv_render_param; 3] = [
             mpv_render_param {
@@ -178,12 +178,37 @@ impl GpuRenderer {
     }
 }
 
+impl GpuRenderer {
+    /// Manually free the underlying `mpv_render_context`.
+    ///
+    /// **The caller's OpenGL context must be current**, because mpv
+    /// internally calls GL cleanup functions (`glDeleteQueries`, etc.).
+    ///
+    /// After this call the renderer is inert — `Drop` becomes a no-op.
+    ///
+    /// # Safety
+    /// The GL context must be current on the calling thread.
+    pub unsafe fn free(&mut self) {
+        if !self.ctx.is_null() {
+            unsafe {
+                mpv_render_context_set_update_callback(self.ctx, None, ptr::null_mut());
+                mpv_render_context_free(self.ctx);
+            }
+            self.ctx = ptr::null_mut();
+        }
+    }
+}
+
 impl Drop for GpuRenderer {
     fn drop(&mut self) {
-        unsafe {
-            // Clear update callback before freeing (stops future invocations).
-            mpv_render_context_set_update_callback(self.ctx, None, ptr::null_mut());
-            mpv_render_context_free(self.ctx);
+        if !self.ctx.is_null() {
+            // Safety net: if free() was not called explicitly, free now.
+            // NOTE: This path may crash if no GL context is current!
+            unsafe {
+                mpv_render_context_set_update_callback(self.ctx, None, ptr::null_mut());
+                mpv_render_context_free(self.ctx);
+            }
+            self.ctx = ptr::null_mut();
         }
     }
 }

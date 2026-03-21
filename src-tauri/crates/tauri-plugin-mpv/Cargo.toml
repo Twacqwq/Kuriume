@@ -1,0 +1,24 @@
+[package]
+name = "tauri-plugin-mpv"
+version = "0.1.0"
+edition = "2021"
+description = "Tauri v2 plugin for mpv-based video playback with native Metal rendering on macOS"
+links = "tauri-plugin-mpv"
+
+[build-dependencies]
+tauri-plugin = "2"
+
+[dependencies]
+tauri = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+kuriume-mpv = { workspace = true }
+raw-window-handle = "0.6"
+log = "0.4"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSThread"] }
+objc2-app-kit = { version = "0.3", features = ["NSView", "NSWindow", "NSResponder"] }
+objc2-quartz-core = { version = "0.3", features = ["CALayer", "CATransaction"] }

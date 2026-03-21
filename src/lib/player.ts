@@ -1,7 +1,7 @@
 /**
  * Player bridge — Tauri command wrappers & shared event types.
  *
- * Talks to the Rust `player_commands.rs` via `invoke()` and listens
+ * Talks to the Rust `tauri-plugin-mpv` via `invoke()` and listens
  * to the `player-event` Tauri event emitted from the mpv event loop.
  */
 import { invoke } from "@tauri-apps/api/core";
@@ -33,41 +33,43 @@ export type PlayerEvent =
   | { type: "QueueOverflow" }
   | { type: "Shutdown" };
 
-// ── Invoke wrappers ─────────────────────────────────────────────
+// ── Invoke wrappers (plugin:mpv| prefix for Tauri v2 plugin system) ──
 
 export const playerApi = {
   /** Initialize the native GPU player (creates native view + mpv). */
-  init: () => invoke<void>("player_init"),
-  play: (url: string) => invoke<void>("player_play", { url }),
-  setPaused: (paused: boolean) => invoke<void>("player_set_paused", { paused }),
-  seek: (seconds: number) => invoke<void>("player_seek", { seconds }),
-  stop: () => invoke<void>("player_stop"),
-  setVolume: (volume: number) => invoke<void>("player_set_volume", { volume }),
-  getVolume: () => invoke<number>("player_get_volume"),
-  setSpeed: (speed: number) => invoke<void>("player_set_speed", { speed }),
-  getState: () => invoke<PlayerStateInfo>("player_get_state"),
-  setAudioTrack: (id: number) => invoke<void>("player_set_audio_track", { id }),
+  init: () => invoke<void>("plugin:mpv|player_init"),
+  play: (url: string) => invoke<void>("plugin:mpv|player_play", { url }),
+  setPaused: (paused: boolean) =>
+    invoke<void>("plugin:mpv|player_set_paused", { paused }),
+  seek: (seconds: number) =>
+    invoke<void>("plugin:mpv|player_seek", { seconds }),
+  stop: () => invoke<void>("plugin:mpv|player_stop"),
+  setVolume: (volume: number) =>
+    invoke<void>("plugin:mpv|player_set_volume", { volume }),
+  getVolume: () => invoke<number>("plugin:mpv|player_get_volume"),
+  setSpeed: (speed: number) =>
+    invoke<void>("plugin:mpv|player_set_speed", { speed }),
+  getState: () => invoke<PlayerStateInfo>("plugin:mpv|player_get_state"),
+  setAudioTrack: (id: number) =>
+    invoke<void>("plugin:mpv|player_set_audio_track", { id }),
   setSubtitleTrack: (id: number) =>
-    invoke<void>("player_set_subtitle_track", { id }),
-  destroy: () => invoke<void>("player_destroy"),
+    invoke<void>("plugin:mpv|player_set_subtitle_track", { id }),
+  destroy: () => invoke<void>("plugin:mpv|player_destroy"),
   /** Set hardware decoding mode: "auto" | "no" */
-  setHwdec: (mode: string) => invoke<void>("player_set_hwdec", { mode }),
+  setHwdec: (mode: string) =>
+    invoke<void>("plugin:mpv|player_set_hwdec", { mode }),
   /** Get current hardware decoding mode. */
-  getHwdec: () => invoke<string>("player_get_hwdec"),
+  getHwdec: () => invoke<string>("plugin:mpv|player_get_hwdec"),
   /** Set demuxer forward buffer size in MiB. */
   setBufferSize: (sizeMib: number) =>
-    invoke<void>("player_set_buffer_size", { sizeMib }),
-  /** Reposition the native GL view to match a CSS rect (top-left origin). */
+    invoke<void>("plugin:mpv|player_set_buffer_size", { sizeMib }),
+  /** Reposition the native view to match a CSS rect (top-left origin). */
   setViewport: (x: number, y: number, width: number, height: number) =>
-    invoke<void>("player_set_viewport", {
+    invoke<void>("plugin:mpv|player_set_viewport", {
       x,
       y,
       width,
       height,
       windowHeight: window.innerHeight,
     }),
-  /** Freeze GL rendering (e.g. during fullscreen transitions). */
-  suspendRender: () => invoke<void>("player_suspend_render"),
-  /** Resume GL rendering after a transition. */
-  resumeRender: () => invoke<void>("player_resume_render"),
 };

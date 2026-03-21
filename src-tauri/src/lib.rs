@@ -1,5 +1,4 @@
 use crate::commands::{MikanState, ProviderState};
-use crate::player_commands::PlayerState;
 use crate::store_commands::StoreState;
 use crate::torrent_commands::TorrentState;
 use kuriume_provider::Bangumi;
@@ -8,8 +7,6 @@ use tauri::Manager;
 use tauri::menu::Menu;
 
 mod commands;
-mod native_view;
-mod player_commands;
 mod store_commands;
 mod torrent_commands;
 
@@ -23,9 +20,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_mpv::init())
         .menu(|handle| Menu::new(handle))
         .manage(state)
-        .manage(PlayerState::new())
         .manage(MikanState::new())
         .manage(TorrentState::new())
         .manage(StoreState::new())
@@ -41,24 +38,6 @@ pub fn run() {
             crate::commands::mikan_get_subgroups,
             crate::commands::mikan_get_subgroup_torrents,
             crate::commands::mikan_get_all_torrents,
-            crate::player_commands::player_init,
-            crate::player_commands::player_play,
-            crate::player_commands::player_set_paused,
-            crate::player_commands::player_seek,
-            crate::player_commands::player_stop,
-            crate::player_commands::player_set_volume,
-            crate::player_commands::player_get_volume,
-            crate::player_commands::player_set_speed,
-            crate::player_commands::player_get_state,
-            crate::player_commands::player_set_audio_track,
-            crate::player_commands::player_set_subtitle_track,
-            crate::player_commands::player_set_hwdec,
-            crate::player_commands::player_get_hwdec,
-            crate::player_commands::player_set_buffer_size,
-            crate::player_commands::player_set_viewport,
-            crate::player_commands::player_suspend_render,
-            crate::player_commands::player_resume_render,
-            crate::player_commands::player_destroy,
             crate::torrent_commands::torrent_add,
             crate::torrent_commands::torrent_list_files,
             crate::torrent_commands::torrent_stream_url,

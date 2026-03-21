@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-player-set-hwdec"
+description = "Enables the player_set_hwdec command without any pre-configured scope."
+commands.allow = ["player_set_hwdec"]
+
+[[permission]]
+identifier = "deny-player-set-hwdec"
+description = "Denies the player_set_hwdec command without any pre-configured scope."
+commands.deny = ["player_set_hwdec"]

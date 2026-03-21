@@ -1,6 +1,12 @@
-use crate::native_view::NativeGlView;
+//! Tauri commands for the mpv plugin.
+//!
+//! Migrated from the main crate's `player_commands.rs`, adapted for the
+//! Tauri v2 plugin system. Uses `NativeVideoView` (IOSurface + CALayer)
+//! instead of the old `NativeGlView` (NSOpenGLContext).
+
+use crate::platform::NativeVideoView;
 use kuriume_mpv::{MpvPlayer, PlayerEvent};
-use tauri::{command, AppHandle, Emitter, Manager, State, WebviewWindow};
+use tauri::{command, AppHandle, Emitter, Manager, Runtime, State, WebviewWindow};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 // ── macOS display-sleep prevention via IOPMAssertion ─────────────
@@ -8,7 +14,6 @@ use tokio::sync::mpsc::UnboundedReceiver;
 mod power {
     use std::ffi::c_void;
 
-    // IOKit types
     type IOPMAssertionID = u32;
     type CFStringRef = *const c_void;
     type CFStringEncoding = u32;
@@ -51,13 +56,10 @@ mod power {
         assertion_id: IOPMAssertionID,
     }
 
-    // The assertion ID is just a u32 token — safe to move across threads.
     unsafe impl Send for DisplaySleepGuard {}
     unsafe impl Sync for DisplaySleepGuard {}
 
     impl DisplaySleepGuard {
-        /// Create an IOPMAssertion of type `PreventUserIdleDisplaySleep`.
-        /// Returns `None` if the system call fails (non-fatal).
         pub fn new() -> Option<Self> {
             let assertion_type = cfstr("PreventUserIdleDisplaySleep");
             let reason = cfstr("Kuriume video playback");
@@ -95,16 +97,18 @@ mod power {
 }
 
 /// All resources associated with an active player session.
+///
+/// Field order matters: Rust drops fields in declaration order.
+/// `native_view` MUST be dropped before `player` so that
+/// `mpv_render_context_free` runs before `mpv_destroy`.
 struct ActivePlayer {
+    native_view: NativeVideoView,
     player: MpvPlayer,
-    /// The native GL view mpv renders into (dropped → removed from superview).
-    native_view: NativeGlView,
-    /// Prevents display sleep while video is playing (macOS).
     #[cfg(target_os = "macos")]
     _sleep_guard: Option<power::DisplaySleepGuard>,
 }
 
-/// Shared player state managed by Tauri.
+/// Shared player state managed by the plugin.
 pub struct PlayerState {
     inner: tokio::sync::Mutex<Option<ActivePlayer>>,
 }
@@ -127,48 +131,38 @@ impl Drop for PlayerState {
     fn drop(&mut self) {
         let inner = self.inner.get_mut();
         if let Some(mut active) = inner.take() {
-            active.native_view.destroy(); // free render context first
+            active.native_view.destroy();
+            // Drop native_view first (mpv_render_context_free),
+            // then player (mpv_destroy). Explicit order required.
+            drop(active.native_view);
             drop(active.player);
         }
     }
 }
 
-/// Initialize the mpv player with GPU rendering via the OpenGL render API.
-///
-/// 1. Creates `MpvPlayer` (vo=libmpv, hwdec=auto).
-/// 2. On the main thread: creates an NSView + NSOpenGLContext below the
-///    webview, then creates a `GpuRenderer` using the current GL context.
-/// 3. Starts the mpv event loop for property/playback notifications.
-///
-/// The render loop is driven by mpv's update callback → GCD dispatch_async
-/// to the main thread → render into the default FBO → flush.
+/// Initialize the mpv player with IOSurface-backed rendering.
 #[command]
-pub(crate) async fn player_init(
+pub(crate) async fn player_init<R: Runtime>(
     state: State<'_, PlayerState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let mut guard = state.inner.lock().await;
     if guard.is_some() {
         return Err("Player already initialized".into());
     }
 
-    let window: WebviewWindow = app
+    let window: WebviewWindow<R> = app
         .get_webview_window("main")
         .ok_or("main window not found")?;
 
-    // Create mpv player (vo=libmpv, doesn't touch any window).
     let mut player = tokio::task::spawn_blocking(MpvPlayer::new_for_render)
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
 
-    // Convert raw pointer to usize for Send across thread boundary.
-    // Safe: the mpv handle outlives this scope (player stays alive).
     let mpv_handle = player.raw_handle() as usize;
 
-    // On the main thread: create NativeGlView + GpuRenderer,
-    // wire up the render loop, and return the view.
-    let (tx, rx) = tokio::sync::oneshot::channel::<Result<NativeGlView, String>>();
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<NativeVideoView, String>>();
 
     let win = window.clone();
     window
@@ -184,7 +178,7 @@ pub(crate) async fn player_init(
                         RawWindowHandle::AppKit(h) => {
                             let ns_view = h.ns_view.as_ptr();
                             unsafe {
-                                NativeGlView::new(
+                                NativeVideoView::new(
                                     ns_view,
                                     mpv_handle as *mut std::ffi::c_void,
                                 )
@@ -200,12 +194,11 @@ pub(crate) async fn player_init(
 
     let native_view = rx.await.map_err(|_| "main thread channel closed")??;
 
-    // Start mpv event loop.
     let event_rx = player.start_event_loop().map_err(|e| e.to_string())?;
 
     *guard = Some(ActivePlayer {
-        player,
         native_view,
+        player,
         #[cfg(target_os = "macos")]
         _sleep_guard: power::DisplaySleepGuard::new(),
     });
@@ -216,13 +209,11 @@ pub(crate) async fn player_init(
     Ok(())
 }
 
-/// Load and play a media URL or file path.
 #[command]
 pub(crate) async fn player_play(state: State<'_, PlayerState>, url: &str) -> Result<(), String> {
     with_player(&state, |p| p.play(url)).await
 }
 
-/// Set pause state.
 #[command]
 pub(crate) async fn player_set_paused(
     state: State<'_, PlayerState>,
@@ -231,7 +222,6 @@ pub(crate) async fn player_set_paused(
     with_player(&state, |p| p.set_paused(paused)).await
 }
 
-/// Seek to an absolute position in seconds.
 #[command]
 pub(crate) async fn player_seek(
     state: State<'_, PlayerState>,
@@ -240,13 +230,11 @@ pub(crate) async fn player_seek(
     with_player(&state, |p| p.seek(seconds)).await
 }
 
-/// Stop playback.
 #[command]
 pub(crate) async fn player_stop(state: State<'_, PlayerState>) -> Result<(), String> {
     with_player(&state, |p| p.stop()).await
 }
 
-/// Set volume (0-100).
 #[command]
 pub(crate) async fn player_set_volume(
     state: State<'_, PlayerState>,
@@ -255,7 +243,6 @@ pub(crate) async fn player_set_volume(
     with_player(&state, |p| p.set_volume(volume)).await
 }
 
-/// Get current volume.
 #[command]
 pub(crate) async fn player_get_volume(state: State<'_, PlayerState>) -> Result<i64, String> {
     let guard = state.inner.lock().await;
@@ -263,7 +250,6 @@ pub(crate) async fn player_get_volume(state: State<'_, PlayerState>) -> Result<i
     Ok(active.player.volume())
 }
 
-/// Set playback speed.
 #[command]
 pub(crate) async fn player_set_speed(
     state: State<'_, PlayerState>,
@@ -272,7 +258,6 @@ pub(crate) async fn player_set_speed(
     with_player(&state, |p| p.set_speed(speed)).await
 }
 
-/// Get current playback state.
 #[command]
 pub(crate) async fn player_get_state(
     state: State<'_, PlayerState>,
@@ -288,7 +273,6 @@ pub(crate) async fn player_get_state(
     })
 }
 
-/// Set audio track by ID. Use 0 to disable.
 #[command]
 pub(crate) async fn player_set_audio_track(
     state: State<'_, PlayerState>,
@@ -297,7 +281,6 @@ pub(crate) async fn player_set_audio_track(
     with_player(&state, |p| p.set_audio_track(id)).await
 }
 
-/// Set subtitle track by ID. Use 0 to disable.
 #[command]
 pub(crate) async fn player_set_subtitle_track(
     state: State<'_, PlayerState>,
@@ -306,10 +289,6 @@ pub(crate) async fn player_set_subtitle_track(
     with_player(&state, |p| p.set_subtitle_track(id)).await
 }
 
-/// Set hardware decoding mode at runtime.
-///
-/// - `"auto"` — automatic hardware decoding (VideoToolbox on macOS)
-/// - `"no"`   — software decoding only
 #[command]
 pub(crate) async fn player_set_hwdec(
     state: State<'_, PlayerState>,
@@ -318,7 +297,6 @@ pub(crate) async fn player_set_hwdec(
     with_player(&state, |p| p.set_hwdec(mode)).await
 }
 
-/// Get current hardware decoding mode.
 #[command]
 pub(crate) async fn player_get_hwdec(state: State<'_, PlayerState>) -> Result<String, String> {
     let guard = state.inner.lock().await;
@@ -326,7 +304,6 @@ pub(crate) async fn player_get_hwdec(state: State<'_, PlayerState>) -> Result<St
     Ok(active.player.hwdec())
 }
 
-/// Set demuxer forward buffer size in MiB.
 #[command]
 pub(crate) async fn player_set_buffer_size(
     state: State<'_, PlayerState>,
@@ -335,10 +312,9 @@ pub(crate) async fn player_set_buffer_size(
     with_player(&state, |p| p.set_demuxer_max_bytes(size_mib * 1024 * 1024)).await
 }
 
-/// Set the viewport (position and size) of the player's native GL view.
+/// Set the viewport (position and size) of the player's native view.
 ///
 /// Coordinates are in CSS pixels, origin at top-left of the window.
-/// `window_height` is the window's inner height in CSS pixels (passed from JS).
 /// Converted internally to NSView coordinates (bottom-left origin).
 #[command]
 pub(crate) async fn player_set_viewport(
@@ -351,29 +327,8 @@ pub(crate) async fn player_set_viewport(
 ) -> Result<(), String> {
     let guard = state.inner.lock().await;
     let active = guard.as_ref().ok_or("Player not initialized")?;
-
-    // Convert from CSS (top-left origin) to NSView (bottom-left origin).
     let ns_y = window_height - y - height;
-
     active.native_view.set_frame(x, ns_y, width, height);
-    Ok(())
-}
-
-/// Suspend GL rendering (freeze on last frame during fullscreen transitions).
-#[command]
-pub(crate) async fn player_suspend_render(state: State<'_, PlayerState>) -> Result<(), String> {
-    let guard = state.inner.lock().await;
-    let active = guard.as_ref().ok_or("Player not initialized")?;
-    active.native_view.suspend_rendering();
-    Ok(())
-}
-
-/// Resume GL rendering after a fullscreen transition.
-#[command]
-pub(crate) async fn player_resume_render(state: State<'_, PlayerState>) -> Result<(), String> {
-    let guard = state.inner.lock().await;
-    let active = guard.as_ref().ok_or("Player not initialized")?;
-    active.native_view.resume_rendering();
     Ok(())
 }
 
@@ -386,12 +341,11 @@ pub(crate) async fn player_destroy(state: State<'_, PlayerState>) -> Result<(), 
     };
     drop(guard);
 
-    // IMPORTANT: GpuRenderer (inside native_view) holds mpv_render_context
-    // which MUST be freed before the mpv handle (inside player) is destroyed.
-    // `destroy()` dispatches cleanup to the main queue synchronously,
-    // so it's safe to call from any thread.
-    active.native_view.destroy(); // frees mpv_render_context on main thread
-    drop(active.player);          // frees mpv handle
+    // GpuRenderer (inside native_view) holds mpv_render_context
+    // which MUST be freed before the mpv handle (inside player).
+    active.native_view.destroy();
+    drop(active.native_view);
+    drop(active.player);
 
     Ok(())
 }
@@ -416,7 +370,7 @@ async fn with_player(
     f(&active.player).map_err(|e| e.to_string())
 }
 
-fn spawn_event_forwarder(app: AppHandle, mut rx: UnboundedReceiver<PlayerEvent>) {
+fn spawn_event_forwarder<R: Runtime>(app: AppHandle<R>, mut rx: UnboundedReceiver<PlayerEvent>) {
     tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
             let _ = app.emit("player-event", &event);

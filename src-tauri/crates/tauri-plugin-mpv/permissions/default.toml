@@ -1,0 +1,20 @@
+[default]
+description = "Allows all mpv player commands"
+permissions = [
+  "allow-player-init",
+  "allow-player-play",
+  "allow-player-set-paused",
+  "allow-player-seek",
+  "allow-player-stop",
+  "allow-player-set-volume",
+  "allow-player-get-volume",
+  "allow-player-set-speed",
+  "allow-player-get-state",
+  "allow-player-set-audio-track",
+  "allow-player-set-subtitle-track",
+  "allow-player-set-hwdec",
+  "allow-player-get-hwdec",
+  "allow-player-set-buffer-size",
+  "allow-player-set-viewport",
+  "allow-player-destroy",
+]

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-player-destroy"
+description = "Enables the player_destroy command without any pre-configured scope."
+commands.allow = ["player_destroy"]
+
+[[permission]]
+identifier = "deny-player-destroy"
+description = "Denies the player_destroy command without any pre-configured scope."
+commands.deny = ["player_destroy"]

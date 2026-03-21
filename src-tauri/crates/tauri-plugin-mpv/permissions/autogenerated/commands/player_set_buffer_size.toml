@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-player-set-buffer-size"
+description = "Enables the player_set_buffer_size command without any pre-configured scope."
+commands.allow = ["player_set_buffer_size"]
+
+[[permission]]
+identifier = "deny-player-set-buffer-size"
+description = "Denies the player_set_buffer_size command without any pre-configured scope."
+commands.deny = ["player_set_buffer_size"]

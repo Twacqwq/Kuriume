@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/kuriume-provider", "crates/kuriume-mpv", "crates/kuriume-torrent", "crates/kuriume-store"]
+members = ["crates/kuriume-provider", "crates/kuriume-mpv", "crates/kuriume-torrent", "crates/kuriume-store", "crates/tauri-plugin-mpv"]
 
 [workspace.dependencies]
 tauri = { version = "2", features = ["macos-private-api"] }
@@ -17,6 +17,7 @@ kuriume-provider = { path = "crates/kuriume-provider" }
 kuriume-mpv = { path = "crates/kuriume-mpv" }
 kuriume-torrent = { path = "crates/kuriume-torrent" }
 kuriume-store = { path = "crates/kuriume-store" }
+tauri-plugin-mpv = { path = "crates/tauri-plugin-mpv" }
 
 [package]
 name = "kuriume"
@@ -44,14 +45,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 kuriume-provider = { workspace = true }
-kuriume-mpv = { workspace = true }
 kuriume-torrent = { workspace = true }
 kuriume-store = { workspace = true }
-raw-window-handle = "0.6"
+tauri-plugin-mpv = { workspace = true }
 tauri-plugin-dialog = "2.6.0"
-
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSThread"] }
-objc2-app-kit = { version = "0.3", features = ["NSView", "NSWindow", "NSResponder"] }
 

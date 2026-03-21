@@ -3,7 +3,6 @@ import type { HistoryContext } from "@/components/torrent-player";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { historyApi } from "@/lib/store";
-import { playerApi } from "@/lib/player";
 import { useMikanTorrents } from "@/lib/use-mikan-torrents";
 import type { CacheContext } from "@/lib/use-torrent-stream";
 import { cn } from "@/lib/utils";
@@ -114,15 +113,8 @@ function EpisodePage() {
   const toggleFullscreen = useCallback(async () => {
     const win = getCurrentWindow();
     const fs = await win.isFullscreen();
-    // Freeze GL rendering during the macOS fullscreen animation
-    // to prevent CGL lock contention and main-thread jank.
-    await playerApi.suspendRender().catch(() => {});
     await win.setFullscreen(!fs);
     setIsFullscreen(!fs);
-    // Resume after animation settles (~600ms on macOS).
-    setTimeout(async () => {
-      await playerApi.resumeRender().catch(() => {});
-    }, 600);
   }, []);
 
   // ── State 1: Loading ──────────────────────────────────────────

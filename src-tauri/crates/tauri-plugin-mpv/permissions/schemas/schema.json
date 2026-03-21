@@ -1,0 +1,498 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PermissionFile",
+  "description": "Permission file that can define a default permission, a set of permissions or a list of inlined permissions.",
+  "type": "object",
+  "properties": {
+    "default": {
+      "description": "The default permission set for the plugin",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/DefaultPermission"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "set": {
+      "description": "A list of permissions sets defined",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PermissionSet"
+      }
+    },
+    "permission": {
+      "description": "A list of inlined permissions",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Permission"
+      }
+    }
+  },
+  "definitions": {
+    "DefaultPermission": {
+      "description": "The default permission set of the plugin.\n\nWorks similarly to a permission with the \"default\" identifier.",
+      "type": "object",
+      "required": [
+        "permissions"
+      ],
+      "properties": {
+        "version": {
+          "description": "The version of the permission.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 1.0
+        },
+        "description": {
+          "description": "Human-readable description of what the permission does. Tauri convention is to use `<h4>` headings in markdown content for Tauri documentation generation purposes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "permissions": {
+          "description": "All permissions this set contains.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "PermissionSet": {
+      "description": "A set of direct permissions grouped together under a new name.",
+      "type": "object",
+      "required": [
+        "description",
+        "identifier",
+        "permissions"
+      ],
+      "properties": {
+        "identifier": {
+          "description": "A unique identifier for the permission.",
+          "type": "string"
+        },
+        "description": {
+          "description": "Human-readable description of what the permission does.",
+          "type": "string"
+        },
+        "permissions": {
+          "description": "All permissions this set contains.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PermissionKind"
+          }
+        }
+      }
+    },
+    "Permission": {
+      "description": "Descriptions of explicit privileges of commands.\n\nIt can enable commands to be accessible in the frontend of the application.\n\nIf the scope is defined it can be used to fine grain control the access of individual or multiple commands.",
+      "type": "object",
+      "required": [
+        "identifier"
+      ],
+      "properties": {
+        "version": {
+          "description": "The version of the permission.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 1.0
+        },
+        "identifier": {
+          "description": "A unique identifier for the permission.",
+          "type": "string"
+        },
+        "description": {
+          "description": "Human-readable description of what the permission does. Tauri internal convention is to use `<h4>` headings in markdown content for Tauri documentation generation purposes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commands": {
+          "description": "Allowed or denied commands when using this permission.",
+          "default": {
+            "allow": [],
+            "deny": []
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/Commands"
+            }
+          ]
+        },
+        "scope": {
+          "description": "Allowed or denied scoped when using this permission.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Scopes"
+            }
+          ]
+        },
+        "platforms": {
+          "description": "Target platforms this permission applies. By default all platforms are affected by this permission.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/Target"
+          }
+        }
+      }
+    },
+    "Commands": {
+      "description": "Allowed and denied commands inside a permission.\n\nIf two commands clash inside of `allow` and `deny`, it should be denied by default.",
+      "type": "object",
+      "properties": {
+        "allow": {
+          "description": "Allowed command.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deny": {
+          "description": "Denied command, which takes priority.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "Scopes": {
+      "description": "An argument for fine grained behavior control of Tauri commands.\n\nIt can be of any serde serializable type and is used to allow or prevent certain actions inside a Tauri command. The configured scope is passed to the command and will be enforced by the command implementation.\n\n## Example\n\n```json { \"allow\": [{ \"path\": \"$HOME/**\" }], \"deny\": [{ \"path\": \"$HOME/secret.txt\" }] } ```",
+      "type": "object",
+      "properties": {
+        "allow": {
+          "description": "Data that defines what is allowed by the scope.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/Value"
+          }
+        },
+        "deny": {
+          "description": "Data that defines what is denied by the scope. This should be prioritized by validation logic.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/Value"
+          }
+        }
+      }
+    },
+    "Value": {
+      "description": "All supported ACL values.",
+      "anyOf": [
+        {
+          "description": "Represents a null JSON value.",
+          "type": "null"
+        },
+        {
+          "description": "Represents a [`bool`].",
+          "type": "boolean"
+        },
+        {
+          "description": "Represents a valid ACL [`Number`].",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Number"
+            }
+          ]
+        },
+        {
+          "description": "Represents a [`String`].",
+          "type": "string"
+        },
+        {
+          "description": "Represents a list of other [`Value`]s.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Value"
+          }
+        },
+        {
+          "description": "Represents a map of [`String`] keys to [`Value`]s.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Value"
+          }
+        }
+      ]
+    },
+    "Number": {
+      "description": "A valid ACL number.",
+      "anyOf": [
+        {
+          "description": "Represents an [`i64`].",
+          "type": "integer",
+          "format": "int64"
+        },
+        {
+          "description": "Represents a [`f64`].",
+          "type": "number",
+          "format": "double"
+        }
+      ]
+    },
+    "Target": {
+      "description": "Platform target.",
+      "oneOf": [
+        {
+          "description": "MacOS.",
+          "type": "string",
+          "enum": [
+            "macOS"
+          ]
+        },
+        {
+          "description": "Windows.",
+          "type": "string",
+          "enum": [
+            "windows"
+          ]
+        },
+        {
+          "description": "Linux.",
+          "type": "string",
+          "enum": [
+            "linux"
+          ]
+        },
+        {
+          "description": "Android.",
+          "type": "string",
+          "enum": [
+            "android"
+          ]
+        },
+        {
+          "description": "iOS.",
+          "type": "string",
+          "enum": [
+            "iOS"
+          ]
+        }
+      ]
+    },
+    "PermissionKind": {
+      "type": "string",
+      "oneOf": [
+        {
+          "description": "Enables the player_destroy command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-destroy",
+          "markdownDescription": "Enables the player_destroy command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_destroy command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-destroy",
+          "markdownDescription": "Denies the player_destroy command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_get_hwdec command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-get-hwdec",
+          "markdownDescription": "Enables the player_get_hwdec command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_get_hwdec command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-get-hwdec",
+          "markdownDescription": "Denies the player_get_hwdec command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_get_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-get-state",
+          "markdownDescription": "Enables the player_get_state command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_get_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-get-state",
+          "markdownDescription": "Denies the player_get_state command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_get_volume command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-get-volume",
+          "markdownDescription": "Enables the player_get_volume command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_get_volume command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-get-volume",
+          "markdownDescription": "Denies the player_get_volume command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_init command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-init",
+          "markdownDescription": "Enables the player_init command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_init command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-init",
+          "markdownDescription": "Denies the player_init command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_play command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-play",
+          "markdownDescription": "Enables the player_play command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_play command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-play",
+          "markdownDescription": "Denies the player_play command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_seek command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-seek",
+          "markdownDescription": "Enables the player_seek command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_seek command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-seek",
+          "markdownDescription": "Denies the player_seek command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_set_audio_track command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-set-audio-track",
+          "markdownDescription": "Enables the player_set_audio_track command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_set_audio_track command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-set-audio-track",
+          "markdownDescription": "Denies the player_set_audio_track command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_set_buffer_size command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-set-buffer-size",
+          "markdownDescription": "Enables the player_set_buffer_size command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_set_buffer_size command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-set-buffer-size",
+          "markdownDescription": "Denies the player_set_buffer_size command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_set_hwdec command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-set-hwdec",
+          "markdownDescription": "Enables the player_set_hwdec command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_set_hwdec command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-set-hwdec",
+          "markdownDescription": "Denies the player_set_hwdec command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_set_paused command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-set-paused",
+          "markdownDescription": "Enables the player_set_paused command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_set_paused command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-set-paused",
+          "markdownDescription": "Denies the player_set_paused command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_set_speed command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-set-speed",
+          "markdownDescription": "Enables the player_set_speed command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_set_speed command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-set-speed",
+          "markdownDescription": "Denies the player_set_speed command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_set_subtitle_track command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-set-subtitle-track",
+          "markdownDescription": "Enables the player_set_subtitle_track command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_set_subtitle_track command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-set-subtitle-track",
+          "markdownDescription": "Denies the player_set_subtitle_track command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_set_viewport command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-set-viewport",
+          "markdownDescription": "Enables the player_set_viewport command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_set_viewport command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-set-viewport",
+          "markdownDescription": "Denies the player_set_viewport command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_set_volume command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-set-volume",
+          "markdownDescription": "Enables the player_set_volume command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_set_volume command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-set-volume",
+          "markdownDescription": "Denies the player_set_volume command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-stop",
+          "markdownDescription": "Enables the player_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-stop",
+          "markdownDescription": "Denies the player_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Allows all mpv player commands\n#### This default permission set includes:\n\n- `allow-player-init`\n- `allow-player-play`\n- `allow-player-set-paused`\n- `allow-player-seek`\n- `allow-player-stop`\n- `allow-player-set-volume`\n- `allow-player-get-volume`\n- `allow-player-set-speed`\n- `allow-player-get-state`\n- `allow-player-set-audio-track`\n- `allow-player-set-subtitle-track`\n- `allow-player-set-hwdec`\n- `allow-player-get-hwdec`\n- `allow-player-set-buffer-size`\n- `allow-player-set-viewport`\n- `allow-player-destroy`",
+          "type": "string",
+          "const": "default",
+          "markdownDescription": "Allows all mpv player commands\n#### This default permission set includes:\n\n- `allow-player-init`\n- `allow-player-play`\n- `allow-player-set-paused`\n- `allow-player-seek`\n- `allow-player-stop`\n- `allow-player-set-volume`\n- `allow-player-get-volume`\n- `allow-player-set-speed`\n- `allow-player-get-state`\n- `allow-player-set-audio-track`\n- `allow-player-set-subtitle-track`\n- `allow-player-set-hwdec`\n- `allow-player-get-hwdec`\n- `allow-player-set-buffer-size`\n- `allow-player-set-viewport`\n- `allow-player-destroy`"
+        }
+      ]
+    }
+  }
+}
