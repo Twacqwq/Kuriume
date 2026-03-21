@@ -282,7 +282,7 @@ function EpisodePage() {
       {/* ── Header (hidden in fullscreen) ─────────────────────── */}
       {!isFullscreen && (
         <div
-          className="flex items-center gap-3 border-b border-white/5 bg-background/95 px-5 pt-10 pb-2.5 backdrop-blur-xl"
+          className="flex items-center gap-3 border-b border-white/5 bg-background px-5 pt-10 pb-2.5"
           data-tauri-drag-region
         >
           <button

@@ -4,9 +4,15 @@
 //! 1. mpv renders via its OpenGL render API into an offscreen FBO.
 //! 2. PBO double-buffering asynchronously reads pixels from the FBO.
 //! 3. Pixels are uploaded to a D3D11 staging texture, then copied to the back buffer.
-//! 4. DXGI SwapChain presents the frame on a child HWND layered below the WebView2.
-//!    Alpha is forced to 0xFF so DWM renders the video opaquely; WebView2's
-//!    transparent areas (on player pages) reveal the video beneath.
+//! 4. DXGI SwapChain presents the frame on a popup window positioned behind
+//!    the Tauri main window.  DWM composites the popup (video, alpha=0xFF) and
+//!    the main window (transparent WebView2) with proper per-pixel alpha.
+//!
+//! Why a popup window instead of a child HWND:
+//! Windows does NOT alpha-composite sibling child HWNDs.  A child at
+//! HWND_BOTTOM is simply covered by WebView2 — transparent WebView2 areas
+//! reveal the DWM desktop glass, not the sibling child behind it.
+//! Only separate top-level windows participate in DWM compositing.
 
 use kuriume_mpv::GpuRenderer;
 use std::ffi::c_void;
@@ -28,11 +34,17 @@ type LRESULT = isize;
 type DWORD = u32;
 type LPCSTR = *const u8;
 
-const WS_CHILD: DWORD = 0x4000_0000;
+const WS_POPUP: DWORD = 0x8000_0000;
 const WS_VISIBLE: DWORD = 0x1000_0000;
+const WS_CLIPSIBLINGS: DWORD = 0x0400_0000;
+const WS_EX_TOOLWINDOW: DWORD = 0x0000_0080;
+const WS_EX_NOACTIVATE: DWORD = 0x0800_0000;
 const CS_OWNDC: UINT = 0x0020;
+const SWP_NOMOVE: UINT = 0x0002;
+const SWP_NOSIZE: UINT = 0x0001;
 const SWP_NOACTIVATE: UINT = 0x0010;
-const HWND_BOTTOM: HWND = 1 as HWND;
+const SW_HIDE: i32 = 0;
+const SW_SHOWNA: i32 = 8;
 
 const PFD_DRAW_TO_WINDOW: DWORD = 0x0000_0004;
 const PFD_SUPPORT_OPENGL: DWORD = 0x0000_0020;
@@ -107,6 +119,12 @@ struct RECT {
     bottom: i32,
 }
 
+#[repr(C)]
+struct POINT {
+    x: i32,
+    y: i32,
+}
+
 extern "system" {
     fn GetModuleHandleA(name: LPCSTR) -> HINSTANCE;
     fn RegisterClassExA(wc: *const WNDCLASSEXA) -> ATOM;
@@ -142,6 +160,9 @@ extern "system" {
     fn ChoosePixelFormat(hdc: HDC, ppfd: *const PIXELFORMATDESCRIPTOR) -> i32;
     fn SetPixelFormat(hdc: HDC, format: i32, ppfd: *const PIXELFORMATDESCRIPTOR) -> BOOL;
     fn SwapBuffers(hdc: HDC) -> BOOL;
+
+    fn ClientToScreen(hwnd: HWND, point: *mut POINT) -> BOOL;
+    fn ShowWindow(hwnd: HWND, cmd_show: i32) -> BOOL;
 
     fn wglCreateContext(hdc: HDC) -> HGLRC;
     fn wglMakeCurrent(hdc: HDC, hglrc: HGLRC) -> BOOL;
@@ -411,6 +432,7 @@ struct RenderCtx {
     swap_chain: ComPtr,
 
     // -- HWND --
+    parent_hwnd: HWND,
     child_hwnd: HWND,
 
     // -- Dimensions --
@@ -483,16 +505,21 @@ impl NativeVideoView {
             };
             RegisterClassExA(&wc);
 
+            // Convert parent client-area origin to screen coordinates
+            // (popup windows use screen coordinates for position).
+            let mut origin = POINT { x: 0, y: 0 };
+            ClientToScreen(parent_hwnd, &mut origin);
+
             let child_hwnd = CreateWindowExA(
-                0,
+                WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                 class_name.as_ptr(),
                 b"mpv\0".as_ptr(),
-                WS_CHILD | WS_VISIBLE,
-                0,
-                0,
+                WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS,
+                origin.x,
+                origin.y,
                 init_w,
                 init_h,
-                parent_hwnd,
+                std::ptr::null_mut(), // no owner — allows z-ordering behind main window
                 std::ptr::null_mut(),
                 h_instance,
                 std::ptr::null_mut(),
@@ -501,17 +528,17 @@ impl NativeVideoView {
                 return Err("CreateWindowExA failed".into());
             }
 
-            // Place child behind WebView2 in z-order.
-            // Video pixels are opaque (alpha=0xFF), so DWM renders them.
-            // WebView2 transparent areas reveal the video beneath.
+            // Place popup behind the main window in z-order.
+            // DWM composites top-level windows: opaque video (alpha=0xFF)
+            // shows through transparent WebView2 areas.
             SetWindowPos(
                 child_hwnd,
-                HWND_BOTTOM,
+                parent_hwnd,
                 0,
                 0,
                 0,
                 0,
-                SWP_NOACTIVATE,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
             );
 
             // ── WGL context ──────────────────────────────────────
@@ -703,6 +730,7 @@ impl NativeVideoView {
                 device,
                 device_ctx,
                 swap_chain,
+                parent_hwnd,
                 child_hwnd,
                 surface_width: AtomicI32::new(init_w),
                 surface_height: AtomicI32::new(init_h),
@@ -756,15 +784,39 @@ impl NativeVideoView {
         }
 
         unsafe {
+            // Convert client-area coordinates to screen coordinates.
+            let mut pt = POINT { x: px, y: py };
+            ClientToScreen(self.render_ctx.parent_hwnd, &mut pt);
+
+            // Reposition popup behind the main window.
             SetWindowPos(
                 self.render_ctx.child_hwnd,
-                HWND_BOTTOM,
-                px,
-                py,
+                self.render_ctx.parent_hwnd,
+                pt.x,
+                pt.y,
                 pw,
                 ph,
                 SWP_NOACTIVATE,
             );
+        }
+    }
+
+    /// Show or hide the video popup window.
+    pub fn set_visible(&self, visible: bool) {
+        unsafe {
+            ShowWindow(
+                self.render_ctx.child_hwnd,
+                if visible { SW_SHOWNA } else { SW_HIDE },
+            );
+            // After showing, re-assert z-order behind main window.
+            if visible {
+                SetWindowPos(
+                    self.render_ctx.child_hwnd,
+                    self.render_ctx.parent_hwnd,
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
+            }
         }
     }
 
@@ -942,6 +994,16 @@ fn render_loop(ctx: Arc<RenderCtx>) {
         }
 
         if !ctx.needs_render.swap(false, Ordering::AcqRel) {
+            // Even when no render is needed, keep z-order correct
+            // (e.g. after Alt+Tab brings another window on top).
+            unsafe {
+                SetWindowPos(
+                    ctx.child_hwnd,
+                    ctx.parent_hwnd,
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
+            }
             continue;
         }
 
