@@ -514,7 +514,7 @@ impl NativeVideoView {
                 WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                 class_name.as_ptr(),
                 b"mpv\0".as_ptr(),
-                WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS,
+                WS_POPUP | WS_CLIPSIBLINGS,
                 origin.x,
                 origin.y,
                 init_w,
@@ -788,7 +788,7 @@ impl NativeVideoView {
             let mut pt = POINT { x: px, y: py };
             ClientToScreen(self.render_ctx.parent_hwnd, &mut pt);
 
-            // Reposition popup behind the main window.
+            // Reposition popup behind the main window and ensure it is visible.
             SetWindowPos(
                 self.render_ctx.child_hwnd,
                 self.render_ctx.parent_hwnd,
@@ -798,6 +798,7 @@ impl NativeVideoView {
                 ph,
                 SWP_NOACTIVATE,
             );
+            ShowWindow(self.render_ctx.child_hwnd, SW_SHOWNA);
         }
     }
 
@@ -1122,6 +1123,9 @@ fn render_loop(ctx: Arc<RenderCtx>) {
                 std::mem::transmute(*sc_vtable.add(8));
             present(sc, 1, 0);
             } // have_prev
+
+            // Toggle PBO double-buffer index for next frame.
+            (*ctx_ptr).pbo_index = 1 - (*ctx_ptr).pbo_index;
 
             (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
         }

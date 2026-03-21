@@ -673,9 +673,11 @@ function LoadingOverlay({ phase }: { phase: TorrentStreamPhase }) {
   };
 
   return (
-    <div className="absolute inset-0 z-15 flex flex-col items-center justify-center gap-4 bg-black">
-      <Loader2 className="h-10 w-10 animate-spin text-primary" />
-      <p className="text-sm text-white/70">{messages[phase] ?? "加载中..."}</p>
+    <div className="absolute inset-0 z-15 flex flex-col items-center justify-center gap-4">
+      <div className="flex flex-col items-center gap-2 rounded-xl bg-black/60 px-5 py-4 backdrop-blur-sm">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="text-sm text-white/70">{messages[phase] ?? "加载中..."}</p>
+      </div>
     </div>
   );
 }
@@ -697,7 +699,7 @@ function BufferingOverlay({
   const slow = stats.download_speed < 1024 && !noPeers; // < 1 KB/s
 
   return (
-    <div className="absolute inset-0 z-15 flex flex-col items-center justify-center gap-3 bg-black">
+    <div className="absolute inset-0 z-15 flex flex-col items-center justify-center gap-3">
       <Loader2 className="h-10 w-10 animate-spin text-primary" />
       <p className="text-sm text-white/70">正在缓冲...</p>
       {noPeers && (
@@ -741,7 +743,7 @@ function ErrorOverlay({
   })();
 
   return (
-    <div className="absolute inset-0 z-15 flex flex-col items-center justify-center gap-4 bg-black px-8">
+    <div className="absolute inset-0 z-15 flex flex-col items-center justify-center gap-4 px-8">
       <div className="rounded-lg bg-red-500/10 px-6 py-4 text-center backdrop-blur-sm">
         <p className="text-sm font-medium text-red-400">播放出错</p>
         {displayMessage && (
