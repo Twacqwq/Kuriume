@@ -298,21 +298,6 @@ export function AnimeDetail({
 
               {/* Action buttons */}
               <div className="flex flex-wrap items-center gap-3 pt-1">
-                <Link
-                  to="/anime/$id/episode/$ep"
-                  params={{
-                    id: String(data.id),
-                    ep: String(
-                      data.episodes.find((e) => (!e.progress || e.progress < 100) && hasAired(e.airdate))?.ep ?? 1
-                    ),
-                  }}
-                  search={{ groupId: selectedGroupId ?? undefined, resolution: preferredResolution ?? undefined, subtitle: preferredSubtitle ?? undefined, t: undefined }}
-                >
-                  <Button size="lg" className="gap-2 rounded-full px-8 shadow-lg shadow-primary/25">
-                    <Play size={18} fill="currentColor" />
-                    开始播放
-                  </Button>
-                </Link>
                 {/* Watchlist button with hover dropdown */}
                 <div className="group/watch relative">
                   <Button

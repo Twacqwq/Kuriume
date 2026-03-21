@@ -59,8 +59,8 @@ function HistoryPage() {
   });
 
   const removeMutation = useMutation({
-    mutationFn: ({ bgmId, episode }: { bgmId: string; episode: number }) =>
-      historyApi.remove(bgmId, episode),
+    mutationFn: ({ bgmId }: { bgmId: string }) =>
+      historyApi.remove(bgmId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["history-list"] }),
   });
 
@@ -132,7 +132,6 @@ function HistoryPage() {
                   onRemove={() =>
                     removeMutation.mutate({
                       bgmId: entry.bgm_id,
-                      episode: entry.episode,
                     })
                   }
                 />

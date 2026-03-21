@@ -184,8 +184,8 @@ export const historyApi = {
   list: (limit: number, offset: number) =>
     invoke<WatchHistoryEntry[]>("history_list", { limit, offset }),
 
-  remove: (bgmId: string, episode: number) =>
-    invoke<void>("history_remove", { bgmId, episode }),
+  remove: (bgmId: string) =>
+    invoke<void>("history_remove", { bgmId }),
 
   clear: () => invoke<void>("history_clear"),
 };

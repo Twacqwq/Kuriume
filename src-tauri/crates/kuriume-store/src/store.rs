@@ -252,6 +252,62 @@ impl Store {
             )?;
         }
 
+        // Migration: consolidate watch_history to one entry per anime
+        // Old schema had UNIQUE(bgm_id, episode), new schema uses UNIQUE(bgm_id)
+        let has_old_history_schema: bool = self
+            .conn
+            .prepare(
+                "SELECT COUNT(*) FROM pragma_index_info(
+                    (SELECT name FROM pragma_index_list('watch_history') WHERE \"unique\" = 1 LIMIT 1)
+                )",
+            )
+            .and_then(|mut s| s.query_row([], |r| r.get::<_, i64>(0)))
+            .map(|n| n > 1) // old index has 2 columns (bgm_id, episode)
+            .unwrap_or(false);
+
+        if has_old_history_schema {
+            self.conn.execute_batch(
+                "
+                -- Keep only the most recently watched episode per anime
+                DELETE FROM watch_history
+                WHERE id NOT IN (
+                    SELECT id FROM watch_history w1
+                    WHERE watched_at = (
+                        SELECT MAX(watched_at) FROM watch_history w2
+                        WHERE w2.bgm_id = w1.bgm_id
+                    )
+                );
+
+                -- Recreate table with new unique constraint
+                CREATE TABLE watch_history_new (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    bgm_id          TEXT    NOT NULL UNIQUE,
+                    episode         INTEGER NOT NULL,
+                    anime_title     TEXT    NOT NULL,
+                    episode_title   TEXT    NOT NULL DEFAULT '',
+                    cover           TEXT,
+                    position        REAL    NOT NULL DEFAULT 0,
+                    duration        REAL    NOT NULL DEFAULT 0,
+                    group_id        TEXT,
+                    resolution      TEXT,
+                    subtitle        TEXT,
+                    watched_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+                );
+
+                INSERT INTO watch_history_new
+                    SELECT id, bgm_id, episode, anime_title, episode_title, cover,
+                           position, duration, group_id, resolution, subtitle, watched_at
+                    FROM watch_history;
+
+                DROP TABLE watch_history;
+                ALTER TABLE watch_history_new RENAME TO watch_history;
+
+                CREATE INDEX IF NOT EXISTS idx_history_watched
+                    ON watch_history(watched_at DESC);
+                ",
+            )?;
+        }
+
         Ok(())
     }
 
@@ -589,7 +645,7 @@ impl Store {
 
     // ── Watch History ─────────────────────────────────────────────
 
-    /// Upsert a watch history entry (insert or update progress).
+    /// Upsert a watch history entry (one entry per anime, updates to latest episode).
     pub fn history_upsert(
         &self,
         bgm_id: &str,
@@ -607,7 +663,8 @@ impl Store {
             "INSERT INTO watch_history(bgm_id, episode, anime_title, episode_title, cover,
                                        position, duration, group_id, resolution, subtitle)
              VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-             ON CONFLICT(bgm_id, episode) DO UPDATE SET
+             ON CONFLICT(bgm_id) DO UPDATE SET
+                episode       = excluded.episode,
                 anime_title   = excluded.anime_title,
                 episode_title = excluded.episode_title,
                 cover         = excluded.cover,
@@ -638,11 +695,11 @@ impl Store {
         Ok(entries)
     }
 
-    /// Remove a single history entry.
-    pub fn history_remove(&self, bgm_id: &str, episode: i32) -> Result<()> {
+    /// Remove a single history entry by anime.
+    pub fn history_remove(&self, bgm_id: &str) -> Result<()> {
         self.conn.execute(
-            "DELETE FROM watch_history WHERE bgm_id = ?1 AND episode = ?2",
-            params![bgm_id, episode],
+            "DELETE FROM watch_history WHERE bgm_id = ?1",
+            params![bgm_id],
         )?;
         Ok(())
     }

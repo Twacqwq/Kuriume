@@ -546,10 +546,9 @@ pub(crate) fn history_remove(
     state: State<'_, StoreState>,
     app: AppHandle,
     bgm_id: &str,
-    episode: i32,
 ) -> Result<(), String> {
     state.with_store(&app, |store| {
-        store.history_remove(bgm_id, episode).map_err(|e| e.to_string())
+        store.history_remove(bgm_id).map_err(|e| e.to_string())
     })
 }
 

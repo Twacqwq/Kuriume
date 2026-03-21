@@ -1,5 +1,4 @@
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Link } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, Info, Pause, Play, Star } from 'lucide-react'
@@ -132,10 +131,6 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
 
           {/* Action buttons */}
           <div className="flex items-center gap-3 pt-2">
-            <Button size="lg" className="gap-2 rounded-full px-8">
-              <Play size={18} fill="currentColor" />
-              立即播放
-            </Button>
             <Link
               to="/anime/$id"
               params={{ id: String(item.id) }}
