@@ -30,7 +30,8 @@ const WS_CHILD: DWORD = 0x4000_0000;
 const WS_VISIBLE: DWORD = 0x1000_0000;
 const WS_CLIPSIBLINGS: DWORD = 0x0400_0000;
 const CS_OWNDC: UINT = 0x0020;
-const SWP_NOZORDER: UINT = 0x0004;
+const SWP_NOMOVE: UINT = 0x0002;
+const SWP_NOSIZE: UINT = 0x0001;
 const SWP_NOACTIVATE: UINT = 0x0010;
 const HWND_BOTTOM: HWND = 1 as HWND;
 
@@ -402,6 +403,8 @@ struct RenderCtx {
     /// PBO double-buffer for async pixel readback.
     pbos: [u32; 2],
     pbo_index: usize,
+    /// First frame flag — skip D3D11 upload until a PBO has been written to.
+    has_prev_frame: AtomicBool,
 
     // -- D3D11 (display pipeline) --
     device: ComPtr,
@@ -499,7 +502,7 @@ impl NativeVideoView {
                 return Err("CreateWindowExA failed".into());
             }
 
-            // Place child behind WebView2
+            // Place child behind WebView2 in z-order.
             SetWindowPos(
                 child_hwnd,
                 HWND_BOTTOM,
@@ -507,7 +510,7 @@ impl NativeVideoView {
                 0,
                 0,
                 0,
-                SWP_NOZORDER | SWP_NOACTIVATE,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
             );
 
             // ── WGL context ──────────────────────────────────────
@@ -695,6 +698,7 @@ impl NativeVideoView {
                 gl_texture,
                 pbos,
                 pbo_index: 0,
+                has_prev_frame: AtomicBool::new(false),
                 device,
                 device_ctx,
                 swap_chain,
@@ -878,6 +882,7 @@ unsafe fn resize_surface(ctx: &Arc<RenderCtx>, new_w: i32, new_h: i32) {
     ((*ctx_ptr).gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
     (*ctx_ptr).pbos = new_pbos;
     (*ctx_ptr).pbo_index = 0;
+    ctx.has_prev_frame.store(false, Ordering::Release);
 
     // 3. Resize D3D11 swap chain
     // IDXGISwapChain::ResizeBuffers is vtable index 13
@@ -962,7 +967,12 @@ fn render_loop(ctx: Arc<RenderCtx>) {
             (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, read_pbo);
             glReadPixels(0, 0, w, h, GL_BGRA, GL_UNSIGNED_BYTE, std::ptr::null_mut());
 
-            // Map the other PBO (from previous frame) to get pixels
+            // Map the other PBO (from previous frame) to get pixels.
+            // Skip on the very first frame — map_pbo hasn't been written yet.
+            let have_prev = ctx.has_prev_frame.load(Ordering::Acquire);
+            ctx.has_prev_frame.store(true, Ordering::Release);
+
+            if have_prev {
             (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, map_pbo);
             let pixels = (ctx.gl.map_buffer)(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
 
@@ -1013,6 +1023,13 @@ fn render_loop(ctx: Arc<RenderCtx>) {
                         flipped[dst_row..dst_row + row_bytes]
                             .copy_from_slice(&src[src_row..src_row + row_bytes]);
                     }
+                    // Force alpha to opaque — DXGI FLIP_DISCARD swap chains
+                    // are composited by DWM with per-pixel alpha.  mpv's
+                    // OpenGL output has alpha=0 (transparent), making the
+                    // video invisible without this fix.
+                    for px in flipped.chunks_exact_mut(4) {
+                        px[3] = 0xFF;
+                    }
 
                     update_subresource(
                         dc,
@@ -1034,9 +1051,6 @@ fn render_loop(ctx: Arc<RenderCtx>) {
                 (ctx.gl.unmap_buffer)(GL_PIXEL_PACK_BUFFER);
             }
 
-            (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
-            (*ctx_ptr).pbo_index = 1 - (*ctx_ptr).pbo_index;
-
             // ── Step 4: Present ──────────────────────────────────
             // IDXGISwapChain::Present is vtable index 8
             let sc = ctx.swap_chain.as_ptr();
@@ -1044,6 +1058,10 @@ fn render_loop(ctx: Arc<RenderCtx>) {
             let present: unsafe extern "system" fn(*mut c_void, u32, u32) -> i32 =
                 std::mem::transmute(*sc_vtable.add(8));
             present(sc, 1, 0);
+            } // have_prev
+
+            (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
+            (*ctx_ptr).pbo_index = 1 - (*ctx_ptr).pbo_index;
         }
     }
 
