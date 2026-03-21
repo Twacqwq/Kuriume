@@ -23,8 +23,18 @@ fn main() {
 
     #[cfg(target_os = "windows")]
     {
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let libs_dir = std::path::Path::new(&manifest_dir)
+            .join("libs")
+            .join("windows");
+
         if let Ok(dir) = std::env::var("MPV_LIB_DIR") {
             println!("cargo:rustc-link-search=native={dir}");
+        } else if libs_dir.exists() {
+            println!(
+                "cargo:rustc-link-search=native={}",
+                libs_dir.display()
+            );
         }
     }
 

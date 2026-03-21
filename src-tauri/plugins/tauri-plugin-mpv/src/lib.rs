@@ -1,8 +1,8 @@
 //! tauri-plugin-mpv — Tauri v2 plugin for mpv video playback.
 //!
 //! Provides a native GPU-rendered video player using mpv's render API.
-//! On macOS, uses OpenGL → IOSurface → CALayer for efficient rendering
-//! that avoids CGL lock contention during window transitions.
+//! - macOS: OpenGL → IOSurface → Metal blit → CAMetalLayer
+//! - Windows: OpenGL → PBO readback → D3D11 → DXGI SwapChain
 
 mod commands;
 mod platform;

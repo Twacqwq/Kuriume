@@ -26,18 +26,43 @@ pub struct GpuRenderer {
 unsafe impl Send for GpuRenderer {}
 unsafe impl Sync for GpuRenderer {}
 
-extern "C" {
-    fn dlsym(handle: *mut c_void, symbol: *const std::ffi::c_char) -> *mut c_void;
-}
-/// macOS RTLD_DEFAULT = pointer to -2
-const RTLD_DEFAULT: *mut c_void = -2isize as usize as *mut c_void;
-
-/// `get_proc_address` callback — resolves OpenGL symbols via `dlsym`.
+/// `get_proc_address` callback — resolves OpenGL symbols.
+///
+/// macOS: `dlsym(RTLD_DEFAULT, …)`.
+/// Windows: `wglGetProcAddress` with `GetProcAddress(opengl32)` fallback.
+#[cfg(target_os = "macos")]
 unsafe extern "C" fn gl_get_proc_address(
     _ctx: *mut c_void,
     name: *const std::ffi::c_char,
 ) -> *mut c_void {
+    extern "C" {
+        fn dlsym(handle: *mut c_void, symbol: *const std::ffi::c_char) -> *mut c_void;
+    }
+    const RTLD_DEFAULT: *mut c_void = -2isize as usize as *mut c_void;
     unsafe { dlsym(RTLD_DEFAULT, name) }
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "C" fn gl_get_proc_address(
+    _ctx: *mut c_void,
+    name: *const std::ffi::c_char,
+) -> *mut c_void {
+    extern "system" {
+        fn wglGetProcAddress(name: *const std::ffi::c_char) -> *mut c_void;
+        fn GetModuleHandleA(name: *const std::ffi::c_char) -> *mut c_void;
+        fn GetProcAddress(module: *mut c_void, name: *const std::ffi::c_char) -> *mut c_void;
+    }
+    unsafe {
+        let addr = wglGetProcAddress(name);
+        if !addr.is_null() {
+            return addr;
+        }
+        let module = GetModuleHandleA(b"opengl32.dll\0".as_ptr() as *const _);
+        if module.is_null() {
+            return ptr::null_mut();
+        }
+        GetProcAddress(module, name)
+    }
 }
 
 /// mpv "update" callback — sets the atomic flag when a new frame is ready.

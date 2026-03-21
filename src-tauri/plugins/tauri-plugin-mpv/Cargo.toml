@@ -2,7 +2,7 @@
 name = "tauri-plugin-mpv"
 version = "0.1.0"
 edition = "2021"
-description = "Tauri v2 plugin for mpv-based video playback with native Metal rendering on macOS"
+description = "Tauri v2 plugin for mpv-based video playback with native GPU rendering"
 links = "tauri-plugin-mpv"
 
 [build-dependencies]

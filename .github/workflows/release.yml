@@ -58,33 +58,43 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.target }}
 
-  # ── Future: uncomment when Windows/Linux backends are implemented ──
-  #
-  # build-windows:
-  #   runs-on: windows-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: dtolnay/rust-toolchain@stable
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: 22
-  #         cache: npm
-  #     - run: npm ci
-  #     - name: Download mpv dev files
-  #       run: |
-  #         # Download pre-built mpv dev package from sourceforge
-  #         # https://sourceforge.net/projects/mpv-player-windows/files/libmpv/
-  #         curl -L -o mpv-dev.7z "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/latest/mpv-dev-x86_64.7z"
-  #         7z x mpv-dev.7z -ompv-dev
-  #       shell: bash
-  #     - uses: tauri-apps/tauri-action@v0
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #         MPV_LIB_DIR: ${{ github.workspace }}/mpv-dev
-  #       with:
-  #         tagName: ${{ github.ref_name }}
-  #         releaseName: 'Kuriume ${{ github.ref_name }}'
-  #         releaseDraft: true
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup MSVC dev tools
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Bundle libmpv
+        run: python scripts/bundle-libs-windows.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MPV_LIB_DIR: ${{ github.workspace }}/src-tauri/libs/windows
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Kuriume ${{ github.ref_name }}'
+          releaseBody: 'See the assets below for download links.'
+          releaseDraft: true
+          prerelease: false
   #
   # build-linux:
   #   runs-on: ubuntu-22.04

@@ -96,6 +96,45 @@ mod power {
     }
 }
 
+// ── Windows display-sleep prevention via SetThreadExecutionState ──
+#[cfg(target_os = "windows")]
+mod power {
+    use std::ffi::c_void;
+
+    // ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED
+    const ES_CONTINUOUS: u32 = 0x8000_0000;
+    const ES_DISPLAY_REQUIRED: u32 = 0x0000_0002;
+    const ES_SYSTEM_REQUIRED: u32 = 0x0000_0001;
+
+    extern "system" {
+        fn SetThreadExecutionState(flags: u32) -> u32;
+    }
+
+    pub struct DisplaySleepGuard;
+
+    unsafe impl Send for DisplaySleepGuard {}
+    unsafe impl Sync for DisplaySleepGuard {}
+
+    impl DisplaySleepGuard {
+        pub fn new() -> Option<Self> {
+            unsafe {
+                SetThreadExecutionState(
+                    ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED,
+                );
+            }
+            Some(Self)
+        }
+    }
+
+    impl Drop for DisplaySleepGuard {
+        fn drop(&mut self) {
+            unsafe {
+                SetThreadExecutionState(ES_CONTINUOUS);
+            }
+        }
+    }
+}
+
 /// All resources associated with an active player session.
 ///
 /// Field order matters: Rust drops fields in declaration order.
@@ -104,7 +143,6 @@ mod power {
 struct ActivePlayer {
     native_view: NativeVideoView,
     player: MpvPlayer,
-    #[cfg(target_os = "macos")]
     _sleep_guard: Option<power::DisplaySleepGuard>,
 }
 
@@ -168,18 +206,35 @@ pub(crate) async fn player_init<R: Runtime>(
     window
         .run_on_main_thread(move || {
             let result = (|| {
+                use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                let handle = win
+                    .window_handle()
+                    .map_err(|e| format!("window handle: {e}"))?;
+
                 #[cfg(target_os = "macos")]
                 {
-                    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-                    let handle = win
-                        .window_handle()
-                        .map_err(|e| format!("window handle: {e}"))?;
                     match handle.as_raw() {
                         RawWindowHandle::AppKit(h) => {
                             let ns_view = h.ns_view.as_ptr();
                             unsafe {
                                 NativeVideoView::new(
                                     ns_view,
+                                    mpv_handle as *mut std::ffi::c_void,
+                                )
+                            }
+                        }
+                        _ => Err("unexpected window handle type".into()),
+                    }
+                }
+
+                #[cfg(target_os = "windows")]
+                {
+                    match handle.as_raw() {
+                        RawWindowHandle::Win32(h) => {
+                            let hwnd = h.hwnd.get() as *mut std::ffi::c_void;
+                            unsafe {
+                                NativeVideoView::new(
+                                    hwnd,
                                     mpv_handle as *mut std::ffi::c_void,
                                 )
                             }
@@ -199,7 +254,6 @@ pub(crate) async fn player_init<R: Runtime>(
     *guard = Some(ActivePlayer {
         native_view,
         player,
-        #[cfg(target_os = "macos")]
         _sleep_guard: power::DisplaySleepGuard::new(),
     });
 
@@ -315,7 +369,6 @@ pub(crate) async fn player_set_buffer_size(
 /// Set the viewport (position and size) of the player's native view.
 ///
 /// Coordinates are in CSS pixels, origin at top-left of the window.
-/// Converted internally to NSView coordinates (bottom-left origin).
 #[command]
 pub(crate) async fn player_set_viewport(
     state: State<'_, PlayerState>,
@@ -327,8 +380,21 @@ pub(crate) async fn player_set_viewport(
 ) -> Result<(), String> {
     let guard = state.inner.lock().await;
     let active = guard.as_ref().ok_or("Player not initialized")?;
-    let ns_y = window_height - y - height;
-    active.native_view.set_frame(x, ns_y, width, height);
+
+    #[cfg(target_os = "macos")]
+    {
+        // Convert CSS coords (top-left origin) to NSView coords (bottom-left origin)
+        let ns_y = window_height - y - height;
+        active.native_view.set_frame(x, ns_y, width, height);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Win32 uses top-left origin, same as CSS
+        let _ = window_height;
+        active.native_view.set_frame(x, y, width, height);
+    }
+
     Ok(())
 }
 
