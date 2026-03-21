@@ -6,7 +6,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { AnimeInfo, AnimeEpisodes, AnimeCharacters } from "@/lib/types";
 import { watchlistApi, type WatchStatus } from "@/lib/store";
-import { useMikanTorrents } from "@/lib/use-mikan-torrents";
+import { useMikanTorrents } from "@/hooks/use-mikan-torrents";
 
 import {
   detailQueryOptions,

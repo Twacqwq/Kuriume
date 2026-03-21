@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/tooltip";
 import { AnimeCharacters, AnimeEpisodes } from "@/lib/types";
 import type { WatchStatus } from "@/lib/store";
-import type { GroupData } from "@/lib/use-mikan-torrents";
+import type { GroupData } from "@/hooks/use-mikan-torrents";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
 import {

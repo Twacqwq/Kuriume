@@ -7,7 +7,7 @@ import {
   extractSubtitleLang,
   type EpisodeTorrentMatch,
   type SubtitleGroupTorrents,
-} from "./mikan";
+} from "@/lib/mikan";
 
 // ── Types ────────────────────────────────────────────────────────
 

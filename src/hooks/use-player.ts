@@ -1,6 +1,6 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { playerApi, type PlayerEvent } from "./player";
+import { playerApi, type PlayerEvent } from "@/lib/player";
 
 interface PlayerState {
   ready: boolean;

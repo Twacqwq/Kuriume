@@ -4,8 +4,8 @@ import {
   pickVideoFile,
   type TorrentFileInfo,
   type TorrentStatus,
-} from "./torrent";
-import { cacheApi, settingsApi } from "./store";
+} from "@/lib/torrent";
+import { cacheApi, settingsApi } from "@/lib/store";
 
 // ── Types ────────────────────────────────────────────────────────
 

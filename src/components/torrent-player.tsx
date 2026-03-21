@@ -26,10 +26,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { formatBytes, formatSpeed } from "@/lib/torrent";
-import { usePlayer } from "@/lib/use-player";
+import { usePlayer } from "@/hooks/use-player";
 import { playerApi } from "@/lib/player";
 import { historyApi, settingsApi } from "@/lib/store";
-import { useTorrentStream, type TorrentStreamPhase, type CacheContext } from "@/lib/use-torrent-stream";
+import { useTorrentStream, type TorrentStreamPhase, type CacheContext } from "@/hooks/use-torrent-stream";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
