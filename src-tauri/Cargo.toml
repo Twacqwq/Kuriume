@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/kuriume-provider", "crates/kuriume-mpv", "crates/kuriume-torrent", "crates/kuriume-store", "crates/tauri-plugin-mpv"]
+members = ["crates/kuriume-provider", "crates/kuriume-mpv", "crates/kuriume-torrent", "crates/kuriume-store", "plugins/tauri-plugin-mpv"]
 
 [workspace.dependencies]
 tauri = { version = "2", features = ["macos-private-api"] }
@@ -17,7 +17,7 @@ kuriume-provider = { path = "crates/kuriume-provider" }
 kuriume-mpv = { path = "crates/kuriume-mpv" }
 kuriume-torrent = { path = "crates/kuriume-torrent" }
 kuriume-store = { path = "crates/kuriume-store" }
-tauri-plugin-mpv = { path = "crates/tauri-plugin-mpv" }
+tauri-plugin-mpv = { path = "plugins/tauri-plugin-mpv" }
 
 [package]
 name = "kuriume"
