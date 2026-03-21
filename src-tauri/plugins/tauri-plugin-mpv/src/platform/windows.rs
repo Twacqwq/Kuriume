@@ -29,10 +29,15 @@ type LPCSTR = *const u8;
 const WS_CHILD: DWORD = 0x4000_0000;
 const WS_VISIBLE: DWORD = 0x1000_0000;
 const WS_CLIPSIBLINGS: DWORD = 0x0400_0000;
+const WS_EX_TRANSPARENT: DWORD = 0x0000_0020;
 const CS_OWNDC: UINT = 0x0020;
-const SWP_NOZORDER: UINT = 0x0004;
+const SWP_NOMOVE: UINT = 0x0002;
+const SWP_NOSIZE: UINT = 0x0001;
 const SWP_NOACTIVATE: UINT = 0x0010;
-const HWND_BOTTOM: HWND = 1 as HWND;
+const HWND_TOP: HWND = 0 as HWND;
+
+const WM_NCHITTEST: UINT = 0x0084;
+const HTTRANSPARENT: LRESULT = -1;
 
 const PFD_DRAW_TO_WINDOW: DWORD = 0x0000_0004;
 const PFD_SUPPORT_OPENGL: DWORD = 0x0000_0020;
@@ -197,6 +202,10 @@ unsafe extern "system" fn wnd_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    // Pass all mouse hit-tests through to the WebView2 beneath.
+    if msg == WM_NCHITTEST {
+        return HTTRANSPARENT;
+    }
     unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) }
 }
 
@@ -402,6 +411,8 @@ struct RenderCtx {
     /// PBO double-buffer for async pixel readback.
     pbos: [u32; 2],
     pbo_index: usize,
+    /// First frame flag — skip D3D11 upload until a PBO has been written to.
+    has_prev_frame: AtomicBool,
 
     // -- D3D11 (display pipeline) --
     device: ComPtr,
@@ -482,7 +493,7 @@ impl NativeVideoView {
             RegisterClassExA(&wc);
 
             let child_hwnd = CreateWindowExA(
-                0,
+                WS_EX_TRANSPARENT,
                 class_name.as_ptr(),
                 b"mpv\0".as_ptr(),
                 WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
@@ -499,15 +510,17 @@ impl NativeVideoView {
                 return Err("CreateWindowExA failed".into());
             }
 
-            // Place child behind WebView2
+            // Place child above WebView2 — Windows doesn't alpha-composite
+            // sibling child HWNDs, so the video must be on top to be visible.
+            // WS_EX_TRANSPARENT + HTTRANSPARENT passes input to WebView2.
             SetWindowPos(
                 child_hwnd,
-                HWND_BOTTOM,
+                HWND_TOP,
                 0,
                 0,
                 0,
                 0,
-                SWP_NOZORDER | SWP_NOACTIVATE,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
             );
 
             // ── WGL context ──────────────────────────────────────
@@ -695,6 +708,7 @@ impl NativeVideoView {
                 gl_texture,
                 pbos,
                 pbo_index: 0,
+                has_prev_frame: AtomicBool::new(false),
                 device,
                 device_ctx,
                 swap_chain,
@@ -753,7 +767,7 @@ impl NativeVideoView {
         unsafe {
             SetWindowPos(
                 self.render_ctx.child_hwnd,
-                HWND_BOTTOM,
+                HWND_TOP,
                 px,
                 py,
                 pw,
@@ -878,6 +892,7 @@ unsafe fn resize_surface(ctx: &Arc<RenderCtx>, new_w: i32, new_h: i32) {
     ((*ctx_ptr).gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
     (*ctx_ptr).pbos = new_pbos;
     (*ctx_ptr).pbo_index = 0;
+    ctx.has_prev_frame.store(false, Ordering::Release);
 
     // 3. Resize D3D11 swap chain
     // IDXGISwapChain::ResizeBuffers is vtable index 13
@@ -962,7 +977,12 @@ fn render_loop(ctx: Arc<RenderCtx>) {
             (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, read_pbo);
             glReadPixels(0, 0, w, h, GL_BGRA, GL_UNSIGNED_BYTE, std::ptr::null_mut());
 
-            // Map the other PBO (from previous frame) to get pixels
+            // Map the other PBO (from previous frame) to get pixels.
+            // Skip on the very first frame — map_pbo hasn't been written to yet.
+            let have_prev = ctx.has_prev_frame.load(Ordering::Acquire);
+            ctx.has_prev_frame.store(true, Ordering::Release);
+
+            if have_prev {
             (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, map_pbo);
             let pixels = (ctx.gl.map_buffer)(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
 
@@ -1034,9 +1054,6 @@ fn render_loop(ctx: Arc<RenderCtx>) {
                 (ctx.gl.unmap_buffer)(GL_PIXEL_PACK_BUFFER);
             }
 
-            (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
-            (*ctx_ptr).pbo_index = 1 - (*ctx_ptr).pbo_index;
-
             // ── Step 4: Present ──────────────────────────────────
             // IDXGISwapChain::Present is vtable index 8
             let sc = ctx.swap_chain.as_ptr();
@@ -1044,6 +1061,9 @@ fn render_loop(ctx: Arc<RenderCtx>) {
             let present: unsafe extern "system" fn(*mut c_void, u32, u32) -> i32 =
                 std::mem::transmute(*sc_vtable.add(8));
             present(sc, 1, 0);
+            } // have_prev
+
+            (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
         }
     }
 
