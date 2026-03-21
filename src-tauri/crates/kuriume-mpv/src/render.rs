@@ -1,7 +1,4 @@
-//! GPU renderer using mpv's OpenGL render API.
-//!
-//! Renders mpv's output into an OpenGL FBO. The caller manages the OpenGL
-//! context (creation, making current, buffer swapping).
+//! GPU renderer — mpv OpenGL render API → FBO.
 
 use crate::error::{MpvError, Result};
 use libmpv2_sys::{
@@ -21,8 +18,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// GPU renderer wrapping an `mpv_render_context` (OpenGL).
 pub struct GpuRenderer {
     ctx: *mut mpv_render_context,
-    /// Stable heap allocation so the pointer passed to the C callback
-    /// remains valid even if `GpuRenderer` is moved.
     needs_render: Box<AtomicBool>,
 }
 
@@ -54,10 +49,8 @@ unsafe extern "C" fn on_mpv_render_update(ctx: *mut c_void) {
 impl GpuRenderer {
     /// Create a GPU renderer attached to the given mpv instance.
     ///
-    /// **The caller's OpenGL context must be current** on the calling thread.
-    ///
     /// # Safety
-    /// `mpv_handle` must be a valid `mpv_handle *`.
+    /// `mpv_handle` must be a valid `mpv_handle *`. GL context must be current.
     pub unsafe fn new(mpv_handle: *mut c_void) -> Result<Self> {
         let mut gl_init = mpv_opengl_init_params {
             get_proc_address: Some(gl_get_proc_address),
@@ -116,12 +109,8 @@ impl GpuRenderer {
 
     /// Replace the mpv render-update callback.
     ///
-    /// The callback is invoked from an mpv-internal thread when a new
-    /// frame is available.  `ctx` is passed as the sole argument.
-    ///
     /// # Safety
-    /// `ctx` must remain valid for the lifetime of this renderer (or
-    /// until replaced with another callback).
+    /// `ctx` must remain valid for the lifetime of this renderer.
     pub unsafe fn set_raw_update_callback(
         &self,
         cb: Option<unsafe extern "C" fn(*mut c_void)>,
@@ -134,13 +123,8 @@ impl GpuRenderer {
 
     /// Render the current mpv frame into the given FBO.
     ///
-    /// **The caller's OpenGL context must be current.**
-    ///
-    /// - `fbo`: OpenGL framebuffer object name (0 = default FB).
-    /// - `width`, `height`: pixel dimensions of the FBO.
-    ///
     /// # Safety
-    /// The GL context must be current and the FBO valid.
+    /// GL context must be current and the FBO valid.
     pub unsafe fn render(&self, fbo: i32, width: i32, height: i32) -> Result<()> {
         let mut fbo_data = mpv_opengl_fbo {
             fbo: fbo as c_int,
@@ -181,13 +165,8 @@ impl GpuRenderer {
 impl GpuRenderer {
     /// Manually free the underlying `mpv_render_context`.
     ///
-    /// **The caller's OpenGL context must be current**, because mpv
-    /// internally calls GL cleanup functions (`glDeleteQueries`, etc.).
-    ///
-    /// After this call the renderer is inert — `Drop` becomes a no-op.
-    ///
     /// # Safety
-    /// The GL context must be current on the calling thread.
+    /// GL context must be current on the calling thread.
     pub unsafe fn free(&mut self) {
         if !self.ctx.is_null() {
             unsafe {

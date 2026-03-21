@@ -13,7 +13,6 @@ function RootComponent() {
   const [searchOpen, setSearchOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
 
-  // Scroll to top on route change
   const pathname = matches[matches.length - 1]?.pathname;
   useEffect(() => {
     mainRef.current?.scrollTo(0, 0);
@@ -22,7 +21,6 @@ function RootComponent() {
   const openSearch = useCallback(() => setSearchOpen(true), []);
   const closeSearch = useCallback(() => setSearchOpen(false), []);
 
-  // Cmd+K / Ctrl+K to toggle search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -34,13 +32,11 @@ function RootComponent() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Hide sidebar & make main non-scrollable on player pages
   const isPlayerPage = matches.some((m) =>
     m.routeId.includes("/episode/"),
   );
 
-  // Make the webview transparent on player pages so the mpv
-  // native view underneath can show through.
+  // Transparent webview on player pages so mpv native view shows through
   useEffect(() => {
     const bg = isPlayerPage ? "transparent" : "oklch(0.1 0 0)";
     document.documentElement.style.backgroundColor = bg;

@@ -1,6 +1,3 @@
-/**
- * Store API — Tauri command wrappers for settings & media cache.
- */
 import { invoke } from "@tauri-apps/api/core";
 
 // ── Types ───────────────────────────────────────────────────────
@@ -36,7 +33,6 @@ export const settingsApi = {
   setCacheDir: (dir: string) =>
     invoke<void>("set_cache_dir", { dir }),
 
-  /** Change cache directory and optionally migrate existing files. */
   migrateDir: (newDir: string, migrate: boolean) =>
     invoke<void>("cache_migrate_dir", { newDir, migrate }),
 
@@ -62,7 +58,6 @@ export const settingsApi = {
 // ── Cache API ───────────────────────────────────────────────────
 
 export const cacheApi = {
-  /** Look up a cached local file for an anime episode. */
   lookup: (bgmId: string, episode: number, groupName?: string, resolution?: string) =>
     invoke<MediaEntry | null>("cache_lookup", {
       bgmId,
@@ -71,7 +66,6 @@ export const cacheApi = {
       resolution: resolution ?? null,
     }),
 
-  /** Register a downloaded file into the cache. */
   register: (params: {
     bgmId: string;
     episode: number;
@@ -83,21 +77,16 @@ export const cacheApi = {
     torrentSource: string;
   }) => invoke<number>("cache_register", params),
 
-  /** Remove a cache entry and delete the file. */
   remove: (id: number) => invoke<void>("cache_remove", { id }),
 
-  /** List all cached entries for an anime. */
   list: (bgmId: string) =>
     invoke<MediaEntry[]>("cache_list", { bgmId }),
 
-  /** Get total cache size in bytes. */
   totalSize: () => invoke<number>("cache_total_size"),
 
-  /** Clear all cache entries and delete files. Optionally also clear torrent temp files. */
   clearAll: (includeTempFiles = true) =>
     invoke<void>("cache_clear_all", { includeTemp: includeTempFiles }),
 
-  /** Move a downloaded file to the organized cache directory and register it. */
   organize: (params: {
     sourcePath: string;
     bgmId: string;

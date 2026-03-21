@@ -20,24 +20,15 @@ use crate::server;
 // Tracker list
 // ---------------------------------------------------------------------------
 
-/// Comprehensive tracker list for anime torrents.
-///
-/// Prioritized by relevance:
-/// 1. Anime-specific (Mikan / nyaa / bangumi / ACG ecosystem)
-/// 2. High-uptime public trackers
-///
-/// These are injected both at the session level (all torrents) and per-torrent
-/// (via `AddTorrentOptions::trackers`) to supplement trackers embedded in the
-/// `.torrent` file itself.
 const TRACKER_LIST: &[&str] = &[
-    // ── Anime / ACG ecosystem (Mikan .torrent files embed these) ─
+    // Anime / ACG ecosystem
     "http://t.nyaatracker.com/announce",
     "http://opentracker.acgnx.se/announce",
     "http://anidex.moe:6969/announce",
     "http://t.acg.rip:6699/announce",
     "https://tr.bangumi.moe:9696/announce",
     "http://tr.bangumi.moe:6969/announce",
-    // ── High-uptime public trackers (verified active) ───────────
+    // High-uptime public trackers
     "udp://tracker.opentrackr.org:1337/announce",
     "udp://open.stealth.si:80/announce",
     "udp://tracker.torrent.eu.org:451/announce",
@@ -53,32 +44,21 @@ const TRACKER_LIST: &[&str] = &[
 // Public types
 // ---------------------------------------------------------------------------
 
-/// Information about a file inside a torrent.
 #[derive(Debug, Clone, Serialize)]
 pub struct TorrentFileInfo {
-    /// File index within the torrent (used to start streaming).
     pub index: usize,
-    /// Relative file path (e.g. `"video/episode01.mkv"`).
     pub path: String,
-    /// File size in bytes.
     pub length: u64,
 }
 
-/// Snapshot of torrent download status.
 #[derive(Debug, Clone, Serialize)]
 pub struct TorrentStatus {
     pub state: String,
-    /// Overall progress 0.0 – 1.0.
     pub progress: f64,
-    /// Download speed in bytes/s.
     pub download_speed: u64,
-    /// Upload speed in bytes/s.
     pub upload_speed: u64,
-    /// Total bytes downloaded so far.
     pub downloaded_bytes: u64,
-    /// Total bytes of selected files.
     pub total_bytes: u64,
-    /// Number of connected peers.
     pub peers: u32,
 }
 
@@ -99,40 +79,24 @@ pub(crate) struct SharedState {
 /// URLs playable by mpv.
 pub struct TorrentEngine {
     pub(crate) state: Arc<SharedState>,
-    /// Directory where torrent data is downloaded.
     download_dir: PathBuf,
-    /// TCP port the local streaming server is listening on.
     server_port: u16,
-    /// Handle to the background server task.
     _server_handle: tokio::task::JoinHandle<()>,
 }
 
 impl TorrentEngine {
-    /// Create a new engine.
-    ///
-    /// - `download_dir`: directory where torrent data is stored.
     pub async fn new(download_dir: PathBuf) -> Result<Self> {
-        // Ensure download directory exists
         tokio::fs::create_dir_all(&download_dir).await?;
 
-        // Anime-specific + public trackers for peer discovery.
-        // The anime trackers are sourced from Mikan/nyaa/bangumi ecosystem
-        // and are most likely to have seeders for anime torrents.
         let session_trackers: HashSet<url::Url> = TRACKER_LIST
             .iter()
             .filter_map(|s| url::Url::parse(s).ok())
             .collect();
 
         let opts = SessionOptions {
-            persistence: None, // no persistence across restarts
+            persistence: None,
             trackers: session_trackers,
-            // Listen for incoming peer connections on a port in range 6881-6889.
-            // Without this, `tcp_listen_port` is None and we can only initiate
-            // outgoing connections — other peers can never connect to us,
-            // drastically reducing available peers and download speed.
             listen_port_range: Some(6881..6890),
-            // Enable UPnP port forwarding so peers behind NAT can still receive
-            // incoming connections via router auto-configuration.
             enable_upnp_port_forwarding: true,
             peer_opts: Some(PeerConnectionOptions {
                 connect_timeout: Some(Duration::from_secs(10)),
@@ -163,17 +127,12 @@ impl TorrentEngine {
         })
     }
 
-    /// Add a torrent from a magnet URI, HTTP URL, or raw `.torrent` bytes.
-    ///
-    /// Returns the torrent ID assigned by the session.
-    /// Metadata resolution timeout in seconds.
+    /// Add a torrent. Returns the torrent ID.
     const INIT_TIMEOUT_SECS: u64 = 60;
 
     pub async fn add_torrent(&self, source: &str) -> Result<usize> {
         let add_torrent = AddTorrent::from_url(source);
 
-        // Per-torrent tracker injection: supplement whatever the .torrent file
-        // already contains with our known-good anime trackers.
         let extra_trackers: Vec<String> = TRACKER_LIST
             .iter()
             .map(|s| s.to_string())
@@ -182,9 +141,7 @@ impl TorrentEngine {
         let opts = Some(AddTorrentOptions {
             overwrite: true,
             trackers: Some(extra_trackers),
-            // Re-announce every 60s instead of the default (often 30min).
-            // 30s was too aggressive (trackers may reject), 120s too slow
-            // for low-seeder anime torrents. 60s is a reasonable balance.
+            // Re-announce every 60s
             force_tracker_interval: Some(Duration::from_secs(60)),
             ..Default::default()
         });
@@ -206,16 +163,11 @@ impl TorrentEngine {
             }
         };
 
-        // Wait until metadata is resolved with a timeout.
-        // librqbit's wait_until_initialized() polls indefinitely — we need
-        // an upper bound so the frontend doesn't hang forever.
+        // Wait for metadata with a timeout
         let timeout_dur = Duration::from_secs(Self::INIT_TIMEOUT_SECS);
         match tokio::time::timeout(timeout_dur, handle.wait_until_initialized()).await {
-            Ok(Ok(())) => {
-                // Metadata resolved successfully
-            }
+            Ok(Ok(())) => {}
             Ok(Err(e)) => {
-                // librqbit returned an internal error (e.g. torrent entered error state)
                 warn!(id, error = %e, "torrent initialization failed");
                 // Try to clean up the failed torrent
                 let _ = self
@@ -270,9 +222,7 @@ impl TorrentEngine {
         Ok(files)
     }
 
-    /// Get the HTTP streaming URL for a specific file in a torrent.
-    ///
-    /// mpv can play this URL directly (supports Range requests / seeking).
+    /// Get the HTTP streaming URL for a file in a torrent.
     pub fn stream_url(&self, torrent_id: usize, file_id: usize) -> String {
         format!(
             "http://127.0.0.1:{}/stream/{}/{}",
@@ -299,7 +249,6 @@ impl TorrentEngine {
             state: format!("{}", stats.state),
             progress,
             download_speed: stats.live.as_ref().map_or(0, |l| {
-                // mbps is MiB/s, convert to bytes/s
                 (l.download_speed.mbps * 1_048_576.0) as u64
             }),
             upload_speed: stats.live.as_ref().map_or(0, |l| {
@@ -324,10 +273,7 @@ impl TorrentEngine {
         Ok(())
     }
 
-    /// Get the absolute path of the download directory for a torrent file.
-    ///
-    /// Returns `{download_dir}/{relative_path}` where relative_path comes
-    /// from the torrent metadata.
+    /// Get the absolute path of a torrent file on disk.
     pub async fn file_path(&self, torrent_id: usize, file_id: usize) -> Result<PathBuf> {
         let handles = self.state.handles.read().await;
         let torrent = handles

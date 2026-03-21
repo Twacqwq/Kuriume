@@ -7,9 +7,6 @@ use crate::models::{
 };
 
 /// Unified interface for anime data sources.
-///
-/// Each data source (e.g. Bangumi, AniList) implements this trait,
-/// internally holding its own HTTP client to call the corresponding API.
 #[async_trait]
 pub trait AnimeProvider: Send + Sync {
     /// Data-source name (used for identification and logging).

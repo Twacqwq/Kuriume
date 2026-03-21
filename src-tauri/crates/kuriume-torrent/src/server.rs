@@ -1,8 +1,4 @@
-//! Local HTTP streaming server.
-//!
-//! Serves torrent file data to mpv (or any HTTP client) with full Range
-//! request support, enabling seeking during playback while the torrent is
-//! still downloading.
+//! Local HTTP streaming server with Range request support.
 
 use std::io::SeekFrom;
 use std::sync::Arc;
@@ -22,8 +18,6 @@ use crate::engine::SharedState;
 use crate::error::Result;
 
 /// Start the streaming HTTP server on a random available port.
-///
-/// Returns `(port, join_handle)`.
 pub(crate) async fn start(
     state: Arc<SharedState>,
 ) -> Result<(u16, tokio::task::JoinHandle<()>)> {
@@ -49,19 +43,15 @@ async fn stream_handler(
     headers: HeaderMap,
     State(state): State<Arc<SharedState>>,
 ) -> std::result::Result<Response<axum::body::Body>, StatusCode> {
-    // Look up the torrent handle
     let handles = state.handles.read().await;
     let torrent = handles
         .get(&torrent_id)
         .ok_or(StatusCode::NOT_FOUND)?
         .clone();
-    drop(handles); // release read lock
+    drop(handles);
 
-    // Get content type before consuming the Arc with stream()
     let content_type = guess_content_type_from_torrent(&torrent, file_id);
 
-    // Create a streaming file reader from librqbit (synchronous call)
-    // stream() takes Arc<Self> ownership, so we need the clone
     let mut file_stream = torrent
         .stream(file_id)
         .map_err(|e| {
@@ -71,13 +61,11 @@ async fn stream_handler(
 
     let total_len = file_stream.len();
 
-    // Check for Range header
     if let Some(range_val) = headers.get(RANGE) {
         let range_str = range_val.to_str().unwrap_or("");
         if let Some((start, end)) = parse_range(range_str, total_len) {
             let len = end - start + 1;
 
-            // Seek to start position
             file_stream
                 .seek(SeekFrom::Start(start))
                 .await
@@ -86,7 +74,6 @@ async fn stream_handler(
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
 
-            // Limit reads to the requested range
             let limited = file_stream.take(len);
             let reader_stream = ReaderStream::with_capacity(limited, 64 * 1024);
             let body = axum::body::Body::from_stream(reader_stream);
@@ -104,7 +91,7 @@ async fn stream_handler(
         }
     }
 
-    // No Range — serve the full file
+    // No Range — serve full file
     let reader_stream = ReaderStream::with_capacity(file_stream, 64 * 1024);
     let body = axum::body::Body::from_stream(reader_stream);
 
@@ -119,14 +106,11 @@ async fn stream_handler(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-/// Parse `Range: bytes=start-end` header.
-///
-/// Returns `Some((start, end))` with `end` inclusive, or `None` on parse failure.
+/// Parse `Range: bytes=start-end` header. Returns `Some((start, end))` inclusive.
 fn parse_range(header: &str, total: u64) -> Option<(u64, u64)> {
     let range = header.strip_prefix("bytes=")?;
 
     if let Some(suffix) = range.strip_prefix('-') {
-        // `bytes=-500` → last 500 bytes
         let suffix_len: u64 = suffix.parse().ok()?;
         let start = total.saturating_sub(suffix_len);
         return Some((start, total - 1));
@@ -137,7 +121,7 @@ fn parse_range(header: &str, total: u64) -> Option<(u64, u64)> {
 
     let end = match parts.next() {
         Some(s) if !s.is_empty() => s.parse::<u64>().ok()?,
-        _ => total - 1, // open-ended: `bytes=0-`
+        _ => total - 1,
     };
 
     if start > end || start >= total {

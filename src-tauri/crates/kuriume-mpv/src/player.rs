@@ -40,10 +40,6 @@ pub struct MpvPlayer {
 
 impl MpvPlayer {
     /// Create a player configured for the render API (`vo=libmpv`).
-    ///
-    /// Hardware decoding is enabled by default (`hwdec=auto`).
-    /// Callers must create a `GpuRenderer` with the raw handle
-    /// returned by [`raw_handle()`] and drive the render loop themselves.
     pub fn new_for_render() -> Result<Self> {
         let mpv = Mpv::with_initializer(|init| {
             init.set_option("config", false)?;
@@ -74,16 +70,11 @@ impl MpvPlayer {
     }
 
     /// Return the raw `mpv_handle *` for creating a `GpuRenderer`.
-    ///
-    /// The pointer is valid for the lifetime of this `MpvPlayer`.
     pub fn raw_handle(&self) -> *mut std::ffi::c_void {
         self.mpv.ctx.as_ptr() as *mut std::ffi::c_void
     }
 
     /// Set hardware decoding mode at runtime.
-    ///
-    /// - `"auto"` — automatic (VideoToolbox on macOS)
-    /// - `"no"`   — software decoding only
     pub fn set_hwdec(&self, mode: &str) -> Result<()> {
         self.mpv.set_property("hwdec", mode)?;
         Ok(())
@@ -169,9 +160,6 @@ impl MpvPlayer {
     }
 
     /// Get mpv internal monotonic time in microseconds.
-    ///
-    /// This is a v5 API for high-precision timing, useful for
-    /// A/V sync or frame-accurate operations.
     pub fn time_us(&self) -> i64 {
         self.mpv.get_time_us()
     }
@@ -192,15 +180,7 @@ impl MpvPlayer {
 
     // ── Event loop ───────────────────────────────────────────────
 
-    /// Start the event loop.
-    ///
-    /// Uses the v5 `set_wakeup_callback` API for efficient event notification
-    /// instead of polling with a timeout. The wakeup callback signals a condvar
-    /// that the event thread waits on, so no CPU is wasted on empty polls.
-    ///
-    /// Returns a receiver channel that yields `PlayerEvent`s.
-    /// The loop runs on a dedicated blocking thread and stops
-    /// when `stop_event_loop()` is called or the player shuts down.
+    /// Start the event loop. Returns a receiver channel for `PlayerEvent`s.
     pub fn start_event_loop(&mut self) -> Result<mpsc::UnboundedReceiver<PlayerEvent>> {
         let (tx, rx) = mpsc::unbounded_channel();
 
@@ -237,9 +217,6 @@ impl MpvPlayer {
         self.running.store(true, Ordering::SeqCst);
         let running = self.running.clone();
 
-        // v5: set_wakeup_callback — mpv calls this from internal threads
-        // when new events are available. We use it to signal a condvar,
-        // waking the event thread immediately instead of polling.
         let wakeup = self.wakeup.clone();
         self.mpv.set_wakeup_callback(move || {
             let (lock, cvar) = &*wakeup;
@@ -249,13 +226,8 @@ impl MpvPlayer {
             }
         });
 
-        // SAFETY: Mpv implements Send+Sync (verified in libmpv2 v5 source).
-        // The C API is thread-safe for event polling. We cast through
-        // usize to satisfy the Send bound on std::thread::spawn.
-        // The Mpv handle outlives the thread because Drop calls
-        // stop_event_loop first, ensuring the thread exits before Mpv drops.
-        // `self.mpv` is `Box<Mpv>`, so `&mut *self.mpv` points to stable
-        // heap memory that won't move when `MpvPlayer` itself is moved.
+        // SAFETY: Mpv is Send+Sync. Box<Mpv> gives stable heap address.
+        // Drop calls stop_event_loop first, so the thread exits before Mpv drops.
         let mpv_addr = &mut *self.mpv as *mut Mpv as usize;
         let wakeup_for_thread = self.wakeup.clone();
 
@@ -270,8 +242,6 @@ impl MpvPlayer {
                         let (lock, cvar) = &*wakeup_for_thread;
                         let mut pending = lock.lock().unwrap();
                         if !*pending {
-                            // Wait up to 1s as a fallback — normally the wakeup
-                            // callback fires instantly when events are ready.
                             let result = cvar
                                 .wait_timeout(pending, std::time::Duration::from_secs(1))
                                 .unwrap();
@@ -280,7 +250,7 @@ impl MpvPlayer {
                         *pending = false;
                     }
 
-                    // Drain all pending events (v5 docs: call wait_event until None)
+                    // Drain all pending events
                     loop {
                         if !running.load(Ordering::SeqCst) {
                             break;

@@ -3,11 +3,7 @@ use std::sync::Arc;
 use tauri::{command, AppHandle, Manager, State};
 use tokio::sync::OnceCell;
 
-/// Shared torrent engine state managed by Tauri.
-///
-/// Uses `OnceCell` for lazy initialization because the engine needs an async
-/// constructor (creating the librqbit session and starting the HTTP server),
-/// which cannot run inside `Tauri::Builder::manage()`.
+/// Shared torrent engine state, lazily initialized via `OnceCell`.
 pub struct TorrentState {
     engine: OnceCell<Arc<TorrentEngine>>,
 }
@@ -45,10 +41,7 @@ impl Default for TorrentState {
     }
 }
 
-/// Add a torrent from a magnet URI or HTTP URL pointing to a `.torrent` file.
-///
-/// Returns the torrent ID. The torrent metadata will be resolved before returning
-/// (for magnet links this involves DHT/peer exchange).
+/// Add a torrent from a magnet URI or `.torrent` URL. Returns the torrent ID.
 #[command]
 pub(crate) async fn torrent_add(
     state: State<'_, TorrentState>,
@@ -74,9 +67,6 @@ pub(crate) async fn torrent_list_files(
 }
 
 /// Get a local HTTP streaming URL for a file in a torrent.
-///
-/// The returned URL can be passed directly to `player_play` for streaming
-/// playback via mpv. Supports seeking via HTTP Range requests.
 #[command]
 pub(crate) async fn torrent_stream_url(
     state: State<'_, TorrentState>,

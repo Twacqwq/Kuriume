@@ -1,9 +1,3 @@
-/**
- * Player bridge — Tauri command wrappers & shared event types.
- *
- * Talks to the Rust `tauri-plugin-mpv` via `invoke()` and listens
- * to the `player-event` Tauri event emitted from the mpv event loop.
- */
 import { invoke } from "@tauri-apps/api/core";
 
 // ── Types matching Rust PlayerEvent / PlayerStateInfo ────────────

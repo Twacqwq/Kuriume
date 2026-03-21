@@ -38,13 +38,10 @@ function EpisodePage() {
 
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Sync fullscreen state with system on mount (e.g. macOS green button)
   useEffect(() => {
     getCurrentWindow().isFullscreen().then(setIsFullscreen);
   }, []);
 
-  // Subscribe to cached anime info & episodes — useQuery keeps data
-  // reactive across same-route navigations (prev/next episode).
   const { data: animeInfo } = useQuery(detailQueryOptions(id));
   const { data: episodes = [] } = useQuery(
     episodesQueryOptions(id, animeInfo?.total_episodes ?? 100),

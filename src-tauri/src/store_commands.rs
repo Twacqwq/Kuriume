@@ -4,10 +4,6 @@ use std::sync::Mutex;
 use tauri::{command, AppHandle, Manager, State};
 
 /// Tauri-managed wrapper around the SQLite store.
-///
-/// `rusqlite::Connection` is `!Send` on some platforms, so we protect it
-/// with a `std::sync::Mutex` and run DB operations on the current thread.
-/// All Tauri commands already run on a worker thread, so blocking is fine.
 pub struct StoreState {
     inner: Mutex<Option<Store>>,
 }
@@ -79,10 +75,6 @@ pub(crate) fn set_cache_dir(
 }
 
 /// Change cache directory and optionally migrate existing files.
-///
-/// When `migrate` is true, moves all cached files from the old directory
-/// to the new one, preserving the relative path structure, and updates
-/// the database entries to point to the new paths.
 #[command]
 pub(crate) fn cache_migrate_dir(
     state: State<'_, StoreState>,
@@ -235,9 +227,6 @@ pub(crate) fn cache_lookup(
     })
 }
 
-/// Register a downloaded file into the cache.
-///
-/// Called by the torrent engine after a complete download.
 #[command]
 pub(crate) fn cache_register(
     state: State<'_, StoreState>,
@@ -267,7 +256,6 @@ pub(crate) fn cache_register(
     })
 }
 
-/// Remove a single cache entry and delete the file.
 #[command]
 pub(crate) fn cache_remove(
     state: State<'_, StoreState>,
@@ -282,7 +270,6 @@ pub(crate) fn cache_remove(
     })
 }
 
-/// List all cached entries for an anime.
 #[command]
 pub(crate) fn cache_list(
     state: State<'_, StoreState>,
@@ -296,7 +283,6 @@ pub(crate) fn cache_list(
     })
 }
 
-/// Get total cache size in bytes.
 #[command]
 pub(crate) fn cache_total_size(
     state: State<'_, StoreState>,
@@ -307,15 +293,14 @@ pub(crate) fn cache_total_size(
     })
 }
 
-/// Clear all cache entries and delete all cached files.
-/// Optionally also clears torrent temp files.
+/// Clear all cache entries and files.
 #[command]
 pub(crate) fn cache_clear_all(
     state: State<'_, StoreState>,
     app: AppHandle,
     include_temp: Option<bool>,
 ) -> Result<(), String> {
-    // Get the cache directory before clearing DB entries
+    // Get cache dir before clearing DB
     let cache_dir = state.with_store(&app, |store| {
         let settings = store
             .get_settings(&default_cache_dir(&app))
@@ -324,14 +309,13 @@ pub(crate) fn cache_clear_all(
         Ok(PathBuf::from(settings.cache_dir))
     })?;
 
-    // Remove the entire cache directory and recreate it —
-    // this ensures no orphaned files or empty folders remain.
+    // Remove entire cache directory and recreate
     if cache_dir.exists() {
         let _ = std::fs::remove_dir_all(&cache_dir);
         let _ = std::fs::create_dir_all(&cache_dir);
     }
 
-    // Also clear torrent temp directory if requested
+    // Clear torrent temp directory if requested
     if include_temp.unwrap_or(false) {
         let temp_dir = app
             .path()
@@ -347,10 +331,7 @@ pub(crate) fn cache_clear_all(
     Ok(())
 }
 
-/// Move a downloaded file from the torrent temp dir into the organized cache directory,
-/// register it in the database, and return the new path + entry id.
-///
-/// Target layout: `{cache_dir}/{anime_title}/{anime_title} - S01E{ep:02} [{group}] [{resolution}].ext`
+/// Move a file to the organized cache directory and register it in the database.
 #[command]
 pub(crate) fn cache_organize(
     state: State<'_, StoreState>,

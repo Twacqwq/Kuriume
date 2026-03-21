@@ -71,7 +71,6 @@ pub fn run() {
             crate::store_commands::history_clear,
         ])
         .setup(|app| {
-            // Clean up orphaned torrent temp files from previous sessions.
             if let Ok(data_dir) = app.path().app_data_dir() {
                 let temp_dir = data_dir.join("torrents");
                 if temp_dir.exists() {

@@ -39,8 +39,6 @@ export const Route = createFileRoute("/calendar")({
 function CalendarPage() {
   const { data: calendar = [] } = useQuery(calendarQueryOptions);
   const todayId = getTodayWeekdayId();
-
-  // Reorder: start from today
   const reordered = reorderFromToday(calendar, todayId);
 
   if (calendar.length === 0) {

@@ -27,47 +27,30 @@ const TRACKERS: &[&str] = &[
 // Public data types
 // ---------------------------------------------------------------------------
 
-/// A matched anime entry from Mikan search results.
 #[derive(Debug, Clone, Serialize)]
 pub struct MikanBangumiEntry {
-    /// Mikan internal bangumi ID (used in `/Home/Bangumi/{id}` and RSS feeds).
     pub mikan_id: String,
-    /// Title as shown on Mikan (usually Chinese).
     pub title: String,
-    /// Cover image URL (if available from the search result).
     pub cover: Option<String>,
-    /// Bangumi.tv subject ID extracted from the Mikan detail page.
-    /// Only populated after `resolve_bgm_id` is called.
     pub bgm_id: Option<String>,
 }
 
-/// A subtitle group that provides torrents for a bangumi on Mikan.
 #[derive(Debug, Clone, Serialize)]
 pub struct SubtitleGroup {
-    /// Mikan subtitle group ID.
     pub id: String,
-    /// Group name (e.g. "百冬练习组", "LoliHouse").
     pub name: String,
 }
 
-/// A single torrent entry within a subtitle group for a bangumi.
 #[derive(Debug, Clone, Serialize)]
 pub struct MikanTorrentEntry {
-    /// Episode title as published (e.g. "【百冬练习组】...Oshi no Ko】[33][1080p]").
     pub title: String,
-    /// Episode hash from the Mikan page link (the info-hash).
     pub episode_hash: String,
-    /// Torrent download URL.
     pub torrent_url: String,
-    /// Magnet URI (including trackers).
     pub magnet: String,
-    /// File size string (e.g. "255.68 MB").
     pub size: String,
-    /// Publish date string (e.g. "2026/03/12 23:38").
     pub publish_date: String,
 }
 
-/// A subtitle group together with its torrent list for a bangumi.
 #[derive(Debug, Clone, Serialize)]
 pub struct SubtitleGroupTorrents {
     pub group: SubtitleGroup,
@@ -96,8 +79,6 @@ impl Mikan {
     // -- Search ---------------------------------------------------------------
 
     /// Search Mikan by keyword and return candidate anime entries.
-    ///
-    /// Parses the search result HTML for bangumi cards at the top of the page.
     pub async fn search_bangumi(&self, keyword: &str) -> Result<Vec<MikanBangumiEntry>> {
         let url = format!("{MIKAN_BASE}/Home/Search");
         let html = self
@@ -117,19 +98,12 @@ impl Mikan {
     // -- BGM ID resolution ----------------------------------------------------
 
     /// Fetch the Mikan bangumi page and extract the bgm.tv subject ID.
-    ///
-    /// Returns `Some("517057")` for a page containing
-    /// `<a href="https://bgm.tv/subject/517057">`.
     pub async fn resolve_bgm_id(&self, mikan_id: &str) -> Result<Option<String>> {
         let html = self.fetch_bangumi_page(mikan_id).await?;
         Ok(extract_bgm_id(&html))
     }
 
     /// Search Mikan and find the entry whose bgm.tv subject ID matches.
-    ///
-    /// 1. Search Mikan by keyword
-    /// 2. Resolve bgm.tv IDs for all candidates in parallel
-    /// 3. Return the first match
     pub async fn find_mikan_id_by_bgm(
         self: &Arc<Self>,
         keyword: &str,
@@ -175,9 +149,6 @@ impl Mikan {
     // -- Torrents -------------------------------------------------------------
 
     /// Get torrent entries for a specific subgroup of a bangumi via RSS.
-    ///
-    /// Uses the per-subgroup RSS feed which returns all episodes in structured
-    /// XML, avoiding fragile HTML table parsing and pagination.
     pub async fn get_subgroup_torrents(
         &self,
         mikan_id: &str,
@@ -206,8 +177,6 @@ impl Mikan {
     }
 
     /// Get all subtitle groups and their torrent entries for a bangumi.
-    ///
-    /// Fetches all groups in parallel for faster loading.
     pub async fn get_all_torrents(self: &Arc<Self>, mikan_id: &str) -> Result<Vec<SubtitleGroupTorrents>> {
         let groups = self.get_subtitle_groups(mikan_id).await?;
 
@@ -258,14 +227,6 @@ impl Default for Mikan {
 // ---------------------------------------------------------------------------
 
 /// Parse Mikan search HTML for anime bangumi cards.
-///
-/// Expected pattern:
-/// ```html
-/// <a href="/Home/Bangumi/3881" target="_blank">
-///     <span data-src="/images/Bangumi/..." class="b-lazy"></span>
-///     <div class="an-text" title="【我推的孩子】 第三季">...</div>
-/// </a>
-/// ```
 fn parse_search_results(html: &str) -> Vec<MikanBangumiEntry> {
     let mut results = Vec::new();
     let mut search_start = 0;
@@ -351,11 +312,6 @@ fn extract_bgm_id(html: &str) -> Option<String> {
 }
 
 /// Parse subtitle group list from a Mikan bangumi page.
-///
-/// Expected pattern:
-/// ```html
-/// <a class="subgroup-name subgroup-554" data-anchor="#554">百冬练习组</a>
-/// ```
 fn parse_subtitle_groups(html: &str) -> Vec<SubtitleGroup> {
     let mut groups = Vec::new();
     let marker = "subgroup-name subgroup-";
@@ -400,13 +356,6 @@ fn parse_subtitle_groups(html: &str) -> Vec<SubtitleGroup> {
 }
 
 /// Parse torrent entries from a Mikan RSS feed XML.
-///
-/// Each `<item>` contains:
-/// - `<title>` – episode title
-/// - `<link>` – `https://mikanani.me/Home/Episode/{hash}`
-/// - `<enclosure url="...torrent" length="..." />` – torrent download URL & size
-/// - `<contentLength>` – size in bytes (inside `<torrent>` namespace)
-/// - `<pubDate>` – publish date ISO string (inside `<torrent>` namespace)
 fn parse_rss_items(xml: &str) -> Vec<MikanTorrentEntry> {
     let mut entries = Vec::new();
     let mut pos = 0;

@@ -74,8 +74,7 @@ const animeListInfiniteQueryOptions = {
 export const Route = createFileRoute("/")(
   {
   loader: async () => {
-    // If we already have cached data (e.g. navigating back),
-    // fire-and-forget background refetch — don't block the route transition.
+    // Background refetch if data already cached; block otherwise
     const hasBanner = queryClient.getQueryData(bannerQueryOptions.queryKey);
     const hasList = queryClient.getQueryData(["anime-list", "Bangumi"]);
     if (hasBanner && hasList) {

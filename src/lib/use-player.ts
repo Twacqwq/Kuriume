@@ -1,21 +1,9 @@
-/**
- * React hook that manages the mpv player lifecycle.
- *
- * - Initializes/destroys the player on mount/unmount
- * - Listens to `player-event` from Tauri and keeps reactive state
- * - Exposes imperative controls (play, pause, seek, volume, speed)
- *
- * The player renders via a native GPU view embedded below the webview.
- * No frame transfer or render-size sync is needed.
- */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playerApi, type PlayerEvent } from "./player";
 
 interface PlayerState {
-  /** Whether the player has been initialized */
   ready: boolean;
-  /** File is loaded and playback can proceed */
   loaded: boolean;
   position: number;
   duration: number;
@@ -42,7 +30,6 @@ export function usePlayer() {
   const [state, setState] = useState<PlayerState>(INITIAL);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const initedRef = useRef(false);
-  /** Stable ref for the file-ended callback (avoids re-subscribing). */
   const onEndedRef = useRef<(() => void) | null>(null);
 
   // ── Lifecycle ──────────────────────────────────────────────────
@@ -57,7 +44,6 @@ export function usePlayer() {
       try {
         await playerApi.init();
 
-        // Listen to player events from Rust
         const unlisten = await listen<PlayerEvent>("player-event", (e) => {
           if (cancelled) return;
           const ev = e.payload;

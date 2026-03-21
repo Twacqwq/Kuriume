@@ -1,14 +1,3 @@
-/**
- * React hook that resolves Mikan torrent sources for an anime.
- *
- * Fetches ALL subtitle groups and their torrents in one go using
- * `getAllTorrents`, then organises the data per group → per episode
- * → per resolution.
- *
- * The detail page renders groups as expandable accordion sections.
- * The player page uses `selectedGroupId` + `preferredResolution`
- * to resolve a single torrent source.
- */
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -26,51 +15,26 @@ import {
 export interface GroupData {
   id: string;
   name: string;
-  /** Available resolutions in this group (sorted by quality). */
   resolutions: string[];
-  /** Available subtitle languages in this group (sorted). */
   subtitles: string[];
-  /** Number of unique episodes available. */
   episodeCount: number;
-  /**
-   * ep → (variant key → match).
-   * Variant key = `${resolution}|${subtitle}`.
-   */
+  /** ep → (variant key → match). Variant key = `${resolution}|${subtitle}`. */
   episodes: Map<number, Map<string, EpisodeTorrentMatch>>;
 }
 
 interface UseMikanTorrentsResult {
-  /** Whether initial loading (Mikan ID + all groups) is in progress. */
   isLoading: boolean;
-  /** Error message if resolution failed. */
   error: string | null;
-
-  /** All subtitle groups with their processed episode data. */
   groups: GroupData[];
-
-  /** Currently selected/expanded subtitle group ID (for playing). */
   selectedGroupId: string | null;
-  /** Currently selected subtitle group name. */
   selectedGroupName: string | null;
-  /** Select a subtitle group. */
   selectGroup: (groupId: string) => void;
-
-  /** Currently preferred resolution. */
   preferredResolution: string | null;
-  /** Set preferred resolution. */
   setPreferredResolution: (res: string | null) => void;
-
-  /** Currently preferred subtitle language. */
   preferredSubtitle: string | null;
-  /** Set preferred subtitle language. */
   setPreferredSubtitle: (sub: string | null) => void;
-
-  /** Get the best torrent source for an episode in the selected group. */
   getTorrentSource: (ep: number) => string | undefined;
-  /** Get full match info for an episode in the selected group. */
   getMatch: (ep: number) => EpisodeTorrentMatch | undefined;
-
-  /** Lookup data for a specific group. */
   getGroupData: (groupId: string) => GroupData | undefined;
 }
 
@@ -102,13 +66,6 @@ function variantKey(resolution: string, subtitle: string): string {
   return `${resolution}|${subtitle}`;
 }
 
-/**
- * Process raw SubtitleGroupTorrents[] into GroupData[].
- *
- * @param totalEpisodes - Total episode count from Bangumi metadata.
- *   When there is only 1 episode (MV, OVA, movie), torrents without
- *   an explicit episode number are assigned to episode 1.
- */
 function buildGroupData(raw: SubtitleGroupTorrents[], totalEpisodes?: number): GroupData[] {
   return raw.map(({ group, torrents }) => {
     const episodes = new Map<number, Map<string, EpisodeTorrentMatch>>();
@@ -117,7 +74,7 @@ function buildGroupData(raw: SubtitleGroupTorrents[], totalEpisodes?: number): G
 
     for (const torrent of torrents) {
       let ep = extractEpisodeNumber(torrent.title);
-      // For single-episode anime, treat unnumbered torrents as episode 1
+      // Single-episode anime: treat unnumbered torrents as ep 1
       if (ep === null && totalEpisodes === 1) ep = 1;
       if (ep === null) continue;
       const resolution = extractResolution(torrent.title);
@@ -132,7 +89,6 @@ function buildGroupData(raw: SubtitleGroupTorrents[], totalEpisodes?: number): G
       }
 
       const key = variantKey(resolution, subtitle);
-      // Keep first match per (episode, resolution, subtitle)
       if (!varMap.has(key)) {
         varMap.set(key, {
           ep,

@@ -22,33 +22,21 @@ type Result<T> = std::result::Result<T, StoreError>;
 // Public types
 // ---------------------------------------------------------------------------
 
-/// User-configurable settings (persisted in SQLite `settings` table).
 #[derive(Debug, Clone, Serialize)]
 pub struct Settings {
-    /// Root directory for cached media files.
     pub cache_dir: String,
-    /// Whether caching is enabled at all.
     pub cache_enabled: bool,
-    /// Hardware decoding mode: "auto" or "no".
     pub hwdec: String,
-    /// Default volume (0–100).
     pub default_volume: i64,
-    /// Default playback speed multiplier (e.g. 1.0, 1.5).
     pub default_speed: f64,
-    /// Demuxer max buffer size in MiB (e.g. 50, 150, 300).
     pub buffer_size: i64,
-    /// Whether to auto-play next episode.
     pub auto_next: bool,
 }
 
-/// Watchlist status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum WatchStatus {
-    /// 未看
     Unwatched,
-    /// 正在看
     Watching,
-    /// 已看完
     Completed,
 }
 
@@ -70,75 +58,45 @@ impl WatchStatus {
     }
 }
 
-/// An entry in the user's watchlist.
 #[derive(Debug, Clone, Serialize)]
 pub struct WatchlistEntry {
     pub id: i64,
-    /// Bangumi subject ID.
     pub bgm_id: String,
-    /// Anime title (for display without re-fetching).
     pub anime_title: String,
-    /// Cover image URL.
     pub cover: Option<String>,
-    /// Total episodes.
     pub total_episodes: i32,
-    /// Watch status.
     pub status: String,
-    /// ISO-8601 timestamp when added.
     pub added_at: String,
-    /// ISO-8601 timestamp of last status update.
     pub updated_at: String,
 }
 
-/// A watch history entry — records playback progress for resume.
 #[derive(Debug, Clone, Serialize)]
 pub struct WatchHistoryEntry {
     pub id: i64,
-    /// Bangumi subject ID.
     pub bgm_id: String,
-    /// Episode number.
     pub episode: i32,
-    /// Anime title (for display).
     pub anime_title: String,
-    /// Episode title (for display).
     pub episode_title: String,
-    /// Cover image URL.
     pub cover: Option<String>,
-    /// Playback position in seconds.
     pub position: f64,
-    /// Total duration in seconds.
     pub duration: f64,
-    /// Subtitle group ID (for resume with same source).
     pub group_id: Option<String>,
-    /// Resolution preference (for resume).
     pub resolution: Option<String>,
-    /// Subtitle preference (for resume).
     pub subtitle: Option<String>,
-    /// ISO-8601 timestamp of last watch.
     pub watched_at: String,
 }
 
-/// A cached media file entry.
 #[derive(Debug, Clone, Serialize)]
 pub struct MediaEntry {
     pub id: i64,
-    /// Bangumi subject ID (bgm.tv).
     pub bgm_id: String,
-    /// Episode number.
     pub episode: i32,
-    /// Anime title used for folder naming.
     pub anime_title: String,
-    /// Subtitle group name (for organised folders).
     pub group_name: String,
-    /// Video resolution label (e.g. "1080p", "720p", "4K").
     pub resolution: String,
-    /// Absolute path to the cached file on disk.
     pub file_path: String,
-    /// File size in bytes.
     pub file_size: i64,
-    /// Original torrent source (magnet / .torrent URL) for re-seeding.
     pub torrent_source: String,
-    /// ISO-8601 timestamp of when this was cached.
     pub cached_at: String,
 }
 
@@ -157,9 +115,6 @@ pub struct Store {
 }
 
 impl Store {
-    /// Open (or create) the store at the given path.
-    ///
-    /// Runs migrations on first open.
     pub fn open(db_path: &Path) -> Result<Self> {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -252,8 +207,7 @@ impl Store {
             )?;
         }
 
-        // Migration: consolidate watch_history to one entry per anime
-        // Old schema had UNIQUE(bgm_id, episode), new schema uses UNIQUE(bgm_id)
+        // Old schema: UNIQUE(bgm_id, episode) -> new: UNIQUE(bgm_id)
         let has_old_history_schema: bool = self
             .conn
             .prepare(
@@ -332,7 +286,7 @@ impl Store {
         Ok(())
     }
 
-    /// Load all settings, filling in defaults for missing keys.
+    /// Load settings with defaults for missing keys.
     pub fn get_settings(&self, default_cache_dir: &str) -> Result<Settings> {
         let cache_dir = self
             .get_setting("cache_dir")?
@@ -402,10 +356,6 @@ impl Store {
 
     // ── Media cache ──────────────────────────────────────────────
 
-    /// Look up a cached file for a specific anime episode.
-    ///
-    /// If `group_name` is provided, matches that group specifically.
-    /// Otherwise returns the first available cached entry for the episode.
     pub fn lookup(
         &self,
         bgm_id: &str,

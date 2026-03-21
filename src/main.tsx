@@ -6,14 +6,12 @@ import { queryClient } from "@/lib/query-client";
 import { routeTree } from "./routeTree.gen";
 import "./main.css";
 
-// Set up a Router instance
 const router = createRouter({
   routeTree,
   defaultPreload: "intent",
   scrollRestoration: true,
 });
 
-// Register things for typesafety
 declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router;

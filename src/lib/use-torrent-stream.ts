@@ -1,16 +1,3 @@
-/**
- * React hook that manages the full torrent → stream → mpv pipeline.
- *
- * Given a torrent source (magnet URI or .torrent URL), this hook:
- * 1. Checks local cache first — if hit, plays directly via file:// URL
- * 2. Adds the torrent to the engine (resolves metadata)
- * 3. Finds the best video file
- * 4. Gets the local HTTP streaming URL
- * 5. Polls download stats for progress display
- * 6. After download completes, registers file in cache for next time
- *
- * On unmount: removes torrent session but keeps files when caching is enabled.
- */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   torrentApi,
@@ -24,27 +11,19 @@ import { cacheApi, settingsApi } from "./store";
 
 export type TorrentStreamPhase =
   | "idle"
-  | "adding" // Adding torrent & resolving metadata
-  | "selecting" // File list ready, selecting video
-  | "streaming" // Stream URL obtained, playing via mpv
+  | "adding"
+  | "selecting"
+  | "streaming"
   | "error";
 
 export interface TorrentStreamState {
-  /** Current phase of the pipeline. */
   phase: TorrentStreamPhase;
-  /** Torrent ID (set after adding). */
   torrentId: number | null;
-  /** All files in the torrent. */
   files: TorrentFileInfo[];
-  /** The selected video file. */
   selectedFile: TorrentFileInfo | null;
-  /** Local HTTP streaming URL (or file path for cached). */
   streamUrl: string | null;
-  /** Whether playing from local cache. */
   isCached: boolean;
-  /** Latest download stats. */
   stats: TorrentStatus | null;
-  /** Error message if phase is "error". */
   error: string | null;
 }
 
@@ -69,7 +48,6 @@ const INITIAL_STATE: TorrentStreamState = {
   error: null,
 };
 
-/** Stats polling interval in milliseconds. */
 const STATS_POLL_INTERVAL = 1000;
 
 // ── Hook ─────────────────────────────────────────────────────────
@@ -95,10 +73,7 @@ export function useTorrentStream() {
     if (id !== null) {
       torrentIdRef.current = null;
       try {
-        // Only keep files if caching is enabled AND the file was
-        // successfully registered in cache (i.e. download completed
-        // and cache_organize moved it).  Otherwise always delete —
-        // partial/incomplete downloads in the temp dir are useless.
+        // Keep files only if cached successfully; delete partial downloads
         const shouldKeep = cacheEnabledRef.current && registeredRef.current;
         await torrentApi.remove(id, !shouldKeep);
       } catch {
