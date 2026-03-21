@@ -77,14 +77,12 @@
         "libs/macos/libuchardet.0.0.8.dylib",
         "libs/macos/libudfread.3.dylib",
         "libs/macos/libunibreak.6.dylib",
-        "libs/macos/libvapoursynth-script.0.dylib",
         "libs/macos/libvpx.12.dylib",
         "libs/macos/libvulkan.1.4.341.dylib",
         "libs/macos/libx264.165.dylib",
         "libs/macos/libx265.215.dylib",
         "libs/macos/libzimg.2.dylib",
-        "libs/macos/libzstd.1.5.7.dylib",
-        "libs/macos/Python"
+        "libs/macos/libzstd.1.5.7.dylib"
       ]
     }
   }

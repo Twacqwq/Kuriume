@@ -24,6 +24,9 @@ PROJECT_DIR = SCRIPT_DIR.parent
 LIBS_DIR = PROJECT_DIR / "src-tauri" / "libs" / "macos"
 TAURI_CONF = PROJECT_DIR / "src-tauri" / "tauri.conf.json"
 
+# VapourSynth + Python are optional mpv deps, not needed for playback
+EXCLUDE_PATTERNS = ["vapoursynth", "Python", "python"]
+
 
 def find_libmpv() -> Path:
     """Locate libmpv.2.dylib."""
@@ -64,6 +67,12 @@ def otool_id(lib: Path) -> str:
     return lines[-1].strip() if len(lines) > 1 else ""
 
 
+def should_exclude(path: Path) -> bool:
+    """Check if a library should be excluded from bundling."""
+    name = path.name.lower()
+    return any(pat.lower() in name for pat in EXCLUDE_PATTERNS)
+
+
 def resolve_all_deps(root: Path) -> list[Path]:
     """Recursively resolve all transitive non-system dylib dependencies."""
     seen: set[Path] = set()
@@ -76,6 +85,11 @@ def resolve_all_deps(root: Path) -> list[Path]:
         if real in seen:
             continue
         seen.add(real)
+
+        if should_exclude(real):
+            print(f"  Excluding: {real.name}")
+            continue
+
         ordered.append(real)
 
         for dep in otool_deps(real):
@@ -165,10 +179,6 @@ def main():
         conf = json.load(f)
 
     frameworks = sorted(f"libs/macos/{p.name}" for p in LIBS_DIR.glob("*.dylib"))
-    # Also include non-.dylib shared objects (e.g., Python framework)
-    for p in sorted(LIBS_DIR.glob("*")):
-        if p.is_file() and not p.name.endswith(".dylib"):
-            frameworks.append(f"libs/macos/{p.name}")
 
     conf.setdefault("bundle", {}).setdefault("macOS", {})["frameworks"] = frameworks
 
