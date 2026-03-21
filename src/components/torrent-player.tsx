@@ -49,7 +49,6 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 
 // ── Time formatting ──────────────────────────────────────────────
 
@@ -200,37 +199,6 @@ export function TorrentPlayer({
     const t3 = setTimeout(syncViewport, 600);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [isFullscreen, player.state.ready, syncViewport]);
-
-  // ── Keep popup window in sync with main window (Windows) ───────
-  // Tracks window move, minimize/restore, and focus to keep the
-  // unowned popup positioned behind the main window seamlessly.
-  useEffect(() => {
-    if (!player.state.ready) return;
-    const win = getCurrentWindow();
-    const unlisteners: Promise<() => void>[] = [];
-
-    // Window moved → re-sync popup position
-    unlisteners.push(win.onMoved(() => syncViewport()));
-
-    // Focus gained → re-sync position & z-order
-    unlisteners.push(
-      win.onFocusChanged(({ payload: focused }) => {
-        if (focused) syncViewport();
-      }),
-    );
-
-    // Minimize/restore → hide/show popup
-    const onVisChange = () => {
-      playerApi.setVisible(!document.hidden).catch(() => {});
-      if (!document.hidden) syncViewport();
-    };
-    document.addEventListener("visibilitychange", onVisChange);
-
-    return () => {
-      document.removeEventListener("visibilitychange", onVisChange);
-      for (const p of unlisteners) p.then((u) => u());
-    };
-  }, [player.state.ready, syncViewport]);
 
   // ── Play the streaming URL via mpv when available ──────────────
 
