@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { Star, Loader2 } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { Star, Loader2, Film } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { AnimeInfo, PagedResult } from '@/lib/types'
 
@@ -142,16 +142,24 @@ interface AnimeCardProps {
 }
 
 function AnimeCard({ item }: AnimeCardProps) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const hasCover = item.cover && !imgFailed;
+
   return (
     <Link to="/anime/$id" params={{ id: String(item.id) }} className="group cursor-pointer">
       {/* Cover */}
       <div className="relative aspect-2/3 overflow-hidden rounded-lg bg-card">
-        <img
-          src={item.cover}
-          alt={item.title}
-          loading="lazy"
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-        />
+        {hasCover ? (
+          <img
+            src={item.cover}
+            alt={item.title}
+            loading="lazy"
+            onError={() => setImgFailed(true)}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : (
+          <CoverFallback title={item.title} />
+        )}
         {/* Hover overlay */}
         <div className="absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/30" />
         {/* Score badge */}
@@ -182,4 +190,30 @@ function AnimeCard({ item }: AnimeCardProps) {
       </div>
     </Link>
   )
+}
+
+/** Hash-based gradient fallback when no cover image is available */
+function CoverFallback({ title }: { title: string }) {
+  const hue = hashStringToHue(title);
+  return (
+    <div
+      className="flex h-full w-full flex-col items-center justify-center gap-3 p-3"
+      style={{
+        background: `linear-gradient(135deg, hsl(${hue}, 40%, 20%) 0%, hsl(${(hue + 40) % 360}, 35%, 12%) 100%)`,
+      }}
+    >
+      <Film size={28} className="text-white/20" strokeWidth={1.5} />
+      <span className="line-clamp-3 text-center text-xs font-medium leading-relaxed text-white/50">
+        {title}
+      </span>
+    </div>
+  );
+}
+
+function hashStringToHue(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return ((hash % 360) + 360) % 360;
 }

@@ -5,7 +5,7 @@ import { watchlistApi, type WatchStatus, type WatchlistEntry } from "@/lib/store
 import { cn } from "@/lib/utils";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookmarkX, Check, Eye, EyeOff, Library, Star } from "lucide-react";
+import { BookmarkX, Check, Eye, EyeOff, Film, Library } from "lucide-react";
 import { useState } from "react";
 
 export const Route = createFileRoute("/watchlist")({
@@ -137,9 +137,7 @@ function WatchlistCard({
             loading="lazy"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-            <Star size={24} />
-          </div>
+          <WatchlistCoverFallback title={entry.anime_title} />
         )}
 
         {/* Hover overlay */}
@@ -220,6 +218,27 @@ function WatchlistCard({
       >
         {entry.anime_title}
       </Link>
+    </div>
+  );
+}
+
+function WatchlistCoverFallback({ title }: { title: string }) {
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = title.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = ((hash % 360) + 360) % 360;
+  return (
+    <div
+      className="flex h-full w-full flex-col items-center justify-center gap-2 p-3"
+      style={{
+        background: `linear-gradient(135deg, hsl(${hue}, 40%, 20%) 0%, hsl(${(hue + 40) % 360}, 35%, 12%) 100%)`,
+      }}
+    >
+      <Film size={24} className="text-white/20" strokeWidth={1.5} />
+      <span className="line-clamp-2 text-center text-[10px] font-medium leading-snug text-white/40">
+        {title}
+      </span>
     </div>
   );
 }

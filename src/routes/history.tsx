@@ -4,7 +4,7 @@ import { historyApi, type WatchHistoryEntry } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock, Play, Trash2, X } from "lucide-react";
+import { Clock, Film, Play, Trash2, X } from "lucide-react";
 import { useCallback } from "react";
 
 export const Route = createFileRoute("/history")({
@@ -179,9 +179,7 @@ function HistoryCard({
             loading="lazy"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-muted-foreground/30">
-            <Play size={16} />
-          </div>
+          <HistoryCoverFallback title={entry.anime_title} />
         )}
         {/* Play overlay */}
         <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
@@ -238,6 +236,24 @@ function HistoryCard({
         <Play size={12} />
         {isFinished ? "重新观看" : "继续观看"}
       </Button>
+    </div>
+  );
+}
+
+function HistoryCoverFallback({ title }: { title: string }) {
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = title.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = ((hash % 360) + 360) % 360;
+  return (
+    <div
+      className="flex h-full w-full items-center justify-center"
+      style={{
+        background: `linear-gradient(135deg, hsl(${hue}, 40%, 20%) 0%, hsl(${(hue + 40) % 360}, 35%, 12%) 100%)`,
+      }}
+    >
+      <Film size={14} className="text-white/20" strokeWidth={1.5} />
     </div>
   );
 }

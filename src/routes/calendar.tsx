@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Star } from "lucide-react";
+import { Star, Film } from "lucide-react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { queryClient } from "@/lib/query-client";
 import type { AnimeInfo, CalendarEntry } from "@/lib/types";
@@ -110,6 +111,9 @@ function CalendarPage() {
 
 function CalendarCard({ item }: { item: AnimeInfo }) {
   const title = item.title_cn || item.title;
+  const [imgFailed, setImgFailed] = useState(false);
+  const hasCover = item.cover && !imgFailed;
+
   return (
     <Link
       to="/anime/$id"
@@ -117,13 +121,16 @@ function CalendarCard({ item }: { item: AnimeInfo }) {
       className="group cursor-pointer"
     >
       <div className="relative aspect-2/3 overflow-hidden rounded-lg bg-card">
-        {item.cover && (
+        {hasCover ? (
           <img
-            src={item.cover}
+            src={item.cover!}
             alt={title}
             loading="lazy"
+            onError={() => setImgFailed(true)}
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
+        ) : (
+          <CalendarCoverFallback title={title} />
         )}
         <div className="absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/30" />
         {item.score != null && item.score > 0 && (
@@ -142,6 +149,27 @@ function CalendarCard({ item }: { item: AnimeInfo }) {
         )}
       </div>
     </Link>
+  );
+}
+
+function CalendarCoverFallback({ title }: { title: string }) {
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = title.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = ((hash % 360) + 360) % 360;
+  return (
+    <div
+      className="flex h-full w-full flex-col items-center justify-center gap-3 p-3"
+      style={{
+        background: `linear-gradient(135deg, hsl(${hue}, 40%, 20%) 0%, hsl(${(hue + 40) % 360}, 35%, 12%) 100%)`,
+      }}
+    >
+      <Film size={28} className="text-white/20" strokeWidth={1.5} />
+      <span className="line-clamp-3 text-center text-xs font-medium leading-relaxed text-white/50">
+        {title}
+      </span>
+    </div>
   );
 }
 
