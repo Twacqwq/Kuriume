@@ -33,7 +33,6 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::player_get_hwdec,
             commands::player_set_buffer_size,
             commands::player_set_viewport,
-            commands::player_set_visible,
             commands::player_destroy,
         ])
         .setup(|app, _api| {

@@ -49,7 +49,6 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 
 // ── Time formatting ──────────────────────────────────────────────
 
@@ -200,35 +199,6 @@ export function TorrentPlayer({
     const t3 = setTimeout(syncViewport, 600);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [isFullscreen, player.state.ready, syncViewport]);
-
-  // ── Keep popup window in sync with main window (Windows) ───────
-  useEffect(() => {
-    if (!player.state.ready) return;
-    const win = getCurrentWindow();
-    const unlisteners: Promise<() => void>[] = [];
-
-    // Window moved → re-sync popup position
-    unlisteners.push(win.onMoved(() => syncViewport()));
-
-    // Focus gained → re-sync position & z-order
-    unlisteners.push(
-      win.onFocusChanged(({ payload: focused }) => {
-        if (focused) syncViewport();
-      }),
-    );
-
-    // Minimize/restore → hide/show popup
-    const onVisChange = () => {
-      playerApi.setVisible(!document.hidden).catch(() => {});
-      if (!document.hidden) syncViewport();
-    };
-    document.addEventListener("visibilitychange", onVisChange);
-
-    return () => {
-      document.removeEventListener("visibilitychange", onVisChange);
-      for (const p of unlisteners) p.then((u) => u());
-    };
-  }, [player.state.ready, syncViewport]);
 
   // ── Play the streaming URL via mpv when available ──────────────
 
@@ -673,11 +643,9 @@ function LoadingOverlay({ phase }: { phase: TorrentStreamPhase }) {
   };
 
   return (
-    <div className="absolute inset-0 z-15 flex flex-col items-center justify-center gap-4">
-      <div className="flex flex-col items-center gap-2 rounded-xl bg-black/60 px-5 py-4 backdrop-blur-sm">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="text-sm text-white/70">{messages[phase] ?? "加载中..."}</p>
-      </div>
+    <div className="absolute inset-0 z-15 flex flex-col items-center justify-center gap-4 bg-black">
+      <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      <p className="text-sm text-white/70">{messages[phase] ?? "加载中..."}</p>
     </div>
   );
 }
@@ -699,7 +667,7 @@ function BufferingOverlay({
   const slow = stats.download_speed < 1024 && !noPeers; // < 1 KB/s
 
   return (
-    <div className="absolute inset-0 z-15 flex flex-col items-center justify-center gap-3">
+    <div className="absolute inset-0 z-15 flex flex-col items-center justify-center gap-3 bg-black">
       <Loader2 className="h-10 w-10 animate-spin text-primary" />
       <p className="text-sm text-white/70">正在缓冲...</p>
       {noPeers && (
@@ -743,7 +711,7 @@ function ErrorOverlay({
   })();
 
   return (
-    <div className="absolute inset-0 z-15 flex flex-col items-center justify-center gap-4 px-8">
+    <div className="absolute inset-0 z-15 flex flex-col items-center justify-center gap-4 bg-black px-8">
       <div className="rounded-lg bg-red-500/10 px-6 py-4 text-center backdrop-blur-sm">
         <p className="text-sm font-medium text-red-400">播放出错</p>
         {displayMessage && (

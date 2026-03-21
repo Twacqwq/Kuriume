@@ -4,15 +4,7 @@
 //! 1. mpv renders via its OpenGL render API into an offscreen FBO.
 //! 2. PBO double-buffering asynchronously reads pixels from the FBO.
 //! 3. Pixels are uploaded to a D3D11 staging texture, then copied to the back buffer.
-//! 4. DXGI SwapChain presents the frame on a popup window positioned behind
-//!    the Tauri main window.  DWM composites the popup (video, alpha=0xFF) and
-//!    the main window (transparent WebView2) with proper per-pixel alpha.
-//!
-//! Why a popup window instead of a child HWND:
-//! Windows does NOT alpha-composite sibling child HWNDs.  A child at
-//! HWND_BOTTOM is simply covered by WebView2 — transparent WebView2 areas
-//! reveal the DWM desktop glass, not the sibling child behind it.
-//! Only separate top-level windows participate in DWM compositing.
+//! 4. DXGI SwapChain presents the frame on a child HWND layered below the WebView2.
 
 use kuriume_mpv::GpuRenderer;
 use std::ffi::c_void;
@@ -34,17 +26,13 @@ type LRESULT = isize;
 type DWORD = u32;
 type LPCSTR = *const u8;
 
-const WS_POPUP: DWORD = 0x8000_0000;
+const WS_CHILD: DWORD = 0x4000_0000;
 const WS_VISIBLE: DWORD = 0x1000_0000;
 const WS_CLIPSIBLINGS: DWORD = 0x0400_0000;
-const WS_EX_TOOLWINDOW: DWORD = 0x0000_0080;
-const WS_EX_NOACTIVATE: DWORD = 0x0800_0000;
 const CS_OWNDC: UINT = 0x0020;
-const SWP_NOMOVE: UINT = 0x0002;
-const SWP_NOSIZE: UINT = 0x0001;
+const SWP_NOZORDER: UINT = 0x0004;
 const SWP_NOACTIVATE: UINT = 0x0010;
-const SW_HIDE: i32 = 0;
-const SW_SHOWNA: i32 = 8;
+const HWND_BOTTOM: HWND = 1 as HWND;
 
 const PFD_DRAW_TO_WINDOW: DWORD = 0x0000_0004;
 const PFD_SUPPORT_OPENGL: DWORD = 0x0000_0020;
@@ -119,12 +107,6 @@ struct RECT {
     bottom: i32,
 }
 
-#[repr(C)]
-struct POINT {
-    x: i32,
-    y: i32,
-}
-
 extern "system" {
     fn GetModuleHandleA(name: LPCSTR) -> HINSTANCE;
     fn RegisterClassExA(wc: *const WNDCLASSEXA) -> ATOM;
@@ -160,9 +142,6 @@ extern "system" {
     fn ChoosePixelFormat(hdc: HDC, ppfd: *const PIXELFORMATDESCRIPTOR) -> i32;
     fn SetPixelFormat(hdc: HDC, format: i32, ppfd: *const PIXELFORMATDESCRIPTOR) -> BOOL;
     fn SwapBuffers(hdc: HDC) -> BOOL;
-
-    fn ClientToScreen(hwnd: HWND, point: *mut POINT) -> BOOL;
-    fn ShowWindow(hwnd: HWND, cmd_show: i32) -> BOOL;
 
     fn wglCreateContext(hdc: HDC) -> HGLRC;
     fn wglMakeCurrent(hdc: HDC, hglrc: HGLRC) -> BOOL;
@@ -423,8 +402,6 @@ struct RenderCtx {
     /// PBO double-buffer for async pixel readback.
     pbos: [u32; 2],
     pbo_index: usize,
-    /// First frame flag — skip D3D11 upload until a PBO has been written to.
-    has_prev_frame: AtomicBool,
 
     // -- D3D11 (display pipeline) --
     device: ComPtr,
@@ -432,7 +409,6 @@ struct RenderCtx {
     swap_chain: ComPtr,
 
     // -- HWND --
-    parent_hwnd: HWND,
     child_hwnd: HWND,
 
     // -- Dimensions --
@@ -505,21 +481,16 @@ impl NativeVideoView {
             };
             RegisterClassExA(&wc);
 
-            // Convert parent client-area origin to screen coordinates
-            // (popup windows use screen coordinates for position).
-            let mut origin = POINT { x: 0, y: 0 };
-            ClientToScreen(parent_hwnd, &mut origin);
-
             let child_hwnd = CreateWindowExA(
-                WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                0,
                 class_name.as_ptr(),
                 b"mpv\0".as_ptr(),
-                WS_POPUP | WS_CLIPSIBLINGS,
-                origin.x,
-                origin.y,
+                WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+                0,
+                0,
                 init_w,
                 init_h,
-                std::ptr::null_mut(), // no owner — allows z-ordering behind main window
+                parent_hwnd,
                 std::ptr::null_mut(),
                 h_instance,
                 std::ptr::null_mut(),
@@ -528,17 +499,15 @@ impl NativeVideoView {
                 return Err("CreateWindowExA failed".into());
             }
 
-            // Place popup behind the main window in z-order.
-            // DWM composites top-level windows: opaque video (alpha=0xFF)
-            // shows through transparent WebView2 areas.
+            // Place child behind WebView2
             SetWindowPos(
                 child_hwnd,
-                parent_hwnd,
+                HWND_BOTTOM,
                 0,
                 0,
                 0,
                 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                SWP_NOZORDER | SWP_NOACTIVATE,
             );
 
             // ── WGL context ──────────────────────────────────────
@@ -726,11 +695,9 @@ impl NativeVideoView {
                 gl_texture,
                 pbos,
                 pbo_index: 0,
-                has_prev_frame: AtomicBool::new(false),
                 device,
                 device_ctx,
                 swap_chain,
-                parent_hwnd,
                 child_hwnd,
                 surface_width: AtomicI32::new(init_w),
                 surface_height: AtomicI32::new(init_h),
@@ -784,40 +751,15 @@ impl NativeVideoView {
         }
 
         unsafe {
-            // Convert client-area coordinates to screen coordinates.
-            let mut pt = POINT { x: px, y: py };
-            ClientToScreen(self.render_ctx.parent_hwnd, &mut pt);
-
-            // Reposition popup behind the main window and ensure it is visible.
             SetWindowPos(
                 self.render_ctx.child_hwnd,
-                self.render_ctx.parent_hwnd,
-                pt.x,
-                pt.y,
+                HWND_BOTTOM,
+                px,
+                py,
                 pw,
                 ph,
                 SWP_NOACTIVATE,
             );
-            ShowWindow(self.render_ctx.child_hwnd, SW_SHOWNA);
-        }
-    }
-
-    /// Show or hide the video popup window.
-    pub fn set_visible(&self, visible: bool) {
-        unsafe {
-            ShowWindow(
-                self.render_ctx.child_hwnd,
-                if visible { SW_SHOWNA } else { SW_HIDE },
-            );
-            // After showing, re-assert z-order behind main window.
-            if visible {
-                SetWindowPos(
-                    self.render_ctx.child_hwnd,
-                    self.render_ctx.parent_hwnd,
-                    0, 0, 0, 0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-                );
-            }
         }
     }
 
@@ -936,7 +878,6 @@ unsafe fn resize_surface(ctx: &Arc<RenderCtx>, new_w: i32, new_h: i32) {
     ((*ctx_ptr).gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
     (*ctx_ptr).pbos = new_pbos;
     (*ctx_ptr).pbo_index = 0;
-    ctx.has_prev_frame.store(false, Ordering::Release);
 
     // 3. Resize D3D11 swap chain
     // IDXGISwapChain::ResizeBuffers is vtable index 13
@@ -995,16 +936,6 @@ fn render_loop(ctx: Arc<RenderCtx>) {
         }
 
         if !ctx.needs_render.swap(false, Ordering::AcqRel) {
-            // Even when no render is needed, keep z-order correct
-            // (e.g. after Alt+Tab brings another window on top).
-            unsafe {
-                SetWindowPos(
-                    ctx.child_hwnd,
-                    ctx.parent_hwnd,
-                    0, 0, 0, 0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-                );
-            }
             continue;
         }
 
@@ -1031,12 +962,7 @@ fn render_loop(ctx: Arc<RenderCtx>) {
             (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, read_pbo);
             glReadPixels(0, 0, w, h, GL_BGRA, GL_UNSIGNED_BYTE, std::ptr::null_mut());
 
-            // Map the other PBO (from previous frame) to get pixels.
-            // Skip on the very first frame — map_pbo hasn't been written to yet.
-            let have_prev = ctx.has_prev_frame.load(Ordering::Acquire);
-            ctx.has_prev_frame.store(true, Ordering::Release);
-
-            if have_prev {
+            // Map the other PBO (from previous frame) to get pixels
             (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, map_pbo);
             let pixels = (ctx.gl.map_buffer)(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
 
@@ -1087,13 +1013,6 @@ fn render_loop(ctx: Arc<RenderCtx>) {
                         flipped[dst_row..dst_row + row_bytes]
                             .copy_from_slice(&src[src_row..src_row + row_bytes]);
                     }
-                    // Force alpha to opaque — DXGI FLIP model swap chains
-                    // are composited by DWM which respects pixel alpha.
-                    // mpv's OpenGL output leaves alpha=0 (transparent),
-                    // making the video invisible without this fix.
-                    for px in flipped.chunks_exact_mut(4) {
-                        px[3] = 0xFF;
-                    }
 
                     update_subresource(
                         dc,
@@ -1115,6 +1034,9 @@ fn render_loop(ctx: Arc<RenderCtx>) {
                 (ctx.gl.unmap_buffer)(GL_PIXEL_PACK_BUFFER);
             }
 
+            (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
+            (*ctx_ptr).pbo_index = 1 - (*ctx_ptr).pbo_index;
+
             // ── Step 4: Present ──────────────────────────────────
             // IDXGISwapChain::Present is vtable index 8
             let sc = ctx.swap_chain.as_ptr();
@@ -1122,12 +1044,6 @@ fn render_loop(ctx: Arc<RenderCtx>) {
             let present: unsafe extern "system" fn(*mut c_void, u32, u32) -> i32 =
                 std::mem::transmute(*sc_vtable.add(8));
             present(sc, 1, 0);
-            } // have_prev
-
-            // Toggle PBO double-buffer index for next frame.
-            (*ctx_ptr).pbo_index = 1 - (*ctx_ptr).pbo_index;
-
-            (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
         }
     }
 
