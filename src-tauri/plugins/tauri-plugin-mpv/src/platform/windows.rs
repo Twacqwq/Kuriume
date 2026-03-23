@@ -1,18 +1,10 @@
-//! Windows native video view: OpenGL (mpv render) → PBO readback → UpdateLayeredWindow.
+//! Windows native video view: OpenGL (mpv render) → PBO readback → D3D11 → SwapChain.
 //!
 //! Architecture:
 //! 1. mpv renders via its OpenGL render API into an offscreen FBO.
 //! 2. PBO double-buffering asynchronously reads pixels from the FBO.
-//! 3. Pixels are copied into a DIB section with alpha forced to 0xFF.
-//! 4. `UpdateLayeredWindow` presents the frame on a `WS_EX_LAYERED` child HWND.
-//!
-//! Why WS_EX_LAYERED instead of a regular child + D3D11 swap chain:
-//! Regular child HWNDs paint into the parent's DWM surface.  WebView2
-//! (a higher z-order sibling) overwrites those pixels — transparent
-//! WebView2 areas show through to the DWM desktop, not to the child.
-//! A WS_EX_LAYERED child (Win 8+) has its own DWM composition surface,
-//! so DWM composites it independently and the video is visible through
-//! WebView2's transparent areas.
+//! 3. Pixels are uploaded to a D3D11 staging texture, then copied to the back buffer.
+//! 4. DXGI SwapChain presents the frame on a child HWND layered below the WebView2.
 
 use kuriume_mpv::GpuRenderer;
 use std::ffi::c_void;
@@ -41,11 +33,7 @@ const CS_OWNDC: UINT = 0x0020;
 const SWP_NOACTIVATE: UINT = 0x0010;
 const SWP_NOZORDER: UINT = 0x0004;
 const GWL_EXSTYLE: i32 = -20;
-
-const AC_SRC_OVER: u8 = 0x00;
-const AC_SRC_ALPHA: u8 = 0x01;
-const ULW_ALPHA: u32 = 0x0000_0002;
-const BI_RGB: u32 = 0;
+const LWA_ALPHA: u32 = 0x0000_0002;
 
 const PFD_DRAW_TO_WINDOW: DWORD = 0x0000_0004;
 const PFD_SUPPORT_OPENGL: DWORD = 0x0000_0020;
@@ -120,45 +108,6 @@ struct RECT {
     bottom: i32,
 }
 
-#[repr(C)]
-struct POINT {
-    x: i32,
-    y: i32,
-}
-
-#[repr(C)]
-struct SIZE {
-    cx: i32,
-    cy: i32,
-}
-
-#[repr(C)]
-struct BLENDFUNCTION {
-    blend_op: u8,
-    blend_flags: u8,
-    source_constant_alpha: u8,
-    alpha_format: u8,
-}
-
-#[repr(C)]
-#[allow(non_snake_case)]
-struct BITMAPINFOHEADER {
-    biSize: u32,
-    biWidth: i32,
-    biHeight: i32,
-    biPlanes: u16,
-    biBitCount: u16,
-    biCompression: u32,
-    biSizeImage: u32,
-    biXPelsPerMeter: i32,
-    biYPelsPerMeter: i32,
-    biClrUsed: u32,
-    biClrImportant: u32,
-}
-
-type HGDIOBJ = *mut c_void;
-type HBITMAP = *mut c_void;
-
 extern "system" {
     fn GetModuleHandleA(name: LPCSTR) -> HINSTANCE;
     fn RegisterClassExA(wc: *const WNDCLASSEXA) -> ATOM;
@@ -193,34 +142,11 @@ extern "system" {
     fn ReleaseDC(hwnd: HWND, hdc: HDC) -> i32;
     fn ChoosePixelFormat(hdc: HDC, ppfd: *const PIXELFORMATDESCRIPTOR) -> i32;
     fn SetPixelFormat(hdc: HDC, format: i32, ppfd: *const PIXELFORMATDESCRIPTOR) -> BOOL;
+    fn SwapBuffers(hdc: HDC) -> BOOL;
 
-    fn ClientToScreen(hwnd: HWND, point: *mut POINT) -> BOOL;
-
-    fn CreateCompatibleDC(hdc: HDC) -> HDC;
-    fn DeleteDC(hdc: HDC) -> BOOL;
-    fn CreateDIBSection(
-        hdc: HDC,
-        pbmi: *const BITMAPINFOHEADER,
-        usage: u32,
-        ppv_bits: *mut *mut c_void,
-        h_section: *mut c_void,
-        offset: u32,
-    ) -> HBITMAP;
-    fn SelectObject(hdc: HDC, h: HGDIOBJ) -> HGDIOBJ;
-    fn DeleteObject(h: HGDIOBJ) -> BOOL;
-    fn UpdateLayeredWindow(
-        hwnd: HWND,
-        hdc_dst: HDC,
-        ppt_dst: *const POINT,
-        psize: *const SIZE,
-        hdc_src: HDC,
-        ppt_src: *const POINT,
-        cr_key: u32,
-        pblend: *const BLENDFUNCTION,
-        dw_flags: u32,
-    ) -> BOOL;
     fn SetWindowLongPtrA(hwnd: HWND, index: i32, new_long: isize) -> isize;
     fn GetWindowLongPtrA(hwnd: HWND, index: i32) -> isize;
+    fn SetLayeredWindowAttributes(hwnd: HWND, cr_key: u32, alpha: u8, flags: u32) -> BOOL;
 
     fn wglCreateContext(hdc: HDC) -> HGLRC;
     fn wglMakeCurrent(hdc: HDC, hglrc: HGLRC) -> BOOL;
@@ -267,6 +193,7 @@ extern "system" {
         pixels: *mut c_void,
     );
     fn glFlush();
+    fn glFinish();
 }
 
 unsafe extern "system" fn wnd_proc(
@@ -322,51 +249,152 @@ impl GlFns {
     }
 }
 
-// ── Render context ───────────────────────────────────────────────
+// ── D3D11 / DXGI FFI (minimal, display pipeline only) ────────────
 
-/// Create a memory DC backed by a DIB section for pixel storage.
-///
-/// The DIB uses positive `biHeight` (bottom-up), matching OpenGL's
-/// pixel layout so no vertical flip is needed.
-///
-/// Returns `(mem_dc, dib_bitmap, dib_bits_ptr)`.
-unsafe fn create_dib_section(w: i32, h: i32) -> Result<(HDC, HBITMAP, *mut u8), String> {
-    let mem_dc = CreateCompatibleDC(std::ptr::null_mut());
-    if mem_dc.is_null() {
-        return Err("CreateCompatibleDC failed".into());
-    }
-
-    let bmi = BITMAPINFOHEADER {
-        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-        biWidth: w,
-        biHeight: h, // positive = bottom-up, same as OpenGL
-        biPlanes: 1,
-        biBitCount: 32,
-        biCompression: BI_RGB,
-        biSizeImage: 0,
-        biXPelsPerMeter: 0,
-        biYPelsPerMeter: 0,
-        biClrUsed: 0,
-        biClrImportant: 0,
-    };
-
-    let mut bits: *mut c_void = std::ptr::null_mut();
-    let bitmap = CreateDIBSection(
-        mem_dc,
-        &bmi,
-        0, // DIB_RGB_COLORS
-        &mut bits,
-        std::ptr::null_mut(),
-        0,
-    );
-    if bitmap.is_null() || bits.is_null() {
-        DeleteDC(mem_dc);
-        return Err("CreateDIBSection failed".into());
-    }
-
-    SelectObject(mem_dc, bitmap as HGDIOBJ);
-    Ok((mem_dc, bitmap, bits as *mut u8))
+#[repr(C)]
+struct DxgiSwapChainDesc {
+    buffer_desc: DxgiModeDesc,
+    sample_desc: DxgiSampleDesc,
+    buffer_usage: u32,
+    buffer_count: u32,
+    output_window: HWND,
+    windowed: BOOL,
+    swap_effect: u32,
+    flags: u32,
 }
+
+#[repr(C)]
+struct DxgiModeDesc {
+    width: u32,
+    height: u32,
+    refresh_rate: DxgiRational,
+    format: u32,
+    scanline_ordering: u32,
+    scaling: u32,
+}
+
+#[repr(C)]
+struct DxgiRational {
+    numerator: u32,
+    denominator: u32,
+}
+
+#[repr(C)]
+struct DxgiSampleDesc {
+    count: u32,
+    quality: u32,
+}
+
+#[repr(C)]
+struct D3D11Texture2DDesc {
+    width: u32,
+    height: u32,
+    mip_levels: u32,
+    array_size: u32,
+    format: u32,
+    sample_desc: DxgiSampleDesc,
+    usage: u32,
+    bind_flags: u32,
+    cpu_access_flags: u32,
+    misc_flags: u32,
+}
+
+#[repr(C)]
+struct D3D11SubresourceData {
+    p_sys_mem: *const c_void,
+    sys_mem_pitch: u32,
+    sys_mem_slice_pitch: u32,
+}
+
+#[repr(C)]
+struct D3D11MappedSubresource {
+    p_data: *mut c_void,
+    row_pitch: u32,
+    depth_pitch: u32,
+}
+
+#[repr(C)]
+struct D3D11Box {
+    left: u32,
+    top: u32,
+    front: u32,
+    right: u32,
+    bottom: u32,
+    back: u32,
+}
+
+// DXGI_FORMAT_B8G8R8A8_UNORM = 87
+const DXGI_FORMAT_B8G8R8A8_UNORM: u32 = 87;
+// DXGI_SWAP_EFFECT_FLIP_DISCARD = 4
+const DXGI_SWAP_EFFECT_FLIP_DISCARD: u32 = 4;
+// DXGI_USAGE_RENDER_TARGET_OUTPUT = 0x20
+const DXGI_USAGE_RENDER_TARGET_OUTPUT: u32 = 0x20;
+// D3D11_USAGE_STAGING = 3
+const D3D11_USAGE_STAGING: u32 = 3;
+// D3D11_CPU_ACCESS_WRITE = 0x10000
+const D3D11_CPU_ACCESS_WRITE: u32 = 0x1_0000;
+// D3D11_MAP_WRITE_DISCARD = 4 — not valid for staging. Use D3D11_MAP_WRITE = 2
+const D3D11_MAP_WRITE: u32 = 2;
+// D3D_DRIVER_TYPE_HARDWARE = 1
+const D3D_DRIVER_TYPE_HARDWARE: u32 = 1;
+
+// COM VTable helpers — we call methods via raw vtable pointers.
+// IDXGISwapChain, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D
+// are all COM objects with known vtable layouts.
+
+/// Opaque COM pointer wrapper with Release-on-drop.
+struct ComPtr(*mut c_void);
+
+impl ComPtr {
+    fn as_ptr(&self) -> *mut c_void {
+        self.0
+    }
+
+    fn vtable(&self) -> *const *const c_void {
+        unsafe { *(self.0 as *const *const *const c_void) }
+    }
+}
+
+impl Drop for ComPtr {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                // IUnknown::Release is vtable index 2
+                let release: unsafe extern "system" fn(*mut c_void) -> u32 =
+                    std::mem::transmute(*self.vtable().add(2));
+                release(self.0);
+            }
+        }
+    }
+}
+
+unsafe impl Send for ComPtr {}
+unsafe impl Sync for ComPtr {}
+
+extern "system" {
+    fn D3D11CreateDeviceAndSwapChain(
+        p_adapter: *mut c_void,
+        driver_type: u32,
+        software: *mut c_void,
+        flags: u32,
+        feature_levels: *const u32,
+        feature_levels_count: u32,
+        sdk_version: u32,
+        swap_chain_desc: *const DxgiSwapChainDesc,
+        swap_chain: *mut *mut c_void,
+        device: *mut *mut c_void,
+        feature_level: *mut u32,
+        device_context: *mut *mut c_void,
+    ) -> i32; // HRESULT
+}
+
+#[link(name = "d3d11")]
+extern "system" {}
+
+#[link(name = "dxgi")]
+extern "system" {}
+
+// ── Render context ───────────────────────────────────────────────
 
 struct RenderCtx {
     // -- OpenGL (offscreen mpv rendering) --
@@ -379,16 +407,15 @@ struct RenderCtx {
     /// PBO double-buffer for async pixel readback.
     pbos: [u32; 2],
     pbo_index: usize,
-    /// First frame flag — skip presentation until a PBO has been written to.
+    /// First frame flag — skip D3D11 upload until a PBO has been written to.
     has_prev_frame: AtomicBool,
 
-    // -- Layered window presentation --
-    mem_dc: HDC,
-    dib_bitmap: HBITMAP,
-    dib_bits: *mut u8,
+    // -- D3D11 (display pipeline) --
+    device: ComPtr,
+    device_ctx: ComPtr,
+    swap_chain: ComPtr,
 
     // -- HWND --
-    parent_hwnd: HWND,
     child_hwnd: HWND,
 
     // -- Dimensions --
@@ -406,7 +433,7 @@ struct RenderCtx {
 }
 
 // SAFETY: The WGL context is only used on the dedicated render thread.
-// GDI memory DC + DIB section are also only used on the render thread.
+// D3D11 immediate context is also only used on the render thread.
 unsafe impl Send for RenderCtx {}
 unsafe impl Sync for RenderCtx {}
 
@@ -595,20 +622,74 @@ impl NativeVideoView {
 
             wglMakeCurrent(std::ptr::null_mut(), std::ptr::null_mut());
 
-            // ── Add WS_EX_LAYERED now that WGL context is created ─
-            // Must be done AFTER WGL setup because ChoosePixelFormat /
-            // SetPixelFormat need a non-layered window DC.
+            // ── Make child a layered window for independent DWM composition ─
+            // Must be done AFTER WGL setup (ChoosePixelFormat needs non-layered DC).
+            // SetLayeredWindowAttributes makes the window fully opaque while
+            // giving it its own DWM composition surface, so D3D11 Present()
+            // paints onto an independent surface visible through WebView2's
+            // transparent areas.
             let ex_style = GetWindowLongPtrA(child_hwnd, GWL_EXSTYLE);
             SetWindowLongPtrA(child_hwnd, GWL_EXSTYLE, ex_style | WS_EX_LAYERED as isize);
+            SetLayeredWindowAttributes(child_hwnd, 0, 255, LWA_ALPHA);
 
-            // ── DIB section for UpdateLayeredWindow ──────────────
-            let (mem_dc, dib_bitmap, dib_bits) = create_dib_section(init_w, init_h)
-                .map_err(|e| {
-                    wglDeleteContext(hglrc);
-                    ReleaseDC(child_hwnd, hdc);
-                    DestroyWindow(child_hwnd);
-                    e
-                })?;
+            // ── D3D11 device + swap chain ────────────────────────
+            let sc_desc = DxgiSwapChainDesc {
+                buffer_desc: DxgiModeDesc {
+                    width: init_w as u32,
+                    height: init_h as u32,
+                    refresh_rate: DxgiRational {
+                        numerator: 0,
+                        denominator: 1,
+                    },
+                    format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                    scanline_ordering: 0,
+                    scaling: 0,
+                },
+                sample_desc: DxgiSampleDesc {
+                    count: 1,
+                    quality: 0,
+                },
+                buffer_usage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
+                buffer_count: 2,
+                output_window: child_hwnd,
+                windowed: 1,
+                swap_effect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
+                flags: 0,
+            };
+
+            let mut p_swap_chain: *mut c_void = std::ptr::null_mut();
+            let mut p_device: *mut c_void = std::ptr::null_mut();
+            let mut p_device_ctx: *mut c_void = std::ptr::null_mut();
+            let mut feature_level: u32 = 0;
+
+            // D3D_FEATURE_LEVEL_11_0 = 0xb000
+            let levels: [u32; 1] = [0xb000];
+
+            let hr = D3D11CreateDeviceAndSwapChain(
+                std::ptr::null_mut(),
+                D3D_DRIVER_TYPE_HARDWARE,
+                std::ptr::null_mut(),
+                0,
+                levels.as_ptr(),
+                1,
+                7, // D3D11_SDK_VERSION
+                &sc_desc,
+                &mut p_swap_chain,
+                &mut p_device,
+                &mut feature_level,
+                &mut p_device_ctx,
+            );
+
+            if hr < 0 {
+                wglDeleteContext(hglrc);
+                ReleaseDC(child_hwnd, hdc);
+                DestroyWindow(child_hwnd);
+                return Err(format!("D3D11CreateDeviceAndSwapChain failed: 0x{hr:08X}"));
+            }
+
+            let device = ComPtr(p_device);
+            let device_ctx = ComPtr(p_device_ctx);
+            let swap_chain = ComPtr(p_swap_chain);
 
             // ── Build shared render context ──────────────────────
             let render_ctx = Arc::new(RenderCtx {
@@ -621,10 +702,9 @@ impl NativeVideoView {
                 pbos,
                 pbo_index: 0,
                 has_prev_frame: AtomicBool::new(false),
-                mem_dc,
-                dib_bitmap,
-                dib_bits,
-                parent_hwnd,
+                device,
+                device_ctx,
+                swap_chain,
                 child_hwnd,
                 surface_width: AtomicI32::new(init_w),
                 surface_height: AtomicI32::new(init_h),
@@ -680,7 +760,7 @@ impl NativeVideoView {
         unsafe {
             SetWindowPos(
                 self.render_ctx.child_hwnd,
-                std::ptr::null_mut(), // ignored with SWP_NOZORDER
+                std::ptr::null_mut(),
                 px,
                 py,
                 pw,
@@ -719,9 +799,7 @@ impl NativeVideoView {
             wglDeleteContext((*ctx_ptr).hglrc);
             ReleaseDC((*ctx_ptr).child_hwnd, (*ctx_ptr).hdc);
 
-            // Clean up DIB section + memory DC
-            DeleteObject((*ctx_ptr).dib_bitmap as HGDIOBJ);
-            DeleteDC((*ctx_ptr).mem_dc);
+            // D3D11 resources released via ComPtr Drop
 
             DestroyWindow((*ctx_ptr).child_hwnd);
         }
@@ -754,7 +832,7 @@ unsafe extern "C" fn on_mpv_needs_render(ctx: *mut c_void) {
 
 // ── Render loop ─────────────────────────────────────────────────
 
-/// Recreate GL FBO/texture, PBOs, and DIB section at new size.
+/// Recreate GL FBO/texture, PBOs, and D3D11 swap chain at new size.
 ///
 /// # Safety
 /// Must be called on the render thread with WGL context current.
@@ -809,15 +887,21 @@ unsafe fn resize_surface(ctx: &Arc<RenderCtx>, new_w: i32, new_h: i32) {
     (*ctx_ptr).pbo_index = 0;
     ctx.has_prev_frame.store(false, Ordering::Release);
 
-    // 3. Recreate DIB section
-    DeleteObject((*ctx_ptr).dib_bitmap as HGDIOBJ);
-    DeleteDC((*ctx_ptr).mem_dc);
-    if let Ok((mem_dc, dib_bitmap, dib_bits)) = create_dib_section(new_w, new_h) {
-        (*ctx_ptr).mem_dc = mem_dc;
-        (*ctx_ptr).dib_bitmap = dib_bitmap;
-        (*ctx_ptr).dib_bits = dib_bits;
-    } else {
-        log::error!("Failed to recreate DIB section at {new_w}x{new_h}");
+    // 3. Resize D3D11 swap chain
+    // IDXGISwapChain::ResizeBuffers is vtable index 13
+    let sc = (*ctx_ptr).swap_chain.as_ptr();
+    let sc_vtable = *(sc as *const *const *const c_void);
+    let resize_buffers: unsafe extern "system" fn(
+        *mut c_void,
+        u32,
+        u32,
+        u32,
+        u32,
+        u32,
+    ) -> i32 = std::mem::transmute(*sc_vtable.add(13));
+    let hr = resize_buffers(sc, 2, new_w as u32, new_h as u32, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
+    if hr < 0 {
+        log::error!("IDXGISwapChain::ResizeBuffers failed: 0x{hr:08X}");
     }
 
     ctx.surface_width.store(new_w, Ordering::Release);
@@ -892,53 +976,91 @@ fn render_loop(ctx: Arc<RenderCtx>) {
             ctx.has_prev_frame.store(true, Ordering::Release);
 
             if have_prev {
-                (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, map_pbo);
-                let pixels = (ctx.gl.map_buffer)(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
+            (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, map_pbo);
+            let pixels = (ctx.gl.map_buffer)(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
 
-                if !pixels.is_null() {
-                    // ── Step 3: Copy to DIB + UpdateLayeredWindow ─
+            if !pixels.is_null() {
+                // ── Step 3: Upload to D3D11 ──────────────────────
+                // Get back buffer from swap chain
+                // IDXGISwapChain::GetBuffer is vtable index 9
+                let sc = ctx.swap_chain.as_ptr();
+                let sc_vtable = *(sc as *const *const *const c_void);
+                let get_buffer: unsafe extern "system" fn(
+                    *mut c_void,
+                    u32,
+                    *const [u8; 16],
+                    *mut *mut c_void,
+                ) -> i32 = std::mem::transmute(*sc_vtable.add(9));
+
+                // IID_ID3D11Texture2D = {6f15aaf2-d208-4e89-9ab4-489535d34F9C}
+                let iid: [u8; 16] = [
+                    0xf2, 0xaa, 0x15, 0x6f, 0x08, 0xd2, 0x89, 0x4e, 0x9a, 0xb4, 0x48, 0x95, 0x35,
+                    0xd3, 0x4f, 0x9c,
+                ];
+                let mut back_buffer: *mut c_void = std::ptr::null_mut();
+                let hr = get_buffer(sc, 0, &iid, &mut back_buffer);
+
+                if hr >= 0 && !back_buffer.is_null() {
+                    // ID3D11DeviceContext::UpdateSubresource is vtable index 48
+                    let dc = ctx.device_ctx.as_ptr();
+                    let dc_vtable = *(dc as *const *const *const c_void);
+                    let update_subresource: unsafe extern "system" fn(
+                        *mut c_void, // this
+                        *mut c_void, // pDstResource
+                        u32,         // DstSubresource
+                        *const D3D11Box, // pDstBox
+                        *const c_void, // pSrcData
+                        u32,         // SrcRowPitch
+                        u32,         // SrcDepthPitch
+                    ) -> () = std::mem::transmute(*dc_vtable.add(48));
+
+                    // Flip vertically: OpenGL has bottom-left origin,
+                    // D3D11 has top-left origin. Copy row by row.
+                    let row_bytes = (w * 4) as usize;
                     let total = (w * h * 4) as usize;
+                    let mut flipped = vec![0u8; total];
                     let src = std::slice::from_raw_parts(pixels as *const u8, total);
-                    let dst = std::slice::from_raw_parts_mut(ctx.dib_bits, total);
-
-                    // DIB is bottom-up (positive biHeight), same as OpenGL — no flip needed.
-                    // Copy pixels and force alpha to 0xFF in one pass.
-                    for (d, s) in dst.chunks_exact_mut(4).zip(src.chunks_exact(4)) {
-                        d[0] = s[0]; // B
-                        d[1] = s[1]; // G
-                        d[2] = s[2]; // R
-                        d[3] = 0xFF; // A — force opaque
+                    for row in 0..h as usize {
+                        let src_row = (h as usize - 1 - row) * row_bytes;
+                        let dst_row = row * row_bytes;
+                        flipped[dst_row..dst_row + row_bytes]
+                            .copy_from_slice(&src[src_row..src_row + row_bytes]);
+                    }
+                    // Force alpha to opaque — DXGI FLIP_DISCARD swap chains
+                    // are composited by DWM with per-pixel alpha.  mpv's
+                    // OpenGL output has alpha=0 (transparent), making the
+                    // video invisible without this fix.
+                    for px in flipped.chunks_exact_mut(4) {
+                        px[3] = 0xFF;
                     }
 
-                    (ctx.gl.unmap_buffer)(GL_PIXEL_PACK_BUFFER);
-
-                    // Get child window's screen position for UpdateLayeredWindow
-                    let mut child_pt = POINT { x: 0, y: 0 };
-                    ClientToScreen(ctx.child_hwnd, &mut child_pt);
-
-                    let size = SIZE { cx: w, cy: h };
-                    let src_pt = POINT { x: 0, y: 0 };
-                    let blend = BLENDFUNCTION {
-                        blend_op: AC_SRC_OVER,
-                        blend_flags: 0,
-                        source_constant_alpha: 255,
-                        alpha_format: AC_SRC_ALPHA,
-                    };
-
-                    UpdateLayeredWindow(
-                        ctx.child_hwnd,
-                        std::ptr::null_mut(), // hdc_dst — let the system choose
-                        &child_pt,            // screen position
-                        &size,
-                        ctx.mem_dc,
-                        &src_pt,
+                    update_subresource(
+                        dc,
+                        back_buffer,
                         0,
-                        &blend,
-                        ULW_ALPHA,
+                        std::ptr::null(),
+                        flipped.as_ptr() as *const c_void,
+                        (w * 4) as u32,
+                        0,
                     );
-                } else {
-                    (ctx.gl.unmap_buffer)(GL_PIXEL_PACK_BUFFER);
+
+                    // Release back buffer (IUnknown::Release = vtable index 2)
+                    let bb_vtable = *(back_buffer as *const *const *const c_void);
+                    let release: unsafe extern "system" fn(*mut c_void) -> u32 =
+                        std::mem::transmute(*bb_vtable.add(2));
+                    release(back_buffer);
                 }
+
+                (ctx.gl.unmap_buffer)(GL_PIXEL_PACK_BUFFER);
+            }
+
+            // ── Step 4: Present ──────────────────────────────────
+            // IDXGISwapChain::Present is vtable index 8
+            let sc = ctx.swap_chain.as_ptr();
+            let sc_vtable = *(sc as *const *const *const c_void);
+            let present: unsafe extern "system" fn(*mut c_void, u32, u32) -> i32 =
+                std::mem::transmute(*sc_vtable.add(8));
+            present(sc, 1, 0);
             } // have_prev
 
             (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
