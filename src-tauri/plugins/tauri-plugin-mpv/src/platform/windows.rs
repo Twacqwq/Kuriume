@@ -325,8 +325,8 @@ struct D3D11Box {
 
 // DXGI_FORMAT_B8G8R8A8_UNORM = 87
 const DXGI_FORMAT_B8G8R8A8_UNORM: u32 = 87;
-// DXGI_SWAP_EFFECT_FLIP_DISCARD = 4
-const DXGI_SWAP_EFFECT_FLIP_DISCARD: u32 = 4;
+// DXGI_SWAP_EFFECT_DISCARD = 0  (BitBlt model — paints to redirection surface)
+const DXGI_SWAP_EFFECT_DISCARD: u32 = 0;
 // DXGI_USAGE_RENDER_TARGET_OUTPUT = 0x20
 const DXGI_USAGE_RENDER_TARGET_OUTPUT: u32 = 0x20;
 // D3D11_USAGE_STAGING = 3
@@ -650,10 +650,10 @@ impl NativeVideoView {
                     quality: 0,
                 },
                 buffer_usage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                buffer_count: 2,
+                buffer_count: 1,
                 output_window: child_hwnd,
                 windowed: 1,
-                swap_effect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
+                swap_effect: DXGI_SWAP_EFFECT_DISCARD,
                 flags: 0,
             };
 
@@ -899,7 +899,7 @@ unsafe fn resize_surface(ctx: &Arc<RenderCtx>, new_w: i32, new_h: i32) {
         u32,
         u32,
     ) -> i32 = std::mem::transmute(*sc_vtable.add(13));
-    let hr = resize_buffers(sc, 2, new_w as u32, new_h as u32, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
+    let hr = resize_buffers(sc, 1, new_w as u32, new_h as u32, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
     if hr < 0 {
         log::error!("IDXGISwapChain::ResizeBuffers failed: 0x{hr:08X}");
     }
@@ -1026,10 +1026,10 @@ fn render_loop(ctx: Arc<RenderCtx>) {
                         flipped[dst_row..dst_row + row_bytes]
                             .copy_from_slice(&src[src_row..src_row + row_bytes]);
                     }
-                    // Force alpha to opaque — DXGI FLIP_DISCARD swap chains
-                    // are composited by DWM with per-pixel alpha.  mpv's
-                    // OpenGL output has alpha=0 (transparent), making the
-                    // video invisible without this fix.
+                    // Force alpha to opaque — DWM composites the layered
+                    // window's redirection surface with per-pixel alpha.
+                    // mpv's OpenGL output has alpha=0, making the video
+                    // invisible without this fix.
                     for px in flipped.chunks_exact_mut(4) {
                         px[3] = 0xFF;
                     }
