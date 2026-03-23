@@ -3,8 +3,19 @@
 //! Architecture:
 //! 1. mpv renders via its OpenGL render API into an offscreen FBO.
 //! 2. PBO double-buffering asynchronously reads pixels from the FBO.
-//! 3. Pixels are uploaded to a D3D11 staging texture, then copied to the back buffer.
-//! 4. DXGI SwapChain presents the frame on a child HWND layered below the WebView2.
+//! 3. Pixels are uploaded to D3D11 with alpha forced to 0xFF, then presented.
+//! 4. DXGI SwapChain presents the frame on a popup HWND positioned over the
+//!    parent window's video area.
+//!
+//! Why a popup instead of a child HWND:
+//! Tauri uses DwmExtendFrameIntoClientArea for transparency.  Child HWNDs
+//! paint into the parent's DWM surface, so WebView2 (a higher z-order
+//! sibling) overwrites those pixels — transparent areas become DWM glass.
+//! A popup window has its own independent DWM composition surface,
+//! so D3D11 rendering is visible and not affected by WebView2.
+//! The popup is owned by the parent (auto z-order, auto-destroy) and
+//! returns HTTRANSPARENT from WM_NCHITTEST so clicks pass through to
+//! the WebView2 UI controls underneath.
 
 use kuriume_mpv::GpuRenderer;
 use std::ffi::c_void;
@@ -26,14 +37,15 @@ type LRESULT = isize;
 type DWORD = u32;
 type LPCSTR = *const u8;
 
-const WS_CHILD: DWORD = 0x4000_0000;
-const WS_VISIBLE: DWORD = 0x1000_0000;
-const WS_EX_LAYERED: DWORD = 0x0008_0000;
+const WS_POPUP: DWORD = 0x8000_0000;
+const WS_EX_NOACTIVATE: DWORD = 0x0800_0000;
+const WS_EX_TOOLWINDOW: DWORD = 0x0000_0080;
 const CS_OWNDC: UINT = 0x0020;
 const SWP_NOACTIVATE: UINT = 0x0010;
 const SWP_NOZORDER: UINT = 0x0004;
-const GWL_EXSTYLE: i32 = -20;
-const LWA_ALPHA: u32 = 0x0000_0002;
+const WM_NCHITTEST: UINT = 0x0084;
+const HTTRANSPARENT: LRESULT = -1;
+const SW_SHOWNOACTIVATE: i32 = 8;
 
 const PFD_DRAW_TO_WINDOW: DWORD = 0x0000_0004;
 const PFD_SUPPORT_OPENGL: DWORD = 0x0000_0020;
@@ -108,6 +120,12 @@ struct RECT {
     bottom: i32,
 }
 
+#[repr(C)]
+struct POINT {
+    x: i32,
+    y: i32,
+}
+
 extern "system" {
     fn GetModuleHandleA(name: LPCSTR) -> HINSTANCE;
     fn RegisterClassExA(wc: *const WNDCLASSEXA) -> ATOM;
@@ -143,10 +161,8 @@ extern "system" {
     fn ChoosePixelFormat(hdc: HDC, ppfd: *const PIXELFORMATDESCRIPTOR) -> i32;
     fn SetPixelFormat(hdc: HDC, format: i32, ppfd: *const PIXELFORMATDESCRIPTOR) -> BOOL;
     fn SwapBuffers(hdc: HDC) -> BOOL;
-
-    fn SetWindowLongPtrA(hwnd: HWND, index: i32, new_long: isize) -> isize;
-    fn GetWindowLongPtrA(hwnd: HWND, index: i32) -> isize;
-    fn SetLayeredWindowAttributes(hwnd: HWND, cr_key: u32, alpha: u8, flags: u32) -> BOOL;
+    fn ShowWindow(hwnd: HWND, cmd: i32) -> BOOL;
+    fn ClientToScreen(hwnd: HWND, point: *mut POINT) -> BOOL;
 
     fn wglCreateContext(hdc: HDC) -> HGLRC;
     fn wglMakeCurrent(hdc: HDC, hglrc: HGLRC) -> BOOL;
@@ -202,6 +218,10 @@ unsafe extern "system" fn wnd_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    // Make the popup click-through so mouse events reach WebView2.
+    if msg == WM_NCHITTEST {
+        return HTTRANSPARENT;
+    }
     unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) }
 }
 
@@ -325,8 +345,8 @@ struct D3D11Box {
 
 // DXGI_FORMAT_B8G8R8A8_UNORM = 87
 const DXGI_FORMAT_B8G8R8A8_UNORM: u32 = 87;
-// DXGI_SWAP_EFFECT_DISCARD = 0  (BitBlt model — paints to redirection surface)
-const DXGI_SWAP_EFFECT_DISCARD: u32 = 0;
+// DXGI_SWAP_EFFECT_FLIP_DISCARD = 4
+const DXGI_SWAP_EFFECT_FLIP_DISCARD: u32 = 4;
 // DXGI_USAGE_RENDER_TARGET_OUTPUT = 0x20
 const DXGI_USAGE_RENDER_TARGET_OUTPUT: u32 = 0x20;
 // D3D11_USAGE_STAGING = 3
@@ -416,6 +436,7 @@ struct RenderCtx {
     swap_chain: ComPtr,
 
     // -- HWND --
+    parent_hwnd: HWND,
     child_hwnd: HWND,
 
     // -- Dimensions --
@@ -468,7 +489,7 @@ impl NativeVideoView {
             // ── DPI scale ────────────────────────────────────────
             let dpi_scale = get_dpi_scale(parent_hwnd);
 
-            // ── Create child HWND ────────────────────────────────
+            // ── Create popup HWND ────────────────────────────────
             let h_instance = GetModuleHandleA(std::ptr::null());
             let class_name = b"KuriumeVideoView\0";
 
@@ -488,16 +509,20 @@ impl NativeVideoView {
             };
             RegisterClassExA(&wc);
 
+            // Popup owned by parent — moves with it, destroyed with it.
+            // WS_EX_NOACTIVATE: don't steal focus from the main window.
+            // WS_EX_TOOLWINDOW: no taskbar button.
+            // Not WS_VISIBLE — shown after D3D11 init via ShowWindow.
             let child_hwnd = CreateWindowExA(
-                0,
+                WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
                 class_name.as_ptr(),
                 b"mpv\0".as_ptr(),
-                WS_CHILD | WS_VISIBLE,
+                WS_POPUP,
                 0,
                 0,
                 init_w,
                 init_h,
-                parent_hwnd,
+                parent_hwnd, // owner for popup
                 std::ptr::null_mut(),
                 h_instance,
                 std::ptr::null_mut(),
@@ -622,16 +647,6 @@ impl NativeVideoView {
 
             wglMakeCurrent(std::ptr::null_mut(), std::ptr::null_mut());
 
-            // ── Make child a layered window for independent DWM composition ─
-            // Must be done AFTER WGL setup (ChoosePixelFormat needs non-layered DC).
-            // SetLayeredWindowAttributes makes the window fully opaque while
-            // giving it its own DWM composition surface, so D3D11 Present()
-            // paints onto an independent surface visible through WebView2's
-            // transparent areas.
-            let ex_style = GetWindowLongPtrA(child_hwnd, GWL_EXSTYLE);
-            SetWindowLongPtrA(child_hwnd, GWL_EXSTYLE, ex_style | WS_EX_LAYERED as isize);
-            SetLayeredWindowAttributes(child_hwnd, 0, 255, LWA_ALPHA);
-
             // ── D3D11 device + swap chain ────────────────────────
             let sc_desc = DxgiSwapChainDesc {
                 buffer_desc: DxgiModeDesc {
@@ -650,10 +665,10 @@ impl NativeVideoView {
                     quality: 0,
                 },
                 buffer_usage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                buffer_count: 1,
+                buffer_count: 2,
                 output_window: child_hwnd,
                 windowed: 1,
-                swap_effect: DXGI_SWAP_EFFECT_DISCARD,
+                swap_effect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
                 flags: 0,
             };
 
@@ -705,6 +720,7 @@ impl NativeVideoView {
                 device,
                 device_ctx,
                 swap_chain,
+                parent_hwnd,
                 child_hwnd,
                 surface_width: AtomicI32::new(init_w),
                 surface_height: AtomicI32::new(init_h),
@@ -729,6 +745,9 @@ impl NativeVideoView {
                 .name("mpv-render".into())
                 .spawn(move || render_loop(render_ctx_for_thread))
                 .map_err(|e| format!("Failed to spawn render thread: {e}"))?;
+
+            // Show the popup now that everything is initialized
+            ShowWindow(child_hwnd, SW_SHOWNOACTIVATE);
 
             Ok(Self {
                 render_ctx,
@@ -758,11 +777,15 @@ impl NativeVideoView {
         }
 
         unsafe {
+            // Popup uses screen coordinates — convert from parent client coords.
+            let mut pt = POINT { x: px, y: py };
+            ClientToScreen(self.render_ctx.parent_hwnd, &mut pt);
+
             SetWindowPos(
                 self.render_ctx.child_hwnd,
                 std::ptr::null_mut(),
-                px,
-                py,
+                pt.x,
+                pt.y,
                 pw,
                 ph,
                 SWP_NOACTIVATE | SWP_NOZORDER,
@@ -899,7 +922,7 @@ unsafe fn resize_surface(ctx: &Arc<RenderCtx>, new_w: i32, new_h: i32) {
         u32,
         u32,
     ) -> i32 = std::mem::transmute(*sc_vtable.add(13));
-    let hr = resize_buffers(sc, 1, new_w as u32, new_h as u32, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
+    let hr = resize_buffers(sc, 2, new_w as u32, new_h as u32, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
     if hr < 0 {
         log::error!("IDXGISwapChain::ResizeBuffers failed: 0x{hr:08X}");
     }
