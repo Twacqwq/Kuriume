@@ -61,14 +61,14 @@ type LRESULT = isize;
 type DWORD = u32;
 type LPCSTR = *const u8;
 
-const WS_CHILD: DWORD = 0x4000_0000;
+const WS_POPUP: DWORD = 0x8000_0000;
 const WS_VISIBLE: DWORD = 0x1000_0000;
-const WS_CLIPSIBLINGS: DWORD = 0x0400_0000;
 const CS_OWNDC: UINT = 0x0020;
 const SWP_NOMOVE: UINT = 0x0002;
 const SWP_NOSIZE: UINT = 0x0001;
 const SWP_NOACTIVATE: UINT = 0x0010;
-const HWND_BOTTOM: HWND = 1 as HWND;
+const WS_EX_NOACTIVATE: DWORD = 0x0800_0000;
+const WS_EX_TOOLWINDOW: DWORD = 0x0000_0080;
 
 const PFD_DRAW_TO_WINDOW: DWORD = 0x0000_0004;
 const PFD_SUPPORT_OPENGL: DWORD = 0x0000_0020;
@@ -143,6 +143,12 @@ struct RECT {
     bottom: i32,
 }
 
+#[repr(C)]
+struct POINT {
+    x: i32,
+    y: i32,
+}
+
 extern "system" {
     fn GetModuleHandleA(name: LPCSTR) -> HINSTANCE;
     fn RegisterClassExA(wc: *const WNDCLASSEXA) -> ATOM;
@@ -173,6 +179,8 @@ extern "system" {
     fn GetClientRect(hwnd: HWND, rect: *mut RECT) -> BOOL;
     fn IsWindowVisible(hwnd: HWND) -> BOOL;
     fn GetWindowRect(hwnd: HWND, rect: *mut RECT) -> BOOL;
+    fn ClientToScreen(hwnd: HWND, point: *mut POINT) -> BOOL;
+    fn ShowWindow(hwnd: HWND, cmd: i32) -> BOOL;
     fn DefWindowProcA(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT;
 
     fn GetDC(hwnd: HWND) -> HDC;
@@ -427,21 +435,6 @@ extern "system" {}
 #[link(name = "dxgi")]
 extern "system" {}
 
-// ── DWM FFI ──────────────────────────────────────────────────────
-
-#[repr(C)]
-struct MARGINS {
-    cx_left_width: i32,
-    cx_right_width: i32,
-    cy_top_height: i32,
-    cy_bottom_height: i32,
-}
-
-#[link(name = "dwmapi")]
-extern "system" {
-    fn DwmExtendFrameIntoClientArea(hwnd: HWND, p_mar_inset: *const MARGINS) -> i32;
-}
-
 // ── Render context ───────────────────────────────────────────────
 
 struct RenderCtx {
@@ -466,6 +459,10 @@ struct RenderCtx {
     // -- HWND --
     parent_hwnd: HWND,
     child_hwnd: HWND,
+
+    // -- Frame position (physical px, parent-client-relative) --
+    last_frame_x: AtomicI32,
+    last_frame_y: AtomicI32,
 
     // -- Dimensions --
     surface_width: AtomicI32,
@@ -524,7 +521,10 @@ impl NativeVideoView {
             let dpi_scale = get_dpi_scale(parent_hwnd);
             diag!("DPI scale = {dpi_scale}");
 
-            // ── Create child HWND ────────────────────────────────
+            // ── Create popup HWND (behind Tauri window) ─────────
+            // Using a top-level popup instead of a child window so that
+            // DWM alpha-composites it with the Tauri window's transparent
+            // areas.  Child windows don't alpha-compose with siblings.
             let h_instance = GetModuleHandleA(std::ptr::null());
             let class_name = b"KuriumeVideoView\0";
 
@@ -544,16 +544,20 @@ impl NativeVideoView {
             };
             RegisterClassExA(&wc);
 
+            // Convert parent client origin to screen coordinates.
+            let mut origin = POINT { x: 0, y: 0 };
+            ClientToScreen(parent_hwnd, &mut origin);
+
             let child_hwnd = CreateWindowExA(
-                0,
+                WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
                 class_name.as_ptr(),
                 b"mpv\0".as_ptr(),
-                WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
-                0,
-                0,
+                WS_POPUP | WS_VISIBLE,
+                origin.x,
+                origin.y,
                 init_w,
                 init_h,
-                parent_hwnd,
+                std::ptr::null_mut(), // no parent/owner
                 std::ptr::null_mut(),
                 h_instance,
                 std::ptr::null_mut(),
@@ -562,30 +566,20 @@ impl NativeVideoView {
                 diag!("ERROR: CreateWindowExA returned null");
                 return Err("CreateWindowExA failed".into());
             }
-            diag!("child_hwnd = {:?}", child_hwnd);
+            diag!("popup_hwnd = {:?}", child_hwnd);
 
-            // Place child behind WebView2 in z-order.
+            // Place popup behind the Tauri window in z-order.
+            // DWM will show it through Tauri's transparent pixels.
             let swp_ok = SetWindowPos(
                 child_hwnd,
-                HWND_BOTTOM,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                parent_hwnd,
+                origin.x,
+                origin.y,
+                init_w,
+                init_h,
+                SWP_NOACTIVATE,
             );
-            diag!("SetWindowPos(HWND_BOTTOM) = {swp_ok}");
-
-            // Disable DWM glass so WebView2's transparent areas show
-            // the video child HWND instead of the desktop wallpaper.
-            let margins = MARGINS {
-                cx_left_width: 0,
-                cx_right_width: 0,
-                cy_top_height: 0,
-                cy_bottom_height: 0,
-            };
-            let dwm_hr = DwmExtendFrameIntoClientArea(parent_hwnd, &margins);
-            diag!("DwmExtendFrameIntoClientArea(disable glass) hr=0x{dwm_hr:08X}");
+            diag!("SetWindowPos(behind parent) = {swp_ok}");
 
             // ── WGL context ──────────────────────────────────────
             let hdc = GetDC(child_hwnd);
@@ -798,6 +792,8 @@ impl NativeVideoView {
                 swap_chain,
                 parent_hwnd,
                 child_hwnd,
+                last_frame_x: AtomicI32::new(0),
+                last_frame_y: AtomicI32::new(0),
                 surface_width: AtomicI32::new(init_w),
                 surface_height: AtomicI32::new(init_h),
                 target_width: AtomicI32::new(init_w),
@@ -852,6 +848,10 @@ impl NativeVideoView {
 
         diag!("set_frame: css({x},{y},{width},{height}) -> phys({px},{py},{pw},{ph})");
 
+        // Store physical coordinates (parent-client-relative) for
+        // repositioning when the parent window moves.
+        self.render_ctx.last_frame_x.store(px, Ordering::Release);
+        self.render_ctx.last_frame_y.store(py, Ordering::Release);
         self.render_ctx.target_width.store(pw, Ordering::Release);
         self.render_ctx.target_height.store(ph, Ordering::Release);
 
@@ -862,12 +862,15 @@ impl NativeVideoView {
             self.render_ctx.wake.notify_one();
         }
 
+        // Convert to screen coordinates and place behind the Tauri window.
         unsafe {
+            let mut pt = POINT { x: px, y: py };
+            ClientToScreen(self.render_ctx.parent_hwnd, &mut pt);
             SetWindowPos(
                 self.render_ctx.child_hwnd,
-                HWND_BOTTOM,
-                px,
-                py,
+                self.render_ctx.parent_hwnd,
+                pt.x,
+                pt.y,
                 pw,
                 ph,
                 SWP_NOACTIVATE,
@@ -906,15 +909,8 @@ impl NativeVideoView {
 
             // D3D11 resources released via ComPtr Drop
 
-            // Restore DWM glass for non-player pages.
-            let margins = MARGINS {
-                cx_left_width: -1,
-                cx_right_width: -1,
-                cy_top_height: -1,
-                cy_bottom_height: -1,
-            };
-            DwmExtendFrameIntoClientArea((*ctx_ptr).parent_hwnd, &margins);
-
+            // Hide immediately to avoid visible remnant on desktop.
+            ShowWindow((*ctx_ptr).child_hwnd, 0); // SW_HIDE = 0
             DestroyWindow((*ctx_ptr).child_hwnd);
         }
     }
@@ -1049,6 +1045,26 @@ fn render_loop(ctx: Arc<RenderCtx>) {
 
         if !ctx.alive.load(Ordering::Acquire) {
             break;
+        }
+
+        // Keep the popup positioned behind the Tauri window.
+        // This handles parent window movement (drag, snap, etc.).
+        unsafe {
+            let fx = ctx.last_frame_x.load(Ordering::Acquire);
+            let fy = ctx.last_frame_y.load(Ordering::Acquire);
+            let fw = ctx.target_width.load(Ordering::Acquire);
+            let fh = ctx.target_height.load(Ordering::Acquire);
+            let mut pt = POINT { x: fx, y: fy };
+            ClientToScreen(ctx.parent_hwnd, &mut pt);
+            SetWindowPos(
+                ctx.child_hwnd,
+                ctx.parent_hwnd,
+                pt.x,
+                pt.y,
+                fw,
+                fh,
+                SWP_NOACTIVATE,
+            );
         }
 
         // Check for pending resize
