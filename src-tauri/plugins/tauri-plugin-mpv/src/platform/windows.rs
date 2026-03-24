@@ -8,7 +8,7 @@
 
 use kuriume_mpv::GpuRenderer;
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 // ── Diagnostic logger ────────────────────────────────────────────
@@ -182,6 +182,14 @@ extern "system" {
     fn ClientToScreen(hwnd: HWND, point: *mut POINT) -> BOOL;
     fn ShowWindow(hwnd: HWND, cmd: i32) -> BOOL;
     fn DefWindowProcA(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT;
+    fn SetWindowLongPtrA(hwnd: HWND, index: i32, new_long: isize) -> isize;
+    fn CallWindowProcA(
+        prev: *const c_void,
+        hwnd: HWND,
+        msg: UINT,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT;
 
     fn GetDC(hwnd: HWND) -> HDC;
     fn ReleaseDC(hwnd: HWND, hdc: HDC) -> i32;
@@ -244,6 +252,64 @@ unsafe extern "system" fn wnd_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) }
+}
+
+// ── Parent window subclass for seamless popup tracking ──────────
+
+const WM_MOVE: UINT = 0x0003;
+const WM_SIZE: UINT = 0x0005;
+const GWLP_WNDPROC: i32 = -4;
+
+/// Global state shared between the subclass proc and NativeVideoView.
+/// Only one video view exists at a time.
+static ORIG_WNDPROC: AtomicUsize = AtomicUsize::new(0);
+static SUBCLASS_CTX: AtomicUsize = AtomicUsize::new(0);
+
+unsafe extern "system" fn parent_subclass_proc(
+    hwnd: HWND,
+    msg: UINT,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    let orig = ORIG_WNDPROC.load(Ordering::Acquire);
+    let result = unsafe { CallWindowProcA(orig as *const c_void, hwnd, msg, wparam, lparam) };
+
+    let ctx_usize = SUBCLASS_CTX.load(Ordering::Acquire);
+    if ctx_usize == 0 {
+        return result;
+    }
+    let ctx = unsafe { &*(ctx_usize as *const RenderCtx) };
+
+    match msg {
+        WM_MOVE => unsafe {
+            let fx = ctx.last_frame_x.load(Ordering::Acquire);
+            let fy = ctx.last_frame_y.load(Ordering::Acquire);
+            let fw = ctx.target_width.load(Ordering::Acquire);
+            let fh = ctx.target_height.load(Ordering::Acquire);
+            let mut pt = POINT { x: fx, y: fy };
+            ClientToScreen(ctx.parent_hwnd, &mut pt);
+            SetWindowPos(ctx.child_hwnd, ctx.parent_hwnd, pt.x, pt.y, fw, fh, SWP_NOACTIVATE);
+        },
+        WM_SIZE => unsafe {
+            if wparam == 1 {
+                // SIZE_MINIMIZED — hide popup
+                ShowWindow(ctx.child_hwnd, 0);
+            } else {
+                // SIZE_RESTORED / SIZE_MAXIMIZED — show and reposition
+                ShowWindow(ctx.child_hwnd, 8); // SW_SHOWNA
+                let fx = ctx.last_frame_x.load(Ordering::Acquire);
+                let fy = ctx.last_frame_y.load(Ordering::Acquire);
+                let fw = ctx.target_width.load(Ordering::Acquire);
+                let fh = ctx.target_height.load(Ordering::Acquire);
+                let mut pt = POINT { x: fx, y: fy };
+                ClientToScreen(ctx.parent_hwnd, &mut pt);
+                SetWindowPos(ctx.child_hwnd, ctx.parent_hwnd, pt.x, pt.y, fw, fh, SWP_NOACTIVATE);
+            }
+        },
+        _ => {}
+    }
+
+    result
 }
 
 /// Loaded GL extension function pointers.
@@ -818,6 +884,12 @@ impl NativeVideoView {
                 .spawn(move || render_loop(render_ctx_for_thread))
                 .map_err(|e| format!("Failed to spawn render thread: {e}"))?;
 
+            // Subclass parent window to track move/minimize/restore
+            SUBCLASS_CTX.store(Arc::as_ptr(&render_ctx) as usize, Ordering::Release);
+            let orig = SetWindowLongPtrA(parent_hwnd, GWLP_WNDPROC, parent_subclass_proc as isize);
+            ORIG_WNDPROC.store(orig as usize, Ordering::Release);
+            diag!("parent subclass installed, orig_wndproc=0x{orig:X}");
+
             diag!("=== NativeVideoView::new DONE ===");
             // Log window state diagnostics
             let visible = IsWindowVisible(child_hwnd);
@@ -908,6 +980,13 @@ impl NativeVideoView {
             ReleaseDC((*ctx_ptr).child_hwnd, (*ctx_ptr).hdc);
 
             // D3D11 resources released via ComPtr Drop
+
+            // Restore original parent wndproc before destroying popup.
+            let orig = ORIG_WNDPROC.swap(0, Ordering::AcqRel);
+            if orig != 0 {
+                SetWindowLongPtrA((*ctx_ptr).parent_hwnd, GWLP_WNDPROC, orig as isize);
+            }
+            SUBCLASS_CTX.store(0, Ordering::Release);
 
             // Hide immediately to avoid visible remnant on desktop.
             ShowWindow((*ctx_ptr).child_hwnd, 0); // SW_HIDE = 0
@@ -1047,26 +1126,6 @@ fn render_loop(ctx: Arc<RenderCtx>) {
             break;
         }
 
-        // Keep the popup positioned behind the Tauri window.
-        // This handles parent window movement (drag, snap, etc.).
-        unsafe {
-            let fx = ctx.last_frame_x.load(Ordering::Acquire);
-            let fy = ctx.last_frame_y.load(Ordering::Acquire);
-            let fw = ctx.target_width.load(Ordering::Acquire);
-            let fh = ctx.target_height.load(Ordering::Acquire);
-            let mut pt = POINT { x: fx, y: fy };
-            ClientToScreen(ctx.parent_hwnd, &mut pt);
-            SetWindowPos(
-                ctx.child_hwnd,
-                ctx.parent_hwnd,
-                pt.x,
-                pt.y,
-                fw,
-                fh,
-                SWP_NOACTIVATE,
-            );
-        }
-
         // Check for pending resize
         let tw = ctx.target_width.load(Ordering::Acquire);
         let th = ctx.target_height.load(Ordering::Acquire);
@@ -1165,33 +1224,23 @@ fn render_loop(ctx: Arc<RenderCtx>) {
                         u32,         // SrcDepthPitch
                     ) -> () = std::mem::transmute(*dc_vtable.add(48));
 
-                    // Flip vertically: OpenGL has bottom-left origin,
-                    // D3D11 has top-left origin. Copy row by row.
-                    let row_bytes = (w * 4) as usize;
+                    // Copy pixels and force alpha to opaque.
+                    // (No vertical flip — mpv's FBO output is already top-down
+                    //  for our D3D11 swap chain.)
                     let total = (w * h * 4) as usize;
-                    let mut flipped = vec![0u8; total];
+                    let mut buf = vec![0u8; total];
                     let src = std::slice::from_raw_parts(pixels as *const u8, total);
-                    for row in 0..h as usize {
-                        let src_row = (h as usize - 1 - row) * row_bytes;
-                        let dst_row = row * row_bytes;
-                        flipped[dst_row..dst_row + row_bytes]
-                            .copy_from_slice(&src[src_row..src_row + row_bytes]);
-                    }
-                    // Force alpha to opaque — DXGI FLIP_DISCARD swap chains
-                    // are composited by DWM with per-pixel alpha.  mpv's
-                    // OpenGL output has alpha=0 (transparent), making the
-                    // video invisible without this fix.
-                    for px in flipped.chunks_exact_mut(4) {
+                    buf.copy_from_slice(src);
+                    for px in buf.chunks_exact_mut(4) {
                         px[3] = 0xFF;
                     }
                     if verbose {
-                        // Sample center pixel to verify actual pixel content
                         let cx = (w / 2) as usize;
                         let cy = (h / 2) as usize;
                         let idx = (cy * w as usize + cx) * 4;
-                        if idx + 3 < flipped.len() {
+                        if idx + 3 < buf.len() {
                             diag!("frame {frame_count}: center pixel BGRA=[{},{},{},{}]",
-                                flipped[idx], flipped[idx+1], flipped[idx+2], flipped[idx+3]);
+                                buf[idx], buf[idx+1], buf[idx+2], buf[idx+3]);
                         }
                     }
 
@@ -1200,7 +1249,7 @@ fn render_loop(ctx: Arc<RenderCtx>) {
                         back_buffer,
                         0,
                         std::ptr::null(),
-                        flipped.as_ptr() as *const c_void,
+                        buf.as_ptr() as *const c_void,
                         (w * 4) as u32,
                         0,
                     );
