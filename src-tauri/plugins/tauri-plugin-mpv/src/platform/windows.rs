@@ -3,24 +3,48 @@
 //! Architecture:
 //! 1. mpv renders via its OpenGL render API into an offscreen FBO.
 //! 2. PBO double-buffering asynchronously reads pixels from the FBO.
-//! 3. Pixels are uploaded to D3D11 with alpha forced to 0xFF, then presented.
-//! 4. DXGI SwapChain presents the frame on a popup HWND positioned over the
-//!    parent window's video area.
-//!
-//! Why a popup instead of a child HWND:
-//! Tauri uses DwmExtendFrameIntoClientArea for transparency.  Child HWNDs
-//! paint into the parent's DWM surface, so WebView2 (a higher z-order
-//! sibling) overwrites those pixels — transparent areas become DWM glass.
-//! A popup window has its own independent DWM composition surface,
-//! so D3D11 rendering is visible and not affected by WebView2.
-//! The popup is owned by the parent (auto z-order, auto-destroy) and
-//! returns HTTRANSPARENT from WM_NCHITTEST so clicks pass through to
-//! the WebView2 UI controls underneath.
+//! 3. Pixels are uploaded to a D3D11 staging texture, then copied to the back buffer.
+//! 4. DXGI SwapChain presents the frame on a child HWND layered below the WebView2.
 
 use kuriume_mpv::GpuRenderer;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Arc;
+
+// ── Diagnostic logger ────────────────────────────────────────────
+
+use std::io::Write;
+use std::sync::Mutex;
+
+static DIAG_LOG: std::sync::LazyLock<Mutex<Option<std::fs::File>>> =
+    std::sync::LazyLock::new(|| {
+        let path = std::env::temp_dir().join("kuriume-video-diag.log");
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .ok();
+        if let Some(ref mut f) = file {
+            let _ = writeln!(f, "--- session start ---");
+        }
+        Mutex::new(file)
+    });
+
+macro_rules! diag {
+    ($($arg:tt)*) => {{
+        if let Ok(mut guard) = DIAG_LOG.lock() {
+            if let Some(ref mut f) = *guard {
+                let _ = writeln!(f, "[{:.3}] {}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs_f64())
+                        .unwrap_or(0.0),
+                    format_args!($($arg)*));
+                let _ = f.flush();
+            }
+        }
+    }};
+}
 
 // ── Win32 + OpenGL FFI ───────────────────────────────────────────
 
@@ -37,15 +61,14 @@ type LRESULT = isize;
 type DWORD = u32;
 type LPCSTR = *const u8;
 
-const WS_POPUP: DWORD = 0x8000_0000;
-const WS_EX_NOACTIVATE: DWORD = 0x0800_0000;
-const WS_EX_TOOLWINDOW: DWORD = 0x0000_0080;
+const WS_CHILD: DWORD = 0x4000_0000;
+const WS_VISIBLE: DWORD = 0x1000_0000;
+const WS_CLIPSIBLINGS: DWORD = 0x0400_0000;
 const CS_OWNDC: UINT = 0x0020;
+const SWP_NOMOVE: UINT = 0x0002;
+const SWP_NOSIZE: UINT = 0x0001;
 const SWP_NOACTIVATE: UINT = 0x0010;
-const SWP_NOZORDER: UINT = 0x0004;
-const WM_NCHITTEST: UINT = 0x0084;
-const HTTRANSPARENT: LRESULT = -1;
-const SW_SHOWNOACTIVATE: i32 = 8;
+const HWND_BOTTOM: HWND = 1 as HWND;
 
 const PFD_DRAW_TO_WINDOW: DWORD = 0x0000_0004;
 const PFD_SUPPORT_OPENGL: DWORD = 0x0000_0020;
@@ -120,12 +143,6 @@ struct RECT {
     bottom: i32,
 }
 
-#[repr(C)]
-struct POINT {
-    x: i32,
-    y: i32,
-}
-
 extern "system" {
     fn GetModuleHandleA(name: LPCSTR) -> HINSTANCE;
     fn RegisterClassExA(wc: *const WNDCLASSEXA) -> ATOM;
@@ -154,6 +171,8 @@ extern "system" {
         flags: UINT,
     ) -> BOOL;
     fn GetClientRect(hwnd: HWND, rect: *mut RECT) -> BOOL;
+    fn IsWindowVisible(hwnd: HWND) -> BOOL;
+    fn GetWindowRect(hwnd: HWND, rect: *mut RECT) -> BOOL;
     fn DefWindowProcA(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT;
 
     fn GetDC(hwnd: HWND) -> HDC;
@@ -161,8 +180,6 @@ extern "system" {
     fn ChoosePixelFormat(hdc: HDC, ppfd: *const PIXELFORMATDESCRIPTOR) -> i32;
     fn SetPixelFormat(hdc: HDC, format: i32, ppfd: *const PIXELFORMATDESCRIPTOR) -> BOOL;
     fn SwapBuffers(hdc: HDC) -> BOOL;
-    fn ShowWindow(hwnd: HWND, cmd: i32) -> BOOL;
-    fn ClientToScreen(hwnd: HWND, point: *mut POINT) -> BOOL;
 
     fn wglCreateContext(hdc: HDC) -> HGLRC;
     fn wglMakeCurrent(hdc: HDC, hglrc: HGLRC) -> BOOL;
@@ -218,10 +235,6 @@ unsafe extern "system" fn wnd_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    // Make the popup click-through so mouse events reach WebView2.
-    if msg == WM_NCHITTEST {
-        return HTTRANSPARENT;
-    }
     unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) }
 }
 
@@ -436,7 +449,6 @@ struct RenderCtx {
     swap_chain: ComPtr,
 
     // -- HWND --
-    parent_hwnd: HWND,
     child_hwnd: HWND,
 
     // -- Dimensions --
@@ -475,6 +487,9 @@ impl NativeVideoView {
     /// - Must be called on the main thread.
     pub unsafe fn new(parent_hwnd: *mut c_void, mpv_handle: *mut c_void) -> Result<Self, String> {
         unsafe {
+            diag!("=== NativeVideoView::new START ===");
+            diag!("parent_hwnd = {:?}, mpv_handle = {:?}", parent_hwnd, mpv_handle);
+
             // ── Get parent dimensions ────────────────────────────
             let mut parent_rect = RECT {
                 left: 0,
@@ -485,11 +500,15 @@ impl NativeVideoView {
             GetClientRect(parent_hwnd, &mut parent_rect);
             let init_w = (parent_rect.right - parent_rect.left).max(1);
             let init_h = (parent_rect.bottom - parent_rect.top).max(1);
+            diag!("parent rect: {}x{} (left={}, top={}, right={}, bottom={})",
+                init_w, init_h,
+                parent_rect.left, parent_rect.top, parent_rect.right, parent_rect.bottom);
 
             // ── DPI scale ────────────────────────────────────────
             let dpi_scale = get_dpi_scale(parent_hwnd);
+            diag!("DPI scale = {dpi_scale}");
 
-            // ── Create popup HWND ────────────────────────────────
+            // ── Create child HWND ────────────────────────────────
             let h_instance = GetModuleHandleA(std::ptr::null());
             let class_name = b"KuriumeVideoView\0";
 
@@ -509,31 +528,43 @@ impl NativeVideoView {
             };
             RegisterClassExA(&wc);
 
-            // Popup owned by parent — moves with it, destroyed with it.
-            // WS_EX_NOACTIVATE: don't steal focus from the main window.
-            // WS_EX_TOOLWINDOW: no taskbar button.
-            // Not WS_VISIBLE — shown after D3D11 init via ShowWindow.
             let child_hwnd = CreateWindowExA(
-                WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+                0,
                 class_name.as_ptr(),
                 b"mpv\0".as_ptr(),
-                WS_POPUP,
+                WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
                 0,
                 0,
                 init_w,
                 init_h,
-                parent_hwnd, // owner for popup
+                parent_hwnd,
                 std::ptr::null_mut(),
                 h_instance,
                 std::ptr::null_mut(),
             );
             if child_hwnd.is_null() {
+                diag!("ERROR: CreateWindowExA returned null");
                 return Err("CreateWindowExA failed".into());
             }
+            diag!("child_hwnd = {:?}", child_hwnd);
+
+            // Place child behind WebView2 in z-order.
+            let swp_ok = SetWindowPos(
+                child_hwnd,
+                HWND_BOTTOM,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+            diag!("SetWindowPos(HWND_BOTTOM) = {swp_ok}");
 
             // ── WGL context ──────────────────────────────────────
             let hdc = GetDC(child_hwnd);
+            diag!("GetDC = {:?}", hdc);
             if hdc.is_null() {
+                diag!("ERROR: GetDC returned null");
                 DestroyWindow(child_hwnd);
                 return Err("GetDC failed".into());
             }
@@ -568,6 +599,7 @@ impl NativeVideoView {
             };
 
             let pf = ChoosePixelFormat(hdc, &pfd);
+            diag!("ChoosePixelFormat = {pf}");
             if pf == 0 {
                 ReleaseDC(child_hwnd, hdc);
                 DestroyWindow(child_hwnd);
@@ -579,13 +611,17 @@ impl NativeVideoView {
                 return Err("SetPixelFormat failed".into());
             }
 
+            diag!("SetPixelFormat OK");
+
             let hglrc = wglCreateContext(hdc);
+            diag!("wglCreateContext = {:?}", hglrc);
             if hglrc.is_null() {
                 ReleaseDC(child_hwnd, hdc);
                 DestroyWindow(child_hwnd);
                 return Err("wglCreateContext failed".into());
             }
 
+            diag!("wglMakeCurrent...");
             if wglMakeCurrent(hdc, hglrc) == 0 {
                 wglDeleteContext(hglrc);
                 ReleaseDC(child_hwnd, hdc);
@@ -593,14 +629,18 @@ impl NativeVideoView {
                 return Err("wglMakeCurrent failed".into());
             }
 
+            diag!("WGL context created and made current");
+
             // ── Load GL extension functions ──────────────────────
             let gl = GlFns::load().map_err(|e| {
+                diag!("ERROR: GlFns::load failed: {e}");
                 wglMakeCurrent(std::ptr::null_mut(), std::ptr::null_mut());
                 wglDeleteContext(hglrc);
                 ReleaseDC(child_hwnd, hdc);
                 DestroyWindow(child_hwnd);
                 e
             })?;
+            diag!("GL extension functions loaded");
 
             // ── Create FBO + texture ─────────────────────────────
             let mut fbo: u32 = 0;
@@ -640,12 +680,18 @@ impl NativeVideoView {
                 (gl.buffer_data)(GL_PIXEL_PACK_BUFFER, buf_size, std::ptr::null(), GL_STREAM_READ);
             }
             (gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
+            diag!("FBO={fbo}, texture={gl_texture}, PBOs=[{}, {}]", pbos[0], pbos[1]);
 
             // ── mpv renderer ─────────────────────────────────────
             let renderer = GpuRenderer::new(mpv_handle)
-                .map_err(|e| format!("GpuRenderer::new: {e}"))?;
+                .map_err(|e| {
+                    diag!("ERROR: GpuRenderer::new: {e}");
+                    format!("GpuRenderer::new: {e}")
+                })?;
+            diag!("GpuRenderer created");
 
             wglMakeCurrent(std::ptr::null_mut(), std::ptr::null_mut());
+            diag!("WGL context unbound for D3D11 init");
 
             // ── D3D11 device + swap chain ────────────────────────
             let sc_desc = DxgiSwapChainDesc {
@@ -695,12 +741,15 @@ impl NativeVideoView {
                 &mut p_device_ctx,
             );
 
+            diag!("D3D11CreateDeviceAndSwapChain hr=0x{hr:08X}, feature_level=0x{feature_level:04X}");
             if hr < 0 {
+                diag!("ERROR: D3D11CreateDeviceAndSwapChain FAILED");
                 wglDeleteContext(hglrc);
                 ReleaseDC(child_hwnd, hdc);
                 DestroyWindow(child_hwnd);
                 return Err(format!("D3D11CreateDeviceAndSwapChain failed: 0x{hr:08X}"));
             }
+            diag!("D3D11 OK: device={:?} ctx={:?} swapchain={:?}", p_device, p_device_ctx, p_swap_chain);
 
             let device = ComPtr(p_device);
             let device_ctx = ComPtr(p_device_ctx);
@@ -720,7 +769,6 @@ impl NativeVideoView {
                 device,
                 device_ctx,
                 swap_chain,
-                parent_hwnd,
                 child_hwnd,
                 surface_width: AtomicI32::new(init_w),
                 surface_height: AtomicI32::new(init_h),
@@ -746,8 +794,16 @@ impl NativeVideoView {
                 .spawn(move || render_loop(render_ctx_for_thread))
                 .map_err(|e| format!("Failed to spawn render thread: {e}"))?;
 
-            // Show the popup now that everything is initialized
-            ShowWindow(child_hwnd, SW_SHOWNOACTIVATE);
+            diag!("=== NativeVideoView::new DONE ===");
+            // Log window state diagnostics
+            let visible = IsWindowVisible(child_hwnd);
+            let mut wr = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            GetWindowRect(child_hwnd, &mut wr);
+            diag!("child window: visible={visible}, rect=({},{},{},{})", wr.left, wr.top, wr.right, wr.bottom);
+            let mut pr = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            GetWindowRect(parent_hwnd, &mut pr);
+            diag!("parent window: rect=({},{},{},{})", pr.left, pr.top, pr.right, pr.bottom);
+            diag!("Log file: {:?}", std::env::temp_dir().join("kuriume-video-diag.log"));
 
             Ok(Self {
                 render_ctx,
@@ -766,6 +822,8 @@ impl NativeVideoView {
         let pw = ((width * scale).round() as i32).max(1);
         let ph = ((height * scale).round() as i32).max(1);
 
+        diag!("set_frame: css({x},{y},{width},{height}) -> phys({px},{py},{pw},{ph})");
+
         self.render_ctx.target_width.store(pw, Ordering::Release);
         self.render_ctx.target_height.store(ph, Ordering::Release);
 
@@ -777,18 +835,14 @@ impl NativeVideoView {
         }
 
         unsafe {
-            // Popup uses screen coordinates — convert from parent client coords.
-            let mut pt = POINT { x: px, y: py };
-            ClientToScreen(self.render_ctx.parent_hwnd, &mut pt);
-
             SetWindowPos(
                 self.render_ctx.child_hwnd,
-                std::ptr::null_mut(),
-                pt.x,
-                pt.y,
+                HWND_BOTTOM,
+                px,
+                py,
                 pw,
                 ph,
-                SWP_NOACTIVATE | SWP_NOZORDER,
+                SWP_NOACTIVATE,
             );
         }
     }
@@ -924,7 +978,10 @@ unsafe fn resize_surface(ctx: &Arc<RenderCtx>, new_w: i32, new_h: i32) {
     ) -> i32 = std::mem::transmute(*sc_vtable.add(13));
     let hr = resize_buffers(sc, 2, new_w as u32, new_h as u32, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
     if hr < 0 {
+        diag!("ERROR: ResizeBuffers failed: 0x{hr:08X}");
         log::error!("IDXGISwapChain::ResizeBuffers failed: 0x{hr:08X}");
+    } else {
+        diag!("resize_surface: D3D11 ResizeBuffers OK -> {new_w}x{new_h}");
     }
 
     ctx.surface_width.store(new_w, Ordering::Release);
@@ -936,6 +993,8 @@ fn render_loop(ctx: Arc<RenderCtx>) {
     unsafe {
         wglMakeCurrent(ctx.hdc, ctx.hglrc);
     }
+    diag!("render_loop: started, WGL context bound");
+    let mut frame_count: u64 = 0;
 
     while ctx.alive.load(Ordering::Acquire) {
         // Wait for wake signal
@@ -961,6 +1020,7 @@ fn render_loop(ctx: Arc<RenderCtx>) {
         let cw = ctx.surface_width.load(Ordering::Acquire);
         let ch = ctx.surface_height.load(Ordering::Acquire);
         if (tw != cw || th != ch) && tw > 0 && th > 0 {
+            diag!("render_loop: resize {cw}x{ch} -> {tw}x{th}");
             unsafe {
                 resize_surface(&ctx, tw, th);
             }
@@ -978,12 +1038,17 @@ fn render_loop(ctx: Arc<RenderCtx>) {
 
         unsafe {
             let ctx_ptr = Arc::as_ptr(&ctx) as *mut RenderCtx;
+            frame_count += 1;
+            let verbose = frame_count <= 10 || frame_count % 300 == 0;
 
             // ── Step 1: OpenGL — render mpv frame into FBO ───────
             (ctx.gl.bind_framebuffer)(GL_FRAMEBUFFER, ctx.fbo);
             glViewport(0, 0, w, h);
-            let _ = ctx.renderer.render(ctx.fbo as i32, w, h);
+            let render_result = ctx.renderer.render(ctx.fbo as i32, w, h);
             glFlush();
+            if verbose {
+                diag!("frame {frame_count}: mpv render -> {render_result:?}, size={w}x{h}");
+            }
 
             // ── Step 2: PBO async readback ───────────────────────
             // Initiate read from FBO into current PBO
@@ -1001,6 +1066,9 @@ fn render_loop(ctx: Arc<RenderCtx>) {
             if have_prev {
             (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, map_pbo);
             let pixels = (ctx.gl.map_buffer)(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
+            if verbose {
+                diag!("frame {frame_count}: PBO map -> {:?} (null={})", pixels, pixels.is_null());
+            }
 
             if !pixels.is_null() {
                 // ── Step 3: Upload to D3D11 ──────────────────────
@@ -1022,6 +1090,9 @@ fn render_loop(ctx: Arc<RenderCtx>) {
                 ];
                 let mut back_buffer: *mut c_void = std::ptr::null_mut();
                 let hr = get_buffer(sc, 0, &iid, &mut back_buffer);
+                if verbose {
+                    diag!("frame {frame_count}: GetBuffer hr=0x{hr:08X}, bb={:?}", back_buffer);
+                }
 
                 if hr >= 0 && !back_buffer.is_null() {
                     // ID3D11DeviceContext::UpdateSubresource is vtable index 48
@@ -1049,12 +1120,22 @@ fn render_loop(ctx: Arc<RenderCtx>) {
                         flipped[dst_row..dst_row + row_bytes]
                             .copy_from_slice(&src[src_row..src_row + row_bytes]);
                     }
-                    // Force alpha to opaque — DWM composites the layered
-                    // window's redirection surface with per-pixel alpha.
-                    // mpv's OpenGL output has alpha=0, making the video
-                    // invisible without this fix.
+                    // Force alpha to opaque — DXGI FLIP_DISCARD swap chains
+                    // are composited by DWM with per-pixel alpha.  mpv's
+                    // OpenGL output has alpha=0 (transparent), making the
+                    // video invisible without this fix.
                     for px in flipped.chunks_exact_mut(4) {
                         px[3] = 0xFF;
+                    }
+                    if verbose {
+                        // Sample center pixel to verify actual pixel content
+                        let cx = (w / 2) as usize;
+                        let cy = (h / 2) as usize;
+                        let idx = (cy * w as usize + cx) * 4;
+                        if idx + 3 < flipped.len() {
+                            diag!("frame {frame_count}: center pixel BGRA=[{},{},{},{}]",
+                                flipped[idx], flipped[idx+1], flipped[idx+2], flipped[idx+3]);
+                        }
                     }
 
                     update_subresource(
@@ -1083,7 +1164,13 @@ fn render_loop(ctx: Arc<RenderCtx>) {
             let sc_vtable = *(sc as *const *const *const c_void);
             let present: unsafe extern "system" fn(*mut c_void, u32, u32) -> i32 =
                 std::mem::transmute(*sc_vtable.add(8));
-            present(sc, 1, 0);
+            let present_hr = present(sc, 1, 0);
+            if verbose {
+                diag!("frame {frame_count}: Present hr=0x{present_hr:08X}");
+            }
+            if present_hr < 0 {
+                diag!("ERROR: Present FAILED hr=0x{present_hr:08X} at frame {frame_count}");
+            }
             } // have_prev
 
             (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
