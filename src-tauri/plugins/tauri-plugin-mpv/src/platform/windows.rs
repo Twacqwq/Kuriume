@@ -427,6 +427,21 @@ extern "system" {}
 #[link(name = "dxgi")]
 extern "system" {}
 
+// ── DWM FFI ──────────────────────────────────────────────────────
+
+#[repr(C)]
+struct MARGINS {
+    cx_left_width: i32,
+    cx_right_width: i32,
+    cy_top_height: i32,
+    cy_bottom_height: i32,
+}
+
+#[link(name = "dwmapi")]
+extern "system" {
+    fn DwmExtendFrameIntoClientArea(hwnd: HWND, p_mar_inset: *const MARGINS) -> i32;
+}
+
 // ── Render context ───────────────────────────────────────────────
 
 struct RenderCtx {
@@ -449,6 +464,7 @@ struct RenderCtx {
     swap_chain: ComPtr,
 
     // -- HWND --
+    parent_hwnd: HWND,
     child_hwnd: HWND,
 
     // -- Dimensions --
@@ -559,6 +575,17 @@ impl NativeVideoView {
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
             );
             diag!("SetWindowPos(HWND_BOTTOM) = {swp_ok}");
+
+            // Disable DWM glass so WebView2's transparent areas show
+            // the video child HWND instead of the desktop wallpaper.
+            let margins = MARGINS {
+                cx_left_width: 0,
+                cx_right_width: 0,
+                cy_top_height: 0,
+                cy_bottom_height: 0,
+            };
+            let dwm_hr = DwmExtendFrameIntoClientArea(parent_hwnd, &margins);
+            diag!("DwmExtendFrameIntoClientArea(disable glass) hr=0x{dwm_hr:08X}");
 
             // ── WGL context ──────────────────────────────────────
             let hdc = GetDC(child_hwnd);
@@ -769,6 +796,7 @@ impl NativeVideoView {
                 device,
                 device_ctx,
                 swap_chain,
+                parent_hwnd,
                 child_hwnd,
                 surface_width: AtomicI32::new(init_w),
                 surface_height: AtomicI32::new(init_h),
@@ -877,6 +905,15 @@ impl NativeVideoView {
             ReleaseDC((*ctx_ptr).child_hwnd, (*ctx_ptr).hdc);
 
             // D3D11 resources released via ComPtr Drop
+
+            // Restore DWM glass for non-player pages.
+            let margins = MARGINS {
+                cx_left_width: -1,
+                cx_right_width: -1,
+                cy_top_height: -1,
+                cy_bottom_height: -1,
+            };
+            DwmExtendFrameIntoClientArea((*ctx_ptr).parent_hwnd, &margins);
 
             DestroyWindow((*ctx_ptr).child_hwnd);
         }
