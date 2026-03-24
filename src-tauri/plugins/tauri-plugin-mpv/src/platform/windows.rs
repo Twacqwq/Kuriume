@@ -1051,6 +1051,10 @@ fn render_loop(ctx: Arc<RenderCtx>) {
             }
 
             // ── Step 2: PBO async readback ───────────────────────
+            // mpv_render_context_render may change the GL framebuffer binding,
+            // so we must re-bind our FBO before reading pixels from it.
+            (ctx.gl.bind_framebuffer)(GL_FRAMEBUFFER, ctx.fbo);
+
             // Initiate read from FBO into current PBO
             let read_pbo = ctx.pbos[(*ctx_ptr).pbo_index];
             let map_pbo = ctx.pbos[1 - (*ctx_ptr).pbo_index];

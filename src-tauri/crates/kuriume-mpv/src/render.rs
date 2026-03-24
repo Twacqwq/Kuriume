@@ -155,7 +155,7 @@ impl GpuRenderer {
             fbo: fbo as c_int,
             w: width as c_int,
             h: height as c_int,
-            internal_format: 0,
+            internal_format: 0x8058, // GL_RGBA8
         };
 
         let mut flip_y: c_int = 0;
