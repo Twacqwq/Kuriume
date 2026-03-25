@@ -1146,6 +1146,9 @@ fn render_loop(ctx: Arc<RenderCtx>) {
             unsafe {
                 resize_surface(&ctx, tw, th);
             }
+            // Force a re-render so the new surface isn't left blank
+            // (e.g. when paused and the window is resized/fullscreened).
+            ctx.needs_render.store(true, Ordering::Release);
         }
 
         if !ctx.needs_render.swap(false, Ordering::AcqRel) {
