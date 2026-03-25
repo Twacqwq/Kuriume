@@ -405,13 +405,14 @@ pub(crate) async fn player_destroy(state: State<'_, PlayerState>) -> Result<(), 
     let Some(mut active) = guard.take() else {
         return Ok(());
     };
-    drop(guard);
 
-    // GpuRenderer (inside native_view) holds mpv_render_context
-    // which MUST be freed before the mpv handle (inside player).
+    // Hold the mutex during the entire cleanup so that no concurrent
+    // command (seek, play, etc.) can access the player while it is
+    // being torn down.
     active.native_view.destroy();
     drop(active.native_view);
     drop(active.player);
+    drop(guard);
 
     Ok(())
 }

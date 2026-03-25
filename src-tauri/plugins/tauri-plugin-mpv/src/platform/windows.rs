@@ -952,6 +952,22 @@ impl NativeVideoView {
 
     /// Clean up all resources.
     pub fn destroy(&mut self) {
+        // 1. Uninstall parent subclass FIRST — prevents the subclass proc
+        //    from accessing RenderCtx fields (child_hwnd, parent_hwnd) that
+        //    are about to be destroyed.
+        unsafe {
+            SUBCLASS_CTX.store(0, Ordering::Release);
+            let orig = ORIG_WNDPROC.swap(0, Ordering::AcqRel);
+            if orig != 0 {
+                SetWindowLongPtrA(
+                    self.render_ctx.parent_hwnd,
+                    GWLP_WNDPROC,
+                    orig as isize,
+                );
+            }
+        }
+
+        // 2. Stop render thread.
         self.render_ctx.alive.store(false, Ordering::Release);
         {
             let mut pending = self.render_ctx.wake_lock.lock().unwrap();
@@ -963,6 +979,7 @@ impl NativeVideoView {
             let _ = handle.join();
         }
 
+        // 3. Clean up GPU resources.
         unsafe {
             let ctx_ptr = Arc::as_ptr(&self.render_ctx) as *mut RenderCtx;
 
@@ -980,13 +997,6 @@ impl NativeVideoView {
             ReleaseDC((*ctx_ptr).child_hwnd, (*ctx_ptr).hdc);
 
             // D3D11 resources released via ComPtr Drop
-
-            // Restore original parent wndproc before destroying popup.
-            let orig = ORIG_WNDPROC.swap(0, Ordering::AcqRel);
-            if orig != 0 {
-                SetWindowLongPtrA((*ctx_ptr).parent_hwnd, GWLP_WNDPROC, orig as isize);
-            }
-            SUBCLASS_CTX.store(0, Ordering::Release);
 
             // Hide immediately to avoid visible remnant on desktop.
             ShowWindow((*ctx_ptr).child_hwnd, 0); // SW_HIDE = 0
