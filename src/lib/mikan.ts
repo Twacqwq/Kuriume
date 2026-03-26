@@ -1,15 +1,15 @@
 /**
- * Mikan (蜜柑计划) bridge — Tauri command wrappers + episode matching.
+ * Torrent source bridge — Tauri command wrappers + episode matching.
  *
- * Resolves Bangumi subject IDs to Mikan torrent sources and matches
+ * Resolves Bangumi subject IDs to torrent sources (Mikan, etc.) and matches
  * torrent entries to specific episodes by parsing title patterns.
  */
 import { invoke } from "@tauri-apps/api/core";
 
-// ── Types matching Rust models ──────────────────────────────────
+// ── Types matching Rust torrent_provider models ─────────────────
 
-export interface MikanBangumiEntry {
-  mikan_id: string;
+export interface TorrentSourceEntry {
+  provider_id: string;
   title: string;
   cover: string | null;
   bgm_id: string | null;
@@ -20,7 +20,7 @@ export interface SubtitleGroup {
   name: string;
 }
 
-export interface MikanTorrentEntry {
+export interface TorrentEntry {
   title: string;
   episode_hash: string;
   torrent_url: string;
@@ -29,9 +29,9 @@ export interface MikanTorrentEntry {
   publish_date: string;
 }
 
-export interface SubtitleGroupTorrents {
+export interface GroupTorrents {
   group: SubtitleGroup;
-  torrents: MikanTorrentEntry[];
+  torrents: TorrentEntry[];
 }
 
 // ── Invoke wrappers ─────────────────────────────────────────────
@@ -46,30 +46,33 @@ function abortableInvoke<T>(cmd: string, args: Record<string, unknown>, signal?:
   return invoke<T>(cmd, args);
 }
 
-export const mikanApi = {
-  /** Search Mikan for anime matching the keyword. */
-  search: (keyword: string) =>
-    invoke<MikanBangumiEntry[]>("mikan_search", { keyword }),
+/** Default torrent provider name. */
+const DEFAULT_PROVIDER = "Mikan";
 
-  /** Resolve a Mikan entry by searching and matching bgm.tv ID. */
-  resolve: (keyword: string, bgmId: string, signal?: AbortSignal) =>
-    abortableInvoke<MikanBangumiEntry | null>("mikan_resolve", { keyword, bgmId }, signal),
+export const torrentSourceApi = {
+  /** Resolve a bgm.tv anime to a torrent source. */
+  resolve: (keyword: string, bgmId: string, signal?: AbortSignal, provider = DEFAULT_PROVIDER) =>
+    abortableInvoke<TorrentSourceEntry | null>("torrent_source_resolve", { provider, keyword, bgmId }, signal),
 
-  /** List subtitle groups for a Mikan bangumi. */
-  getSubgroups: (mikanId: string) =>
-    invoke<SubtitleGroup[]>("mikan_get_subgroups", { mikanId }),
+  /** List subtitle/release groups for an anime. */
+  getGroups: (animeId: string, provider = DEFAULT_PROVIDER) =>
+    invoke<SubtitleGroup[]>("torrent_source_get_groups", { provider, animeId }),
 
-  /** Get torrents for a specific subtitle group. */
-  getSubgroupTorrents: (mikanId: string, subgroupId: string) =>
-    invoke<MikanTorrentEntry[]>("mikan_get_subgroup_torrents", {
-      mikanId,
-      subgroupId,
+  /** Get torrents for a specific release group. */
+  getGroupTorrents: (animeId: string, groupId: string, provider = DEFAULT_PROVIDER) =>
+    invoke<TorrentEntry[]>("torrent_source_get_group_torrents", {
+      provider,
+      animeId,
+      groupId,
     }),
 
-  /** Get all subtitle groups with their torrents. */
-  getAllTorrents: (mikanId: string, signal?: AbortSignal) =>
-    abortableInvoke<SubtitleGroupTorrents[]>("mikan_get_all_torrents", { mikanId }, signal),
+  /** Get all release groups with their torrents. */
+  getAllTorrents: (animeId: string, signal?: AbortSignal, provider = DEFAULT_PROVIDER) =>
+    abortableInvoke<GroupTorrents[]>("torrent_source_get_all_torrents", { provider, animeId }, signal),
 };
+
+// Keep backward-compatible alias so existing callsites can migrate gradually.
+export const mikanApi = torrentSourceApi;
 
 // ── Episode number extraction ───────────────────────────────────
 
@@ -210,7 +213,7 @@ export function extractSubtitleLang(title: string): string {
  * entry per episode.
  */
 export function matchEpisodesToTorrents(
-  groupTorrents: SubtitleGroupTorrents[],
+  groupTorrents: GroupTorrents[],
 ): Map<number, EpisodeTorrentMatch> {
   const result = new Map<number, EpisodeTorrentMatch>();
 

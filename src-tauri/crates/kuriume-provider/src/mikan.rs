@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use reqwest::Client;
-use serde::Serialize;
 
 use crate::error::{ProviderError, Result};
 
@@ -23,39 +23,10 @@ const DEFAULT_TRACKERS: &[&str] = &[
     "https://tracker.opentrackr.org:1337/announce",
 ];
 
-// ---------------------------------------------------------------------------
-// Public data types
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize)]
-pub struct MikanBangumiEntry {
-    pub mikan_id: String,
-    pub title: String,
-    pub cover: Option<String>,
-    pub bgm_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct SubtitleGroup {
-    pub id: String,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct MikanTorrentEntry {
-    pub title: String,
-    pub episode_hash: String,
-    pub torrent_url: String,
-    pub magnet: String,
-    pub size: String,
-    pub publish_date: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct SubtitleGroupTorrents {
-    pub group: SubtitleGroup,
-    pub torrents: Vec<MikanTorrentEntry>,
-}
+// Re-export trait types so existing consumers can keep importing from here.
+pub use crate::torrent_provider::{
+    GroupTorrents, SubtitleGroup, TorrentEntry, TorrentProvider, TorrentSourceEntry,
+};
 
 // ---------------------------------------------------------------------------
 // Mikan client
@@ -87,7 +58,7 @@ impl Mikan {
     // -- Search ---------------------------------------------------------------
 
     /// Search Mikan by keyword and return candidate anime entries.
-    pub async fn search_bangumi(&self, keyword: &str) -> Result<Vec<MikanBangumiEntry>> {
+    pub async fn search_bangumi(&self, keyword: &str) -> Result<Vec<TorrentSourceEntry>> {
         let url = format!("{MIKAN_BASE}/Home/Search");
         let html = self
             .client
@@ -116,13 +87,13 @@ impl Mikan {
         self: &Arc<Self>,
         keyword: &str,
         bgm_subject_id: &str,
-    ) -> Result<Option<MikanBangumiEntry>> {
+    ) -> Result<Option<TorrentSourceEntry>> {
         let candidates = self.search_bangumi(keyword).await?;
 
         let mut set = tokio::task::JoinSet::new();
         for (i, candidate) in candidates.into_iter().enumerate() {
             let this = Arc::clone(self);
-            let mid = candidate.mikan_id.clone();
+            let mid = candidate.provider_id.clone();
             set.spawn(async move {
                 let bgm_id = this.resolve_bgm_id(&mid).await?;
                 Ok::<_, ProviderError>((i, candidate, bgm_id))
@@ -161,7 +132,7 @@ impl Mikan {
         &self,
         mikan_id: &str,
         subgroup_id: &str,
-    ) -> Result<Vec<MikanTorrentEntry>> {
+    ) -> Result<Vec<TorrentEntry>> {
         let url = format!("{MIKAN_BASE}/RSS/Bangumi");
         let xml = self
             .client
@@ -185,7 +156,7 @@ impl Mikan {
     }
 
     /// Get all subtitle groups and their torrent entries for a bangumi.
-    pub async fn get_all_torrents(self: &Arc<Self>, mikan_id: &str) -> Result<Vec<SubtitleGroupTorrents>> {
+    pub async fn get_all_torrents_concurrent(self: &Arc<Self>, mikan_id: &str) -> Result<Vec<GroupTorrents>> {
         let groups = self.get_subtitle_groups(mikan_id).await?;
 
         let mut set = tokio::task::JoinSet::new();
@@ -194,7 +165,7 @@ impl Mikan {
             let mid = mikan_id.to_owned();
             set.spawn(async move {
                 let torrents = this.get_subgroup_torrents(&mid, &group.id).await?;
-                Ok::<_, ProviderError>(SubtitleGroupTorrents { group, torrents })
+                Ok::<_, ProviderError>(GroupTorrents { group, torrents })
             });
         }
 
@@ -231,11 +202,54 @@ impl Default for Mikan {
 }
 
 // ---------------------------------------------------------------------------
+// TorrentProvider implementation
+// ---------------------------------------------------------------------------
+
+#[async_trait]
+impl TorrentProvider for Mikan {
+    fn name(&self) -> &str {
+        "Mikan"
+    }
+
+    async fn resolve(
+        &self,
+        keyword: &str,
+        bgm_id: &str,
+    ) -> Result<Option<TorrentSourceEntry>> {
+        let candidates = self.search_bangumi(keyword).await?;
+
+        // Sequential resolve — fine for the small number of search results
+        for mut candidate in candidates {
+            let resolved_bgm = self.resolve_bgm_id(&candidate.provider_id).await?;
+            if let Some(ref id) = resolved_bgm {
+                if id == bgm_id {
+                    candidate.bgm_id = resolved_bgm;
+                    return Ok(Some(candidate));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    async fn get_groups(&self, anime_id: &str) -> Result<Vec<SubtitleGroup>> {
+        self.get_subtitle_groups(anime_id).await
+    }
+
+    async fn get_group_torrents(
+        &self,
+        anime_id: &str,
+        group_id: &str,
+    ) -> Result<Vec<TorrentEntry>> {
+        self.get_subgroup_torrents(anime_id, group_id).await
+    }
+}
+
+// ---------------------------------------------------------------------------
 // HTML parsing helpers (no external dependency — pure string parsing)
 // ---------------------------------------------------------------------------
 
 /// Parse Mikan search HTML for anime bangumi cards.
-fn parse_search_results(html: &str) -> Vec<MikanBangumiEntry> {
+fn parse_search_results(html: &str) -> Vec<TorrentSourceEntry> {
     let mut results = Vec::new();
     let mut search_start = 0;
 
@@ -264,7 +278,7 @@ fn parse_search_results(html: &str) -> Vec<MikanBangumiEntry> {
         // Skip duplicates
         if results
             .iter()
-            .any(|r: &MikanBangumiEntry| r.mikan_id == mikan_id)
+            .any(|r: &TorrentSourceEntry| r.provider_id == mikan_id)
         {
             search_start = id_end;
             continue;
@@ -288,8 +302,8 @@ fn parse_search_results(html: &str) -> Vec<MikanBangumiEntry> {
             .unwrap_or_default();
 
         if !title.is_empty() {
-            results.push(MikanBangumiEntry {
-                mikan_id: mikan_id.to_string(),
+            results.push(TorrentSourceEntry {
+                provider_id: mikan_id.to_string(),
                 title,
                 cover,
                 bgm_id: None,
@@ -364,7 +378,7 @@ fn parse_subtitle_groups(html: &str) -> Vec<SubtitleGroup> {
 }
 
 /// Parse torrent entries from a Mikan RSS feed XML.
-fn parse_rss_items(xml: &str, trackers: &[String]) -> Vec<MikanTorrentEntry> {
+fn parse_rss_items(xml: &str, trackers: &[String]) -> Vec<TorrentEntry> {
     let mut entries = Vec::new();
     let mut pos = 0;
 
@@ -417,7 +431,7 @@ fn parse_rss_items(xml: &str, trackers: &[String]) -> Vec<MikanTorrentEntry> {
         let publish_date = extract_xml_text(item, "pubDate").unwrap_or_default();
 
         if !episode_hash.is_empty() {
-            entries.push(MikanTorrentEntry {
+            entries.push(TorrentEntry {
                 title,
                 episode_hash,
                 torrent_url,
@@ -551,9 +565,9 @@ mod tests {
         "#;
         let results = parse_search_results(html);
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].mikan_id, "2995");
+        assert_eq!(results[0].provider_id, "2995");
         assert_eq!(results[0].title, "【我推的孩子】");
-        assert_eq!(results[1].mikan_id, "3881");
+        assert_eq!(results[1].provider_id, "3881");
         assert_eq!(results[1].title, "【我推的孩子】 第三季");
     }
 

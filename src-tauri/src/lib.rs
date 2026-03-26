@@ -1,7 +1,7 @@
-use crate::commands::{MikanState, ProviderState};
+use crate::commands::{ProviderState, TorrentProviderState};
 use crate::store_commands::StoreState;
 use crate::torrent_commands::TorrentState;
-use kuriume_provider::Bangumi;
+use kuriume_provider::{Bangumi, Mikan};
 use std::sync::Arc;
 use tauri::Manager;
 use tauri::menu::Menu;
@@ -32,11 +32,10 @@ pub fn run() {
             crate::commands::get_episodes,
             crate::commands::get_calendar,
             crate::commands::get_characters,
-            crate::commands::mikan_search,
-            crate::commands::mikan_resolve,
-            crate::commands::mikan_get_subgroups,
-            crate::commands::mikan_get_subgroup_torrents,
-            crate::commands::mikan_get_all_torrents,
+            crate::commands::torrent_source_resolve,
+            crate::commands::torrent_source_get_groups,
+            crate::commands::torrent_source_get_group_torrents,
+            crate::commands::torrent_source_get_all_torrents,
             crate::torrent_commands::torrent_add,
             crate::torrent_commands::torrent_list_files,
             crate::torrent_commands::torrent_stream_url,
@@ -89,7 +88,10 @@ pub fn run() {
                     })
                     .unwrap_or_default()
             };
-            app.manage(MikanState::new(tracker_list));
+
+            let mut torrent_providers = TorrentProviderState::new();
+            torrent_providers.register(Arc::new(Mikan::new(tracker_list)));
+            app.manage(torrent_providers);
 
             if let Ok(data_dir) = app.path().app_data_dir() {
                 let temp_dir = data_dir.join("torrents");

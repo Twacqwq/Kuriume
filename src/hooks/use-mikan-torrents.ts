@@ -6,7 +6,7 @@ import {
   extractResolution,
   extractSubtitleLang,
   type EpisodeTorrentMatch,
-  type SubtitleGroupTorrents,
+  type GroupTorrents,
 } from "@/lib/mikan";
 
 // ── Types ────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ function variantKey(resolution: string, subtitle: string): string {
   return `${resolution}|${subtitle}`;
 }
 
-function buildGroupData(raw: SubtitleGroupTorrents[], totalEpisodes?: number): GroupData[] {
+function buildGroupData(raw: GroupTorrents[], totalEpisodes?: number): GroupData[] {
   return raw.map(({ group, torrents }) => {
     const episodes = new Map<number, Map<string, EpisodeTorrentMatch>>();
     const resSet = new Set<string>();
@@ -147,7 +147,7 @@ export function useMikanTorrents(
     retry: 1,
   });
 
-  const mikanId = mikanEntry?.mikan_id;
+  const mikanId = mikanEntry?.provider_id;
 
   // Step 2: Fetch ALL groups with their torrents in one go
   const {

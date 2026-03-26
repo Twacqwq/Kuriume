@@ -25,14 +25,16 @@ mod error;
 mod mikan;
 mod models;
 mod provider;
+mod torrent_provider;
 
 pub use bangumi::Bangumi;
 pub use error::{ProviderError, Result};
-pub use mikan::{
-    Mikan, MikanBangumiEntry, MikanTorrentEntry, SubtitleGroup, SubtitleGroupTorrents,
-};
+pub use mikan::Mikan;
 pub use models::{
     AnimeInfo, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery,
     PagedResult, SearchQuery, SortBy, Weekday,
 };
 pub use provider::AnimeProvider;
+pub use torrent_provider::{
+    GroupTorrents, SubtitleGroup, TorrentEntry, TorrentProvider, TorrentSourceEntry,
+};

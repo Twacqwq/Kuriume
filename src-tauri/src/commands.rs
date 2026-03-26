@@ -1,7 +1,7 @@
 use kuriume_provider::{
     AnimeInfo, AnimeProvider, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery,
-    GetListQuery, Mikan, MikanBangumiEntry, MikanTorrentEntry, PagedResult, SearchQuery,
-    SubtitleGroup, SubtitleGroupTorrents,
+    GetListQuery, GroupTorrents, PagedResult, SearchQuery, SubtitleGroup, TorrentEntry,
+    TorrentProvider, TorrentSourceEntry,
 };
 use std::{collections::HashMap, sync::Arc};
 use tauri::{command, State};
@@ -95,90 +95,94 @@ pub(crate) async fn get_characters(
 }
 
 // ---------------------------------------------------------------------------
-// Mikan commands
+// Torrent provider commands (multi-source)
 // ---------------------------------------------------------------------------
 
-pub struct MikanState {
-    pub mikan: Arc<Mikan>,
+pub struct TorrentProviderState {
+    providers: HashMap<String, Arc<dyn TorrentProvider>>,
 }
 
-impl MikanState {
-    pub fn new(trackers: Vec<String>) -> Self {
+impl TorrentProviderState {
+    pub fn new() -> Self {
         Self {
-            mikan: Arc::new(Mikan::new(trackers)),
+            providers: HashMap::new(),
         }
     }
-}
 
-impl Default for MikanState {
-    fn default() -> Self {
-        Self::new(Vec::new())
+    pub fn register(&mut self, provider: Arc<dyn TorrentProvider>) {
+        self.providers
+            .insert(provider.name().to_string(), provider);
+    }
+
+    fn get(&self, name: &str) -> Option<&Arc<dyn TorrentProvider>> {
+        self.providers.get(name)
     }
 }
 
-/// Search Mikan for anime matching the keyword.
-#[command]
-pub(crate) async fn mikan_search(
-    state: State<'_, MikanState>,
-    keyword: &str,
-) -> Result<Vec<MikanBangumiEntry>, String> {
-    state
-        .mikan
-        .search_bangumi(keyword)
-        .await
-        .map_err(|e| e.to_string())
+impl Default for TorrentProviderState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
-/// Find the Mikan entry whose bgm.tv subject ID matches.
+/// Resolve a bgm.tv anime to a torrent provider.
 #[command]
-pub(crate) async fn mikan_resolve(
-    state: State<'_, MikanState>,
+pub(crate) async fn torrent_source_resolve(
+    state: State<'_, TorrentProviderState>,
+    provider: &str,
     keyword: &str,
     bgm_id: &str,
-) -> Result<Option<MikanBangumiEntry>, String> {
-    state
-        .mikan
-        .find_mikan_id_by_bgm(keyword, bgm_id)
+) -> Result<Option<TorrentSourceEntry>, String> {
+    let p = state
+        .get(provider)
+        .ok_or_else(|| format!("Torrent provider not found: {provider}"))?;
+    p.resolve(keyword, bgm_id)
         .await
         .map_err(|e| e.to_string())
 }
 
-/// List subtitle groups for a Mikan bangumi.
+/// List subtitle / release groups for an anime.
 #[command]
-pub(crate) async fn mikan_get_subgroups(
-    state: State<'_, MikanState>,
-    mikan_id: &str,
+pub(crate) async fn torrent_source_get_groups(
+    state: State<'_, TorrentProviderState>,
+    provider: &str,
+    anime_id: &str,
 ) -> Result<Vec<SubtitleGroup>, String> {
-    state
-        .mikan
-        .get_subtitle_groups(mikan_id)
+    let p = state
+        .get(provider)
+        .ok_or_else(|| format!("Torrent provider not found: {provider}"))?;
+    p.get_groups(anime_id)
         .await
         .map_err(|e| e.to_string())
 }
 
-/// Get torrent entries for a specific subgroup.
+/// Get torrents for a specific release group.
 #[command]
-pub(crate) async fn mikan_get_subgroup_torrents(
-    state: State<'_, MikanState>,
-    mikan_id: &str,
-    subgroup_id: &str,
-) -> Result<Vec<MikanTorrentEntry>, String> {
-    state
-        .mikan
-        .get_subgroup_torrents(mikan_id, subgroup_id)
+pub(crate) async fn torrent_source_get_group_torrents(
+    state: State<'_, TorrentProviderState>,
+    provider: &str,
+    anime_id: &str,
+    group_id: &str,
+) -> Result<Vec<TorrentEntry>, String> {
+    let p = state
+        .get(provider)
+        .ok_or_else(|| format!("Torrent provider not found: {provider}"))?;
+    p.get_group_torrents(anime_id, group_id)
         .await
         .map_err(|e| e.to_string())
 }
 
-/// Get all subtitle groups with their torrent entries.
+/// Get all release groups with their torrent entries.
 #[command]
-pub(crate) async fn mikan_get_all_torrents(
-    state: State<'_, MikanState>,
-    mikan_id: &str,
-) -> Result<Vec<SubtitleGroupTorrents>, String> {
-    state
-        .mikan
-        .get_all_torrents(mikan_id)
+pub(crate) async fn torrent_source_get_all_torrents(
+    state: State<'_, TorrentProviderState>,
+    provider: &str,
+    anime_id: &str,
+) -> Result<Vec<GroupTorrents>, String> {
+    let p = state
+        .get(provider)
+        .ok_or_else(|| format!("Torrent provider not found: {provider}"))?;
+    p.get_all_torrents(anime_id)
         .await
         .map_err(|e| e.to_string())
 }
