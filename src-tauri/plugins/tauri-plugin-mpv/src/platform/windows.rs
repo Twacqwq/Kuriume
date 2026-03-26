@@ -1294,6 +1294,17 @@ fn render_loop(ctx: Arc<RenderCtx>) {
 
             (ctx.gl.bind_buffer)(GL_PIXEL_PACK_BUFFER, 0);
             (*ctx_ptr).pbo_index = 1 - (*ctx_ptr).pbo_index;
+
+            // The PBO double-buffer needs two passes: the first only primes
+            // the pipeline (glReadPixels into PBO), the second maps the
+            // previous PBO and uploads to D3D11.  When paused, mpv won't
+            // trigger another render, so we self-wake to complete the cycle.
+            if !have_prev {
+                ctx.needs_render.store(true, Ordering::Release);
+                let mut pending = ctx.wake_lock.lock().unwrap();
+                *pending = true;
+                ctx.wake.notify_one();
+            }
         }
     }
 
