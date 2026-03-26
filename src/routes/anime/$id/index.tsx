@@ -6,7 +6,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { AnimeInfo, AnimeEpisodes, AnimeCharacters } from "@/lib/types";
 import { watchlistApi, type WatchStatus } from "@/lib/store";
-import { useMikanTorrents } from "@/hooks/use-mikan-torrents";
+import { mikanApi } from "@/lib/mikan";
 
 import {
   detailQueryOptions,
@@ -79,7 +79,20 @@ function AnimeDetailPage() {
   });
 
   const animeTitle = info?.title_cn || info?.title;
-  const mikan = useMikanTorrents(id, animeTitle, undefined, undefined, info?.total_episodes);
+
+  // Background prefetch: warm the Mikan cache so the episode page
+  // can resolve torrent sources faster when the user picks an episode.
+  useQuery({
+    queryKey: ["mikan-resolve", id],
+    queryFn: async ({ signal }) => {
+      if (!id || !animeTitle) return null;
+      return mikanApi.resolve(animeTitle, id, signal);
+    },
+    enabled: !!id && !!animeTitle,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 1,
+  });
 
   // ── Watchlist ──
   const qc = useQueryClient();
@@ -115,14 +128,6 @@ function AnimeDetailPage() {
     <AnimeDetail
       data={toAnimeDetailData(info, episodes, characters)}
       onBack={() => router.history.back()}
-      groups={mikan.groups}
-      isLoadingGroups={mikan.isLoading}
-      selectedGroupId={mikan.selectedGroupId}
-      onSelectGroup={mikan.selectGroup}
-      preferredResolution={mikan.preferredResolution}
-      onSelectResolution={mikan.setPreferredResolution}
-      preferredSubtitle={mikan.preferredSubtitle}
-      onSelectSubtitle={mikan.setPreferredSubtitle}
       watchStatus={watchEntry?.status as WatchStatus | undefined ?? null}
       onWatchStatusChange={(status) => addOrUpdate.mutate(status)}
       onWatchRemove={() => remove.mutate()}

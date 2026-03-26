@@ -12,9 +12,8 @@ import {
 } from "@/components/ui/tooltip";
 import { AnimeCharacters, AnimeEpisodes } from "@/lib/types";
 import type { WatchStatus } from "@/lib/store";
-import type { GroupData } from "@/hooks/use-mikan-torrents";
 import { cn } from "@/lib/utils";
-import { Link } from "@tanstack/react-router";
+import { SourcePickerDialog } from "@/components/source-picker-dialog";
 import {
   ArrowLeft,
   BookmarkCheck,
@@ -24,18 +23,14 @@ import {
   Eye,
   EyeOff,
   Grid3X3,
-  Languages,
-  Loader2,
-  Monitor,
   Play,
   Rows3,
   Star,
-  Subtitles,
   Trash2,
   Tv,
   Users,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface AnimeRelated {
   id: number;
@@ -144,14 +139,6 @@ function formatAirdate(airdate: string): string {
 interface AnimeDetailProps {
   data: AnimeDetailData;
   onBack?: () => void;
-  groups?: GroupData[];
-  isLoadingGroups?: boolean;
-  selectedGroupId?: string | null;
-  onSelectGroup?: (id: string) => void;
-  preferredResolution?: string | null;
-  onSelectResolution?: (res: string | null) => void;
-  preferredSubtitle?: string | null;
-  onSelectSubtitle?: (sub: string | null) => void;
   /** Current watchlist status (null = not tracked). */
   watchStatus?: WatchStatus | null;
   /** Called when user adds/changes tracking. */
@@ -169,14 +156,6 @@ const WATCH_STATUS_OPTIONS: { value: WatchStatus; label: string; icon: typeof Ey
 export function AnimeDetail({
   data,
   onBack,
-  groups,
-  isLoadingGroups,
-  selectedGroupId,
-  onSelectGroup,
-  preferredResolution,
-  onSelectResolution,
-  preferredSubtitle,
-  onSelectSubtitle,
   watchStatus,
   onWatchStatusChange,
   onWatchRemove,
@@ -384,14 +363,8 @@ export function AnimeDetail({
               <EpisodeList
                 episodes={data.episodes}
                 animeId={data.id}
-                groups={groups}
-                isLoadingGroups={isLoadingGroups}
-                selectedGroupId={selectedGroupId}
-                onSelectGroup={onSelectGroup}
-                preferredResolution={preferredResolution}
-                onSelectResolution={onSelectResolution}
-                preferredSubtitle={preferredSubtitle}
-                onSelectSubtitle={onSelectSubtitle}
+                animeTitle={data.title}
+                totalEpisodes={data.totalEpisodes}
               />
             </TabsContent>
             <TabsContent value="characters">
@@ -412,72 +385,16 @@ type EpisodeViewMode = "list" | "grid";
 function EpisodeList({
   episodes,
   animeId,
-  groups,
-  isLoadingGroups,
-  selectedGroupId,
-  onSelectGroup,
-  preferredResolution,
-  onSelectResolution,
-  preferredSubtitle,
-  onSelectSubtitle,
+  animeTitle,
+  totalEpisodes,
 }: {
   episodes: AnimeEpisodes[];
   animeId: number;
-  groups?: GroupData[];
-  isLoadingGroups?: boolean;
-  selectedGroupId?: string | null;
-  onSelectGroup?: (id: string) => void;
-  preferredResolution?: string | null;
-  onSelectResolution?: (res: string | null) => void;
-  preferredSubtitle?: string | null;
-  onSelectSubtitle?: (sub: string | null) => void;
+  animeTitle: string;
+  totalEpisodes: number;
 }) {
   const [viewMode, setViewMode] = useState<EpisodeViewMode>("list");
-
-  const hasGroups = groups && groups.length > 0;
-  const activeGroup = useMemo(
-    () => groups?.find((g) => g.id === selectedGroupId),
-    [groups, selectedGroupId],
-  );
-
-  // Effective resolution for the selected group
-  const activeRes = useMemo(() => {
-    if (!activeGroup) return null;
-    if (preferredResolution && activeGroup.resolutions.includes(preferredResolution)) {
-      return preferredResolution;
-    }
-    return activeGroup.resolutions[0] ?? null;
-  }, [activeGroup, preferredResolution]);
-
-  // Effective subtitle for the selected group
-  const activeSub = useMemo(() => {
-    if (!activeGroup) return null;
-    if (preferredSubtitle && activeGroup.subtitles.includes(preferredSubtitle)) {
-      return preferredSubtitle;
-    }
-    return activeGroup.subtitles[0] ?? null;
-  }, [activeGroup, preferredSubtitle]);
-
-  // For each episode, check selected group then find fallback
-  const resolveEpisode = useCallback(
-    (epNum: number) => {
-      if (!activeGroup) return { inGroup: false as const, fallback: null };
-      const varMap = activeGroup.episodes.get(epNum);
-      // Check if there's an entry matching the compound key (or just any entry)
-      const inGroup = varMap
-        ? activeRes && activeSub
-          ? varMap.has(`${activeRes}|${activeSub}`) || [...varMap.keys()].some((k) => k.startsWith(activeRes + "|"))
-          : varMap.size > 0
-        : false;
-      if (inGroup) return { inGroup: true as const, fallback: null };
-      // Find the best alternative group (most episodes first, already sorted)
-      const alt = groups?.find(
-        (g) => g.id !== selectedGroupId && g.episodes.has(epNum),
-      );
-      return { inGroup: false as const, fallback: alt ?? null };
-    },
-    [activeGroup, activeRes, activeSub, groups, selectedGroupId],
-  );
+  const [pickerEp, setPickerEp] = useState<AnimeEpisodes | null>(null);
 
   return (
     <div className="space-y-5">
@@ -522,119 +439,6 @@ function EpisodeList({
         </ToggleGroup>
       </div>
 
-      {/* ── Loading ── */}
-      {isLoadingGroups && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground/60">
-          <Loader2 size={14} className="animate-spin" />
-          <span>正在搜索字幕组...</span>
-        </div>
-      )}
-
-      {/* ── No groups ── */}
-      {!isLoadingGroups && !hasGroups && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground/50">
-          <Subtitles size={14} />
-          <span>暂无字幕组资源</span>
-        </div>
-      )}
-
-      {/* ── Group & Resolution selector ── */}
-      {hasGroups && (
-        <div className="space-y-3">
-          {/* Group pills */}
-          <div className="flex items-center gap-2.5">
-            <Subtitles size={14} className="shrink-0 text-muted-foreground/50" />
-            <div className="flex flex-wrap gap-1.5">
-              {groups!.map((g) => (
-                <button
-                  key={g.id}
-                  type="button"
-                  onClick={() => onSelectGroup?.(g.id)}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all",
-                    selectedGroupId === g.id
-                      ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                      : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
-                  )}
-                >
-                  {g.name}
-                  <span className={cn(
-                    "tabular-nums",
-                    selectedGroupId === g.id ? "text-primary/60" : "text-white/30",
-                  )}>
-                    {g.episodeCount}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Resolution pills */}
-          {activeGroup && activeGroup.resolutions.length > 1 && (
-            <div className="flex items-center gap-2.5">
-              <Monitor size={14} className="shrink-0 text-muted-foreground/50" />
-              <div className="flex flex-wrap gap-1.5">
-                {activeGroup.resolutions.map((res) => (
-                  <button
-                    key={res}
-                    type="button"
-                    onClick={() => onSelectResolution?.(res)}
-                    className={cn(
-                      "rounded-md px-2.5 py-1 text-xs font-medium transition-all",
-                      activeRes === res
-                        ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                        : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
-                    )}
-                  >
-                    {res}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {activeGroup && activeGroup.resolutions.length === 1 && (
-            <div className="flex items-center gap-2.5">
-              <Monitor size={14} className="shrink-0 text-muted-foreground/50" />
-              <span className="rounded-md bg-white/5 px-2.5 py-1 text-xs font-medium text-white/40">
-                {activeGroup.resolutions[0]}
-              </span>
-            </div>
-          )}
-
-          {/* Subtitle language pills */}
-          {activeGroup && activeGroup.subtitles.length > 1 && (
-            <div className="flex items-center gap-2.5">
-              <Languages size={14} className="shrink-0 text-muted-foreground/50" />
-              <div className="flex flex-wrap gap-1.5">
-                {activeGroup.subtitles.map((sub) => (
-                  <button
-                    key={sub}
-                    type="button"
-                    onClick={() => onSelectSubtitle?.(sub)}
-                    className={cn(
-                      "rounded-md px-2.5 py-1 text-xs font-medium transition-all",
-                      activeSub === sub
-                        ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                        : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
-                    )}
-                  >
-                    {sub}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {activeGroup && activeGroup.subtitles.length === 1 && (
-            <div className="flex items-center gap-2.5">
-              <Languages size={14} className="shrink-0 text-muted-foreground/50" />
-              <span className="rounded-md bg-white/5 px-2.5 py-1 text-xs font-medium text-white/40">
-                {activeGroup.subtitles[0]}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ── Episode list view ── */}
       {viewMode === "list" && (
         <div className="divide-y divide-white/4">
@@ -659,112 +463,44 @@ function EpisodeList({
               );
             }
 
-            if (!hasGroups) {
-              return (
-                <div key={ep.id} className="flex w-full items-center gap-4 py-3 text-left opacity-50">
-                  <span className="w-8 shrink-0 text-center text-sm font-semibold tabular-nums text-muted-foreground/50">
-                    {ep.ep}
-                  </span>
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="text-sm font-medium text-foreground/60 line-clamp-1">
-                      {ep.title_cn || ep.title || `第 ${ep.ep} 话`}
-                    </span>
-                  </div>
-                </div>
-              );
-            }
-
-            const { inGroup, fallback } = resolveEpisode(ep.ep);
-
-            // Selected group has it
-            if (inGroup) {
-              return (
-                <Link
-                  key={ep.id}
-                  to="/anime/$id/episode/$ep"
-                  params={{ id: String(animeId), ep: String(ep.ep) }}
-                  search={{ groupId: selectedGroupId ?? undefined, resolution: activeRes ?? undefined, subtitle: activeSub ?? undefined, t: undefined }}
-                  className="group flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-white/2"
-                >
-                  <span className={cn(
-                    "w-8 shrink-0 text-center text-sm font-semibold tabular-nums",
-                    ep.progress !== undefined && ep.progress >= 100
-                      ? "text-muted-foreground/50"
-                      : "text-primary",
-                  )}>
-                    {ep.ep}
-                  </span>
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="text-sm font-medium text-foreground line-clamp-1 transition-colors group-hover:text-primary">
-                      {ep.title_cn || ep.title}
-                    </span>
-                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <span>{ep.duration}</span>
-                      {ep.progress !== undefined && (
-                        <>
-                          <span className="text-white/20">·</span>
-                          <span>{ep.progress >= 100 ? "已看完" : `已看 ${ep.progress}%`}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  {ep.progress !== undefined && ep.progress < 100 && (
-                    <Progress value={ep.progress} className="h-1 w-16 shrink-0 bg-white/10" />
-                  )}
-                  <Play
-                    size={14}
-                    fill="currentColor"
-                    className="shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:text-primary group-hover:opacity-100"
-                  />
-                </Link>
-              );
-            }
-
-            // Another group has it — show with fallback hint
-            if (fallback) {
-              return (
-                <Link
-                  key={ep.id}
-                  to="/anime/$id/episode/$ep"
-                  params={{ id: String(animeId), ep: String(ep.ep) }}
-                  search={{ groupId: fallback.id, resolution: undefined, subtitle: undefined, t: undefined }}
-                  className="group flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-white/2"
-                >
-                  <span className="w-8 shrink-0 text-center text-sm font-semibold tabular-nums text-foreground/50">
-                    {ep.ep}
-                  </span>
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="text-sm font-medium text-foreground/70 line-clamp-1 transition-colors group-hover:text-primary">
-                      {ep.title_cn || ep.title}
-                    </span>
-                    <div className="flex items-center gap-2 text-[11px]">
-                      <span className="text-muted-foreground">{ep.duration}</span>
-                      <span className="text-white/20">·</span>
-                      <span className="text-amber-400/70">{fallback.name} 可用</span>
-                    </div>
-                  </div>
-                  <Play
-                    size={14}
-                    fill="currentColor"
-                    className="shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:text-primary group-hover:opacity-100"
-                  />
-                </Link>
-              );
-            }
-
-            // No group has this episode
             return (
-              <div key={ep.id} className="flex w-full items-center gap-4 py-3 text-left opacity-35">
-                <span className="w-8 shrink-0 text-center text-sm font-semibold tabular-nums text-muted-foreground/40">
+              <button
+                key={ep.id}
+                type="button"
+                onClick={() => setPickerEp(ep)}
+                className="group flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-white/2"
+              >
+                <span className={cn(
+                  "w-8 shrink-0 text-center text-sm font-semibold tabular-nums",
+                  ep.progress !== undefined && ep.progress >= 100
+                    ? "text-muted-foreground/50"
+                    : "text-primary",
+                )}>
                   {ep.ep}
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="text-sm font-medium text-foreground/40 line-clamp-1">
+                  <span className="text-sm font-medium text-foreground line-clamp-1 transition-colors group-hover:text-primary">
                     {ep.title_cn || ep.title || `第 ${ep.ep} 话`}
                   </span>
-                  <span className="text-[11px] text-muted-foreground/50">暂无资源</span>
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <span>{ep.duration}</span>
+                    {ep.progress !== undefined && (
+                      <>
+                        <span className="text-white/20">·</span>
+                        <span>{ep.progress >= 100 ? "已看完" : `已看 ${ep.progress}%`}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
+                {ep.progress !== undefined && ep.progress < 100 && (
+                  <Progress value={ep.progress} className="h-1 w-16 shrink-0 bg-white/10" />
+                )}
+                <Play
+                  size={14}
+                  fill="currentColor"
+                  className="shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:text-primary group-hover:opacity-100"
+                />
+              </button>
             );
           })}
         </div>
@@ -791,80 +527,44 @@ function EpisodeList({
               );
             }
 
-            if (!hasGroups) {
-              return (
-                <Tooltip key={ep.id}>
-                  <TooltipTrigger asChild>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums bg-card/60 text-foreground/60 cursor-default">
-                      {ep.ep}
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>第 {ep.ep} 话 · {ep.title_cn || ep.title || ""}</TooltipContent>
-                </Tooltip>
-              );
-            }
-
-            const { inGroup, fallback } = resolveEpisode(ep.ep);
-
-            if (inGroup) {
-              return (
-                <Tooltip key={ep.id}>
-                  <TooltipTrigger asChild>
-                    <Link
-                      to="/anime/$id/episode/$ep"
-                      params={{ id: String(animeId), ep: String(ep.ep) }}
-                      search={{ groupId: selectedGroupId ?? undefined, resolution: activeRes ?? undefined, subtitle: activeSub ?? undefined, t: undefined }}
-                      className={cn(
-                        "relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums transition-all",
-                        watched
-                          ? "bg-white/4 text-muted-foreground/50"
-                          : watching
-                            ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                            : "bg-card/60 text-foreground hover:bg-card hover:text-primary",
-                      )}
-                    >
-                      {ep.ep}
-                      {watching && (
-                        <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary shadow-[0_0_4px_var(--primary)]" />
-                      )}
-                    </Link>
-                  </TooltipTrigger>
-                  <TooltipContent>第 {ep.ep} 话 · {ep.title_cn || ep.title}</TooltipContent>
-                </Tooltip>
-              );
-            }
-
-            if (fallback) {
-              return (
-                <Tooltip key={ep.id}>
-                  <TooltipTrigger asChild>
-                    <Link
-                      to="/anime/$id/episode/$ep"
-                      params={{ id: String(animeId), ep: String(ep.ep) }}
-                      search={{ groupId: fallback.id, resolution: undefined, subtitle: undefined, t: undefined }}
-                      className="relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums bg-card/40 text-foreground/50 ring-1 ring-dashed ring-white/10 transition-all hover:bg-card/60 hover:text-primary"
-                    >
-                      {ep.ep}
-                    </Link>
-                  </TooltipTrigger>
-                  <TooltipContent>第 {ep.ep} 话 · {fallback.name} 可用</TooltipContent>
-                </Tooltip>
-              );
-            }
-
             return (
               <Tooltip key={ep.id}>
                 <TooltipTrigger asChild>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums bg-white/2 text-muted-foreground/25 cursor-default">
+                  <button
+                    type="button"
+                    onClick={() => setPickerEp(ep)}
+                    className={cn(
+                      "relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums transition-all",
+                      watched
+                        ? "bg-white/4 text-muted-foreground/50 hover:bg-white/8"
+                        : watching
+                          ? "bg-primary/15 text-primary ring-1 ring-primary/30 hover:bg-primary/20"
+                          : "bg-card/60 text-foreground hover:bg-card hover:text-primary",
+                    )}
+                  >
                     {ep.ep}
-                  </div>
+                    {watching && (
+                      <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary shadow-[0_0_4px_var(--primary)]" />
+                    )}
+                  </button>
                 </TooltipTrigger>
-                <TooltipContent>第 {ep.ep} 话 · 暂无资源</TooltipContent>
+                <TooltipContent>第 {ep.ep} 话 · {ep.title_cn || ep.title || ""}</TooltipContent>
               </Tooltip>
             );
           })}
         </div>
       )}
+
+      {/* Source picker dialog */}
+      <SourcePickerDialog
+        open={!!pickerEp}
+        onOpenChange={(open) => { if (!open) setPickerEp(null); }}
+        animeId={String(animeId)}
+        animeTitle={animeTitle}
+        episodeNumber={pickerEp?.ep ?? 0}
+        episodeTitle={pickerEp?.title_cn || pickerEp?.title || `第 ${pickerEp?.ep ?? 0} 话`}
+        totalEpisodes={totalEpisodes}
+      />
     </div>
   );
 }

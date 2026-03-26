@@ -1,6 +1,5 @@
 import { TorrentPlayer } from "@/components/torrent-player";
 import type { HistoryContext } from "@/components/torrent-player";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { historyApi } from "@/lib/store";
 import { useMikanTorrents } from "@/hooks/use-mikan-torrents";
@@ -13,7 +12,9 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ArrowLeft,
   Check,
+  Languages,
   Loader2,
+  Monitor,
   Play,
   Subtitles,
   TriangleAlert,
@@ -114,145 +115,7 @@ function EpisodePage() {
     setIsFullscreen(!fs);
   }, []);
 
-  // ── State 1: Loading ──────────────────────────────────────────
-
-  if (mikan.isLoading) {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-white/50">正在搜索字幕组...</p>
-      </div>
-    );
-  }
-
-  // ── State 2: Error ─────────────────────────────────────────────
-
-  if (mikan.error && mikan.groups.length === 0) {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-black">
-        <TriangleAlert className="h-10 w-10 text-destructive" />
-        <p className="max-w-sm text-center text-sm text-white/60">
-          搜索种子资源失败：{mikan.error}
-        </p>
-        <Button variant="secondary" onClick={navBack} className="gap-2">
-          <ArrowLeft size={16} />
-          返回
-        </Button>
-      </div>
-    );
-  }
-
-  // ── State 3: Group selection ──────────────────────────────────
-
-  if (!mikan.selectedGroupId || !torrentSource) {
-    const noTorrentForEp = mikan.selectedGroupId && !torrentSource;
-
-    return (
-      <div className="flex h-full w-full flex-col bg-black">
-        <div className="flex items-center gap-3 px-6 pt-6 pb-2">
-          <button
-            type="button"
-            onClick={navBack}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/70 transition-colors hover:bg-white/20"
-          >
-            <ArrowLeft size={18} />
-          </button>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-semibold text-white">
-              {subtitle}
-            </h1>
-            <p className="truncate text-sm text-white/50">{title}</p>
-          </div>
-        </div>
-
-        <div className="flex flex-1 flex-col items-center justify-center px-6">
-          <Subtitles className="mb-4 h-12 w-12 text-white/20" />
-          <h2 className="mb-2 text-lg font-medium text-white/90">
-            选择字幕组
-          </h2>
-          <p className="mb-6 max-w-md text-center text-sm text-white/40">
-            该番剧有 {mikan.groups.length} 个字幕组提供资源，请选择你偏好的字幕组
-          </p>
-
-          {noTorrentForEp && (
-            <div className="mb-4 flex items-center gap-2 rounded-lg bg-amber-500/10 px-4 py-2 text-sm text-amber-400">
-              <TriangleAlert size={16} />
-              该字幕组暂无第 {epNum} 话资源，请尝试其他字幕组
-            </div>
-          )}
-
-          {mikan.groups.length === 0 ? (
-            <div className="flex flex-col items-center gap-3">
-              <p className="text-sm text-white/40">未找到可用的字幕组</p>
-              <Button variant="secondary" onClick={navBack} className="gap-2">
-                <ArrowLeft size={16} />
-                返回
-              </Button>
-            </div>
-          ) : (
-            <div className="grid w-full max-w-lg gap-2">
-              {mikan.groups.map((group) => {
-                const isSelected = mikan.selectedGroupId === group.id;
-                return (
-                  <button
-                    key={group.id}
-                    type="button"
-                    onClick={() => mikan.selectGroup(group.id)}
-                    className={cn(
-                      "flex items-center gap-3 rounded-xl px-4 py-3 text-left transition-all",
-                      "border border-white/6 bg-white/3",
-                      "hover:border-white/10 hover:bg-white/6",
-                      isSelected &&
-                        "border-primary/40 bg-primary/10 hover:border-primary/50 hover:bg-primary/15",
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                        isSelected
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-white/10 text-white/40",
-                      )}
-                    >
-                      {isSelected ? (
-                        <Check size={16} />
-                      ) : (
-                        <Subtitles size={14} />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className={cn(
-                          "truncate text-sm font-medium",
-                          isSelected ? "text-white" : "text-white/70",
-                        )}
-                      >
-                        {group.name}
-                      </p>
-                      <p className="text-xs text-white/40">
-                        {group.episodeCount} 集 ·{" "}
-                        {group.resolutions.join(" / ")}
-                      </p>
-                    </div>
-                    {isSelected && (
-                      <Badge
-                        variant="secondary"
-                        className="shrink-0 bg-primary/20 text-primary"
-                      >
-                        已选择
-                      </Badge>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ── State 4: Playback ─────────────────────────────────────────
+  // ── Contexts (must be above early returns to satisfy Rules of Hooks) ──
 
   const cacheContext: CacheContext = {
     bgmId: id,
@@ -260,7 +123,7 @@ function EpisodePage() {
     animeTitle: animeTitle ?? `Unknown-${id}`,
     groupName: mikan.selectedGroupName ?? "",
     resolution: mikan.preferredResolution ?? "",
-    torrentSource,
+    torrentSource: torrentSource ?? "",
   };
 
   const historyContext = useMemo<HistoryContext>(
@@ -276,6 +139,16 @@ function EpisodePage() {
     }),
     [id, epNum, animeTitle, title, animeInfo?.cover, groupId, resolution, searchSubtitle],
   );
+
+  // ── Derived ────────────────────────────────────────────────────
+
+  const activeGroup = mikan.selectedGroupId
+    ? mikan.getGroupData(mikan.selectedGroupId)
+    : undefined;
+  const hasSource = !!torrentSource;
+  const hasError = !!mikan.error && mikan.groups.length === 0;
+
+  // ── Render ────────────────────────────────────────────────────
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -305,55 +178,167 @@ function EpisodePage() {
 
       {/* ── Content ────────────────────────────────────────────── */}
       <div className="flex min-h-0 flex-1">
-        {/* Player area — NO opaque background so native mpv shows through */}
+        {/* Player area */}
         <div className="relative min-w-0 flex-1">
-          <TorrentPlayer
-            key={`${id}-${ep}-${torrentSource}`}
-            source={torrentSource}
-            title={title}
-            subtitle={`${subtitle} · ${mikan.selectedGroupName ?? ""}`}
-            cacheContext={cacheContext}
-            historyContext={historyContext}
-            startTime={effectiveStartTime}
-            onBack={navBack}
-            onPrev={navPrev}
-            onNext={navNext}
-            onToggleFullscreen={toggleFullscreen}
-            isFullscreen={isFullscreen}
-          />
+          {mikan.isLoading ? (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm text-white/50">正在搜索字幕组...</p>
+            </div>
+          ) : hasError ? (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-black">
+              <TriangleAlert className="h-10 w-10 text-destructive" />
+              <p className="max-w-sm text-center text-sm text-white/60">
+                搜索种子资源失败：{mikan.error}
+              </p>
+              <Button variant="secondary" onClick={navBack} className="gap-2">
+                <ArrowLeft size={16} />
+                返回
+              </Button>
+            </div>
+          ) : !hasSource ? (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
+              <Subtitles className="h-10 w-10 text-white/15" />
+              <p className="text-sm text-white/50">
+                {mikan.groups.length === 0
+                  ? "未找到可用的字幕组"
+                  : `当前字幕组暂无第 ${epNum} 话资源`}
+              </p>
+              {mikan.groups.length > 0 && (
+                <p className="text-xs text-white/30">请在右侧切换字幕组</p>
+              )}
+            </div>
+          ) : (
+            <TorrentPlayer
+              key={`${id}-${ep}-${torrentSource}`}
+              source={torrentSource}
+              title={title}
+              subtitle={`${subtitle} · ${mikan.selectedGroupName ?? ""}`}
+              cacheContext={cacheContext}
+              historyContext={historyContext}
+              startTime={effectiveStartTime}
+              onBack={navBack}
+              onPrev={navPrev}
+              onNext={navNext}
+              onToggleFullscreen={toggleFullscreen}
+              isFullscreen={isFullscreen}
+            />
+          )}
         </div>
 
-        {/* Episode sidebar (hidden in fullscreen) */}
+        {/* ── Sidebar (hidden in fullscreen) ───────────────────── */}
         {!isFullscreen && (
           <aside className="flex w-80 shrink-0 flex-col border-l border-white/5 bg-background">
-            {/* Source info */}
-            <div className="space-y-2 border-b border-white/5 px-4 py-3">
-              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50">
+            {/* ── Source selector ── */}
+            <div className="max-h-[50%] shrink-0 overflow-y-auto border-b border-white/5 px-4 py-3">
+              <p className="mb-2.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50">
                 资源
               </p>
-              <div className="flex flex-wrap gap-1.5">
-                {mikan.selectedGroupName && (
-                  <Badge
-                    variant="secondary"
-                    className="bg-primary/10 text-primary text-xs"
-                  >
-                    {mikan.selectedGroupName}
-                  </Badge>
-                )}
-                {mikan.preferredResolution && (
-                  <Badge variant="outline" className="text-xs border-white/10">
-                    {mikan.preferredResolution}
-                  </Badge>
-                )}
-                {mikan.preferredSubtitle && (
-                  <Badge variant="outline" className="text-xs border-white/10">
-                    {mikan.preferredSubtitle}
-                  </Badge>
-                )}
-              </div>
+
+              {mikan.isLoading ? (
+                <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground/50">
+                  <Loader2 size={12} className="animate-spin" />
+                  正在搜索字幕组...
+                </div>
+              ) : mikan.groups.length === 0 ? (
+                <p className="py-1 text-xs text-muted-foreground/40">
+                  {mikan.error ? "搜索失败" : "暂无可用资源"}
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {/* Group pills */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40">
+                      <Subtitles size={11} />
+                      字幕组
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {mikan.groups.map((g) => (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => mikan.selectGroup(g.id)}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-all",
+                            mikan.selectedGroupId === g.id
+                              ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                              : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
+                          )}
+                        >
+                          {g.name}
+                          <span
+                            className={cn(
+                              "tabular-nums",
+                              mikan.selectedGroupId === g.id
+                                ? "text-primary/60"
+                                : "text-white/25",
+                            )}
+                          >
+                            {g.episodeCount}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Resolution pills */}
+                  {activeGroup && activeGroup.resolutions.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40">
+                        <Monitor size={11} />
+                        分辨率
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeGroup.resolutions.map((res) => (
+                          <button
+                            key={res}
+                            type="button"
+                            onClick={() => mikan.setPreferredResolution(res)}
+                            className={cn(
+                              "rounded-md px-2 py-1 text-[11px] font-medium transition-all",
+                              mikan.preferredResolution === res
+                                ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                                : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
+                            )}
+                          >
+                            {res}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Subtitle language pills */}
+                  {activeGroup && activeGroup.subtitles.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40">
+                        <Languages size={11} />
+                        字幕
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeGroup.subtitles.map((sub) => (
+                          <button
+                            key={sub}
+                            type="button"
+                            onClick={() => mikan.setPreferredSubtitle(sub)}
+                            className={cn(
+                              "rounded-md px-2 py-1 text-[11px] font-medium transition-all",
+                              mikan.preferredSubtitle === sub
+                                ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                                : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
+                            )}
+                          >
+                            {sub}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Episode list */}
+            {/* ── Episode list ── */}
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
               <p className="text-xs font-medium text-muted-foreground">
                 选集
