@@ -16,7 +16,7 @@ impl StoreState {
     }
 
     /// Get or lazily initialise the store.
-    fn with_store<F, R>(&self, app: &AppHandle, f: F) -> Result<R, String>
+    pub fn with_store<F, R>(&self, app: &AppHandle, f: F) -> Result<R, String>
     where
         F: FnOnce(&Store) -> Result<R, String>,
     {
@@ -196,6 +196,19 @@ pub(crate) fn set_auto_next(
 ) -> Result<(), String> {
     state.with_store(&app, |store| {
         store.set_auto_next(enabled).map_err(|e| e.to_string())
+    })
+}
+
+#[command]
+pub(crate) fn set_tracker_list(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    trackers: Vec<String>,
+) -> Result<(), String> {
+    state.with_store(&app, |store| {
+        store
+            .set_tracker_list(&trackers)
+            .map_err(|e| e.to_string())
     })
 }
 

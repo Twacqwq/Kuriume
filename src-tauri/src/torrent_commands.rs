@@ -1,3 +1,4 @@
+use crate::store_commands::StoreState;
 use kuriume_torrent::{TorrentEngine, TorrentFileInfo, TorrentStatus};
 use std::sync::Arc;
 use tauri::{command, AppHandle, Manager, State};
@@ -25,7 +26,23 @@ impl TorrentState {
                     .map_err(|e| e.to_string())?
                     .join("torrents");
 
-                let engine = TorrentEngine::new(data_dir)
+                // Read user-configured trackers from store (empty = use built-in defaults)
+                let trackers = app
+                    .state::<StoreState>()
+                    .with_store(app, |store| {
+                        let default_dir = app
+                            .path()
+                            .download_dir()
+                            .map(|p| p.join("Kuriume"))
+                            .unwrap_or_else(|_| std::path::PathBuf::from("~/Downloads/Kuriume"))
+                            .to_string_lossy()
+                            .into_owned();
+                        let settings = store.get_settings(&default_dir).map_err(|e| e.to_string())?;
+                        Ok(settings.tracker_list)
+                    })
+                    .unwrap_or_default();
+
+                let engine = TorrentEngine::new(data_dir, trackers)
                     .await
                     .map_err(|e| e.to_string())?;
 

@@ -31,6 +31,8 @@ pub struct Settings {
     pub default_speed: f64,
     pub buffer_size: i64,
     pub auto_next: bool,
+    /// User-configured tracker list. Empty means "use built-in defaults".
+    pub tracker_list: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -315,6 +317,11 @@ impl Store {
             .map(|v| v == "true")
             .unwrap_or(true);
 
+        let tracker_list: Vec<String> = self
+            .get_setting("tracker_list")?
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or_default();
+
         Ok(Settings {
             cache_dir,
             cache_enabled,
@@ -323,6 +330,7 @@ impl Store {
             default_speed,
             buffer_size,
             auto_next,
+            tracker_list,
         })
     }
 
@@ -352,6 +360,12 @@ impl Store {
 
     pub fn set_auto_next(&self, enabled: bool) -> Result<()> {
         self.set_setting("auto_next", if enabled { "true" } else { "false" })
+    }
+
+    pub fn set_tracker_list(&self, trackers: &[String]) -> Result<()> {
+        let json = serde_json::to_string(trackers)
+            .map_err(|e| StoreError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
+        self.set_setting("tracker_list", &json)
     }
 
     // ── Media cache ──────────────────────────────────────────────

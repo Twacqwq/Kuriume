@@ -9,8 +9,8 @@ use crate::error::{ProviderError, Result};
 const MIKAN_BASE: &str = "https://mikanani.me";
 const USER_AGENT: &str = "Kuriume/0.1 (https://github.com/Kuriume/Kuriume)";
 
-/// Common tracker list for constructing magnet URIs (sourced from Mikan pages).
-const TRACKERS: &[&str] = &[
+/// Default tracker list for constructing magnet URIs (sourced from Mikan pages).
+const DEFAULT_TRACKERS: &[&str] = &[
     "http://t.nyaatracker.com/announce",
     "http://tracker.kamigami.org:2710/announce",
     "http://share.camoe.cn:8080/announce",
@@ -63,17 +63,25 @@ pub struct SubtitleGroupTorrents {
 
 pub struct Mikan {
     client: Client,
+    /// Effective tracker list for magnet URI construction.
+    trackers: Vec<String>,
 }
 
 impl Mikan {
-    pub fn new() -> Self {
+    /// Create a new Mikan client. If `custom_trackers` is empty, built-in defaults are used.
+    pub fn new(custom_trackers: Vec<String>) -> Self {
         let client = Client::builder()
             .user_agent(USER_AGENT)
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(15))
             .build()
             .expect("failed to build HTTP client");
-        Self { client }
+        let trackers = if custom_trackers.is_empty() {
+            DEFAULT_TRACKERS.iter().map(|s| s.to_string()).collect()
+        } else {
+            custom_trackers
+        };
+        Self { client, trackers }
     }
 
     // -- Search ---------------------------------------------------------------
@@ -173,7 +181,7 @@ impl Mikan {
             .text()
             .await?;
 
-        Ok(parse_rss_items(&xml))
+        Ok(parse_rss_items(&xml, &self.trackers))
     }
 
     /// Get all subtitle groups and their torrent entries for a bangumi.
@@ -218,7 +226,7 @@ impl Mikan {
 
 impl Default for Mikan {
     fn default() -> Self {
-        Self::new()
+        Self::new(Vec::new())
     }
 }
 
@@ -356,7 +364,7 @@ fn parse_subtitle_groups(html: &str) -> Vec<SubtitleGroup> {
 }
 
 /// Parse torrent entries from a Mikan RSS feed XML.
-fn parse_rss_items(xml: &str) -> Vec<MikanTorrentEntry> {
+fn parse_rss_items(xml: &str, trackers: &[String]) -> Vec<MikanTorrentEntry> {
     let mut entries = Vec::new();
     let mut pos = 0;
 
@@ -390,7 +398,7 @@ fn parse_rss_items(xml: &str) -> Vec<MikanTorrentEntry> {
         // Construct magnet URI from hash + tracker list
         let magnet = if !episode_hash.is_empty() {
             let mut m = format!("magnet:?xt=urn:btih:{episode_hash}");
-            for tracker in TRACKERS {
+            for tracker in trackers {
                 m.push_str("&tr=");
                 m.push_str(tracker);
             }
@@ -599,7 +607,8 @@ mod tests {
   </channel>
 </rss>
         "#;
-        let entries = parse_rss_items(xml);
+        let trackers: Vec<String> = DEFAULT_TRACKERS.iter().map(|s| s.to_string()).collect();
+        let entries = parse_rss_items(xml, &trackers);
         assert_eq!(entries.len(), 2);
 
         let e = &entries[0];

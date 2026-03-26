@@ -10,6 +10,7 @@ export interface Settings {
   default_speed: number;
   buffer_size: number;
   auto_next: boolean;
+  tracker_list: string[];
 }
 
 export interface MediaEntry {
@@ -53,6 +54,9 @@ export const settingsApi = {
 
   setAutoNext: (enabled: boolean) =>
     invoke<void>("set_auto_next", { enabled }),
+
+  setTrackerList: (trackers: string[]) =>
+    invoke<void>("set_tracker_list", { trackers }),
 };
 
 // ── Cache API ───────────────────────────────────────────────────

@@ -103,16 +103,16 @@ pub struct MikanState {
 }
 
 impl MikanState {
-    pub fn new() -> Self {
+    pub fn new(trackers: Vec<String>) -> Self {
         Self {
-            mikan: Arc::new(Mikan::new()),
+            mikan: Arc::new(Mikan::new(trackers)),
         }
     }
 }
 
 impl Default for MikanState {
     fn default() -> Self {
-        Self::new()
+        Self::new(Vec::new())
     }
 }
 

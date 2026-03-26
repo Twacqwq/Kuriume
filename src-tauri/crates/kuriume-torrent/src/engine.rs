@@ -17,10 +17,10 @@ use crate::error::{Result, TorrentError};
 use crate::server;
 
 // ---------------------------------------------------------------------------
-// Tracker list
+// Tracker list (defaults)
 // ---------------------------------------------------------------------------
 
-const TRACKER_LIST: &[&str] = &[
+const DEFAULT_TRACKER_LIST: &[&str] = &[
     // Anime / ACG ecosystem
     "http://t.nyaatracker.com/announce",
     "http://opentracker.acgnx.se/announce",
@@ -82,13 +82,22 @@ pub struct TorrentEngine {
     download_dir: PathBuf,
     server_port: u16,
     _server_handle: tokio::task::JoinHandle<()>,
+    /// Effective tracker list used for every torrent.
+    trackers: Vec<String>,
 }
 
 impl TorrentEngine {
-    pub async fn new(download_dir: PathBuf) -> Result<Self> {
+    /// Create a new engine. If `custom_trackers` is empty, the built-in defaults are used.
+    pub async fn new(download_dir: PathBuf, custom_trackers: Vec<String>) -> Result<Self> {
         tokio::fs::create_dir_all(&download_dir).await?;
 
-        let session_trackers: HashSet<url::Url> = TRACKER_LIST
+        let effective: Vec<String> = if custom_trackers.is_empty() {
+            DEFAULT_TRACKER_LIST.iter().map(|s| s.to_string()).collect()
+        } else {
+            custom_trackers
+        };
+
+        let session_trackers: HashSet<url::Url> = effective
             .iter()
             .filter_map(|s| url::Url::parse(s).ok())
             .collect();
@@ -124,6 +133,7 @@ impl TorrentEngine {
             download_dir,
             server_port: port,
             _server_handle: handle,
+            trackers: effective,
         })
     }
 
@@ -133,10 +143,7 @@ impl TorrentEngine {
     pub async fn add_torrent(&self, source: &str) -> Result<usize> {
         let add_torrent = AddTorrent::from_url(source);
 
-        let extra_trackers: Vec<String> = TRACKER_LIST
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let extra_trackers: Vec<String> = self.trackers.clone();
 
         let opts = Some(AddTorrentOptions {
             overwrite: true,

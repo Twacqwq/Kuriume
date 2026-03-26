@@ -325,6 +325,35 @@ function SettingsPage() {
             </div>
           )}
         </section>
+
+        {/* ── Trackers section ── */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold text-foreground">Tracker 列表</h2>
+          <p className="text-sm text-muted-foreground">
+            自定义 BitTorrent tracker 地址，用于种子发现和下载加速。留空时使用内置默认列表。修改后需重启应用生效
+          </p>
+
+          {settings && (
+            <div className="space-y-3">
+              <div className="rounded-xl bg-card/50 px-4 py-3">
+                <textarea
+                  className="w-full rounded-lg bg-white/5 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  rows={8}
+                  placeholder={"留空使用默认 tracker 列表，每行一个地址\n例如：\nudp://tracker.opentrackr.org:1337/announce\nhttp://t.nyaatracker.com/announce"}
+                  defaultValue={settings.tracker_list.join("\n")}
+                  onBlur={async (e) => {
+                    const lines = e.target.value
+                      .split("\n")
+                      .map((l) => l.trim())
+                      .filter((l) => l.length > 0);
+                    await settingsApi.setTrackerList(lines);
+                    setSettings((s) => (s ? { ...s, tracker_list: lines } : s));
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

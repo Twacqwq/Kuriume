@@ -23,7 +23,6 @@ pub fn run() {
         .plugin(tauri_plugin_mpv::init())
         .menu(|handle| Menu::new(handle))
         .manage(state)
-        .manage(MikanState::new())
         .manage(TorrentState::new())
         .manage(StoreState::new())
         .invoke_handler(tauri::generate_handler![
@@ -52,6 +51,7 @@ pub fn run() {
             crate::store_commands::set_default_speed,
             crate::store_commands::set_buffer_size,
             crate::store_commands::set_auto_next,
+            crate::store_commands::set_tracker_list,
             crate::store_commands::cache_lookup,
             crate::store_commands::cache_register,
             crate::store_commands::cache_remove,
@@ -71,6 +71,26 @@ pub fn run() {
             crate::store_commands::history_clear,
         ])
         .setup(|app| {
+            // Read tracker list from settings and init Mikan with it
+            let tracker_list = {
+                let store_state = app.state::<StoreState>();
+                let handle = app.handle().clone();
+                store_state
+                    .with_store(&handle, |store| {
+                        let default_dir = app
+                            .path()
+                            .download_dir()
+                            .map(|p| p.join("Kuriume"))
+                            .unwrap_or_else(|_| std::path::PathBuf::from("~/Downloads/Kuriume"))
+                            .to_string_lossy()
+                            .into_owned();
+                        let settings = store.get_settings(&default_dir).map_err(|e| e.to_string())?;
+                        Ok(settings.tracker_list)
+                    })
+                    .unwrap_or_default()
+            };
+            app.manage(MikanState::new(tracker_list));
+
             if let Ok(data_dir) = app.path().app_data_dir() {
                 let temp_dir = data_dir.join("torrents");
                 if temp_dir.exists() {
