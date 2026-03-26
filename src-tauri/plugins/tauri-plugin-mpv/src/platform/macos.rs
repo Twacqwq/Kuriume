@@ -885,27 +885,22 @@ fn render_loop(ctx: Arc<RenderCtx>) {
             break;
         }
 
-        if !ctx.needs_render.swap(false, Ordering::AcqRel) {
-            // Even without a new mpv frame, check for pending resize
-            // so the drawable updates promptly on window resize.
-            let tw = ctx.target_width.load(Ordering::Acquire);
-            let th = ctx.target_height.load(Ordering::Acquire);
-            let cw = ctx.surface_width.load(Ordering::Acquire);
-            let ch = ctx.surface_height.load(Ordering::Acquire);
-            if (tw != cw || th != ch) && tw > 0 && th > 0 {
-                unsafe { resize_surface(&ctx, tw, th); }
-            }
-            continue;
-        }
+        let mut need_frame = ctx.needs_render.swap(false, Ordering::AcqRel);
 
         // Check if the viewport changed — resize before rendering.
         let tw = ctx.target_width.load(Ordering::Acquire);
         let th = ctx.target_height.load(Ordering::Acquire);
-        let w = ctx.surface_width.load(Ordering::Acquire);
-        let h = ctx.surface_height.load(Ordering::Acquire);
-
-        if (tw != w || th != h) && tw > 0 && th > 0 {
+        let cw = ctx.surface_width.load(Ordering::Acquire);
+        let ch = ctx.surface_height.load(Ordering::Acquire);
+        if (tw != cw || th != ch) && tw > 0 && th > 0 {
             unsafe { resize_surface(&ctx, tw, th); }
+            // Force a re-render so the resized surface isn't blank
+            // (e.g. when paused and the window is resized/fullscreened).
+            need_frame = true;
+        }
+
+        if !need_frame {
+            continue;
         }
 
         let w = ctx.surface_width.load(Ordering::Acquire);
