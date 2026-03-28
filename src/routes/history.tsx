@@ -80,6 +80,7 @@ function HistoryPage() {
           subtitle: entry.subtitle ?? undefined,
           provider: undefined,
           t: entry.position > 5 ? entry.position : undefined,
+          onlineUrl: undefined,
         },
       });
     },

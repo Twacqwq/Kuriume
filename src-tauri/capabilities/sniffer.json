@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "sniffer",
+  "description": "Capability for the video sniffer webview windows",
+  "windows": ["sniffer-*"],
+  "remote": {
+    "urls": ["https://*:*", "http://*:*"]
+  },
+  "permissions": [
+    "core:default"
+  ]
+}

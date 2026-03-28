@@ -27,6 +27,8 @@ mod mikan;
 mod models;
 mod nyaa;
 mod provider;
+pub mod builtin_rules;
+pub mod rule;
 mod torrent_provider;
 
 pub use bangumi::Bangumi;
@@ -39,6 +41,7 @@ pub use models::{
     PagedResult, SearchQuery, SortBy, Weekday,
 };
 pub use provider::AnimeProvider;
+pub use rule::{OnlineEpisode, OnlineRoad, OnlineSearchResult, Rule, RuleEngine, RuleSelectors};
 pub use torrent_provider::{
     GroupTorrents, SubtitleGroup, TorrentEntry, TorrentProvider, TorrentSourceEntry,
 };

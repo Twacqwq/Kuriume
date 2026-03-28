@@ -77,8 +77,10 @@ export interface HistoryContext {
 }
 
 export interface TorrentPlayerProps {
-  /** Magnet URI or .torrent URL. */
-  source: string;
+  /** Magnet URI or .torrent URL (torrent mode). */
+  source?: string;
+  /** Direct video URL to play — skips torrent pipeline entirely (online mode). */
+  videoUrl?: string;
   /** Title displayed in the top bar. */
   title?: string;
   /** Subtitle line (e.g. anime name + episode). */
@@ -101,6 +103,7 @@ export interface TorrentPlayerProps {
 
 export function TorrentPlayer({
   source,
+  videoUrl,
   title,
   subtitle,
   cacheContext,
@@ -113,6 +116,9 @@ export function TorrentPlayer({
   startTime,
 }: TorrentPlayerProps) {
   const torrent = useTorrentStream();
+
+  // Direct URL mode: skip torrent pipeline entirely
+  const isDirectMode = !!videoUrl;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -145,14 +151,14 @@ export function TorrentPlayer({
     return () => { cancelled = true; };
   }, [player.state.ready]);
 
-  // ── Auto-start torrent on mount ────────────────────────────────
+  // ── Auto-start torrent on mount (torrent mode only) ────────────
 
   useEffect(() => {
-    if (source) {
+    if (!isDirectMode && source) {
       torrent.startStream(source, cacheContext);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source]);
+  }, [source, isDirectMode]);
 
   // ── Sync native GL view position with container ────────────────
 
@@ -202,10 +208,12 @@ export function TorrentPlayer({
 
   // ── Play the streaming URL via mpv when available ──────────────
 
+  const effectiveStreamUrl = isDirectMode ? videoUrl : torrent.streamUrl;
+
   useEffect(() => {
-    if (!player.state.ready || !torrent.streamUrl) return;
-    player.play(torrent.streamUrl);
-  }, [torrent.streamUrl, player.state.ready, player.play]);
+    if (!player.state.ready || !effectiveStreamUrl) return;
+    player.play(effectiveStreamUrl);
+  }, [effectiveStreamUrl, player.state.ready, player.play]);
 
   // ── Auto-advance to next episode when playback ends ────────────
 
@@ -396,12 +404,15 @@ export function TorrentPlayer({
   // ── Derived state ──────────────────────────────────────────────
 
   const progress = duration > 0 ? (position / duration) * 100 : 0;
-  const isLoading = torrent.phase !== "streaming" && torrent.phase !== "error";
-  const hasError = torrent.phase === "error";
+  const isLoading = isDirectMode
+    ? !effectiveStreamUrl
+    : torrent.phase !== "streaming" && torrent.phase !== "error";
+  const hasError = !isDirectMode && torrent.phase === "error";
 
   // Detect mid-playback buffering: mpv cache is empty, video is loaded,
   // not paused, and torrent download is still ongoing
   const isBuffering =
+    !isDirectMode &&
     loaded &&
     !paused &&
     player.state.buffered < 2 &&
@@ -421,8 +432,8 @@ export function TorrentPlayer({
           if (!paused) setShowControls(false);
         }}
       >
-        {/* Click-to-pause zone (only when streaming) */}
-        {torrent.phase === "streaming" && (
+        {/* Click-to-pause zone (when playing) */}
+        {(isDirectMode || torrent.phase === "streaming") && (
           <div
             className="absolute inset-0 z-10"
             onClick={handleTogglePause}
@@ -465,13 +476,13 @@ export function TorrentPlayer({
         )}
 
         {/* ── Center status ───────────────────────────────────── */}
-        {isLoading && <LoadingOverlay phase={torrent.phase} />}
-        {hasError && <ErrorOverlay message={torrent.error} onRetry={() => torrent.startStream(source)} />}
+        {isLoading && <LoadingOverlay phase={isDirectMode ? "idle" : torrent.phase} />}
+        {hasError && <ErrorOverlay message={torrent.error} onRetry={() => source && torrent.startStream(source)} />}
 
-        {torrent.phase === "streaming" && !loaded && torrent.stats && (
+        {!isDirectMode && torrent.phase === "streaming" && !loaded && torrent.stats && (
           <BufferingOverlay stats={torrent.stats} />
         )}
-        {torrent.phase === "streaming" && loaded && isBuffering && (
+        {(isDirectMode ? loaded && !paused && player.state.buffered < 2 : torrent.phase === "streaming" && loaded && isBuffering) && (
           <div className="pointer-events-none absolute inset-0 z-15 flex items-center justify-center">
             <div className="flex flex-col items-center gap-2 rounded-xl bg-black/60 px-5 py-4 backdrop-blur-sm">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -479,7 +490,7 @@ export function TorrentPlayer({
             </div>
           </div>
         )}
-        {torrent.phase === "streaming" && paused && loaded && showControls && (
+        {(isDirectMode || torrent.phase === "streaming") && paused && loaded && showControls && (
           <div className="pointer-events-none absolute inset-0 z-15 flex items-center justify-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/80 text-white shadow-lg shadow-primary/30 backdrop-blur-sm animate-in fade-in zoom-in-50 duration-200">
               <Play size={28} fill="currentColor" className="ml-1" />
@@ -488,7 +499,7 @@ export function TorrentPlayer({
         )}
 
         {/* ── Torrent stats overlay ───────────────────────────── */}
-        {torrent.stats && showControls && (
+        {!isDirectMode && torrent.stats && showControls && (
           <TorrentStatsOverlay stats={torrent.stats} />
         )}
 
@@ -505,7 +516,7 @@ export function TorrentPlayer({
             position={position}
             duration={duration}
             progress={progress}
-            bufferProgress={torrent.stats && torrent.stats.progress < 1 ? torrent.stats.progress * 100 : undefined}
+            bufferProgress={!isDirectMode && torrent.stats && torrent.stats.progress < 1 ? torrent.stats.progress * 100 : undefined}
             onSeek={handleSeek}
             onInteracting={resetHideTimer}
           />

@@ -13,6 +13,12 @@ pub enum ProviderError {
 
     #[error("Not found: {0}")]
     NotFound(String),
+
+    #[error("Network error: {0}")]
+    Network(String),
+
+    #[error("Parse error: {0}")]
+    Parse(String),
 }
 
 pub type Result<T> = std::result::Result<T, ProviderError>;

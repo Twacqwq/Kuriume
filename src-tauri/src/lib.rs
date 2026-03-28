@@ -1,4 +1,5 @@
 use crate::commands::{ProviderState, TorrentProviderState};
+use crate::online_commands::OnlineSourceState;
 use crate::store_commands::StoreState;
 use crate::torrent_commands::TorrentState;
 use kuriume_provider::{Bangumi, Dmhy, Mikan, Nyaa};
@@ -7,6 +8,7 @@ use tauri::Manager;
 use tauri::menu::Menu;
 
 mod commands;
+mod online_commands;
 mod store_commands;
 mod torrent_commands;
 
@@ -25,6 +27,7 @@ pub fn run() {
         .manage(state)
         .manage(TorrentState::new())
         .manage(StoreState::new())
+        .manage(OnlineSourceState::new())
         .invoke_handler(tauri::generate_handler![
             crate::commands::get_list,
             crate::commands::search,
@@ -37,6 +40,13 @@ pub fn run() {
             crate::commands::torrent_source_get_group_torrents,
             crate::commands::torrent_source_get_all_torrents,
             crate::commands::torrent_source_list_providers,
+            crate::online_commands::online_source_list,
+            crate::online_commands::online_source_list_rules,
+            crate::online_commands::online_source_add_rule,
+            crate::online_commands::online_source_remove_rule,
+            crate::online_commands::online_source_search,
+            crate::online_commands::online_source_episodes,
+            crate::online_commands::sniff_video_url,
             crate::torrent_commands::torrent_add,
             crate::torrent_commands::torrent_list_files,
             crate::torrent_commands::torrent_stream_url,

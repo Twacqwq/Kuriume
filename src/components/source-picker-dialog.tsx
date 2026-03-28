@@ -5,11 +5,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useOnlineSource } from "@/hooks/use-online-source";
 import { useTorrentSource, type GroupData } from "@/hooks/use-torrent-source";
 import { KNOWN_PROVIDERS, type ProviderName } from "@/lib/torrent-source";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  Check,
+  ChevronRight,
+  Globe,
   Languages,
   Loader2,
   Monitor,
@@ -17,7 +21,7 @@ import {
   Subtitles,
   TriangleAlert,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 interface SourcePickerDialogProps {
   open: boolean;
@@ -39,85 +43,124 @@ export function SourcePickerDialog({
   totalEpisodes,
 }: SourcePickerDialogProps) {
   const navigate = useNavigate();
-  const [provider, setProvider] = useState<ProviderName>(KNOWN_PROVIDERS[0]);
 
-  // Always pass animeId so prefetched cache is used; the queries inside
-  // useTorrentSource are enabled only when bgmId + title are truthy.
+  // "torrent:Mikan" | "torrent:Nyaa" | "torrent:DMHY" | "online:AGE动漫" ...
+  const [activeTab, setActiveTab] = useState<string>("torrent:Mikan");
+  const isTorrentTab = activeTab.startsWith("torrent:");
+  const torrentProvider = (isTorrentTab ? activeTab.slice(8) : "Mikan") as ProviderName;
+
+  // ── Torrent sources ────────────────────────────────────────────
   const mikan = useTorrentSource(animeId, animeTitle, undefined, undefined, totalEpisodes, undefined, "Mikan");
   const nyaa = useTorrentSource(animeId, animeTitle, undefined, undefined, totalEpisodes, undefined, "Nyaa");
   const dmhy = useTorrentSource(animeId, animeTitle, undefined, undefined, totalEpisodes, undefined, "DMHY");
-
   const providerMap = { Mikan: mikan, Nyaa: nyaa, DMHY: dmhy } as const;
-  const current = providerMap[provider];
+  const currentTorrent = providerMap[torrentProvider];
 
-  const activeGroup = current.selectedGroupId
-    ? current.getGroupData(current.selectedGroupId)
+  const activeGroup = currentTorrent.selectedGroupId
+    ? currentTorrent.getGroupData(currentTorrent.selectedGroupId)
     : undefined;
+  const torrentSource = currentTorrent.getTorrentSource(episodeNumber);
 
-  const torrentSource = current.getTorrentSource(episodeNumber);
+  // ── Online sources ─────────────────────────────────────────────
+  const online = useOnlineSource(animeTitle);
 
-  const handlePlay = () => {
+  const handleTorrentPlay = () => {
     onOpenChange(false);
     navigate({
       to: "/anime/$id/episode/$ep",
       params: { id: animeId, ep: String(episodeNumber) },
       search: {
-        groupId: current.selectedGroupId ?? undefined,
-        resolution: current.preferredResolution ?? undefined,
-        subtitle: current.preferredSubtitle ?? undefined,
-        provider: provider !== "Mikan" ? provider : undefined,
+        groupId: currentTorrent.selectedGroupId ?? undefined,
+        resolution: currentTorrent.preferredResolution ?? undefined,
+        subtitle: currentTorrent.preferredSubtitle ?? undefined,
+        provider: torrentProvider !== "Mikan" ? torrentProvider : undefined,
         t: undefined,
+        onlineUrl: undefined,
       },
     });
   };
 
-  /** Count indicator for a provider tab. */
-  const tabCount = (p: typeof provider) => {
+  const handleOnlinePlay = useCallback((episodeUrl: string) => {
+    onOpenChange(false);
+    navigate({
+      to: "/anime/$id/episode/$ep",
+      params: { id: animeId, ep: String(episodeNumber) },
+      search: {
+        groupId: undefined,
+        resolution: undefined,
+        subtitle: undefined,
+        provider: undefined,
+        t: undefined,
+        onlineUrl: episodeUrl,
+      },
+    });
+  }, [navigate, animeId, episodeNumber, onOpenChange]);
+
+  /** Count indicator for a torrent provider tab. */
+  const tabCount = (p: ProviderName) => {
     const s = providerMap[p];
     if (s.isLoading) return undefined;
     if (s.error && s.groups.length === 0) return undefined;
     return s.groups.reduce((n, g) => n + g.episodeCount, 0);
   };
 
+  // Build tab list: torrent providers + online sources
+  type TabDef = { key: string; label: string; isLoading: boolean; hasError: boolean; count?: number; isOnline: boolean };
+  const tabs: TabDef[] = [
+    ...KNOWN_PROVIDERS.map((p): TabDef => ({
+      key: `torrent:${p}`,
+      label: p,
+      isLoading: providerMap[p].isLoading,
+      hasError: !!providerMap[p].error && providerMap[p].groups.length === 0,
+      count: tabCount(p),
+      isOnline: false,
+    })),
+    ...online.sources.map((name): TabDef => ({
+      key: `online:${name}`,
+      label: name,
+      isLoading: false,
+      hasError: false,
+      isOnline: true,
+    })),
+  ];
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg gap-0 overflow-hidden p-0">
-        {/* Header + provider tabs */}
+        {/* Header + tabs */}
         <DialogHeader className="space-y-3 px-5 pt-5 pb-0">
           <DialogTitle className="text-base">
             第 {episodeNumber} 话 · {episodeTitle}
           </DialogTitle>
 
-          {/* Provider tabs — always visible */}
           <div className="flex gap-1 rounded-lg bg-white/[0.03] p-1">
-            {KNOWN_PROVIDERS.map((p) => {
-              const count = tabCount(p);
-              const isActive = provider === p;
-              const isLoading = providerMap[p].isLoading;
-              const hasError = !!providerMap[p].error && providerMap[p].groups.length === 0;
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.key;
               return (
                 <button
-                  key={p}
+                  key={tab.key}
                   type="button"
-                  onClick={() => setProvider(p)}
+                  onClick={() => {
+                    setActiveTab(tab.key);
+                    if (tab.isOnline) online.selectSource(tab.label);
+                  }}
                   className={cn(
                     "relative flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all",
                     isActive
                       ? "bg-white/10 text-white shadow-sm"
                       : "text-white/40 hover:text-white/60",
-                    hasError && !isActive && "text-white/20",
+                    tab.hasError && !isActive && "text-white/20",
                   )}
                 >
-                  {isLoading && (
-                    <Loader2 size={11} className="animate-spin" />
-                  )}
-                  {p}
-                  {count !== undefined && count > 0 && (
+                  {tab.isLoading && <Loader2 size={11} className="animate-spin" />}
+                  {tab.isOnline && <Globe size={11} />}
+                  {tab.label}
+                  {tab.count !== undefined && tab.count > 0 && (
                     <span className={cn(
                       "tabular-nums text-[10px]",
                       isActive ? "text-white/40" : "text-white/20",
                     )}>
-                      {count}
+                      {tab.count}
                     </span>
                   )}
                 </button>
@@ -126,15 +169,23 @@ export function SourcePickerDialog({
           </div>
         </DialogHeader>
 
-        {/* Body — per-provider content */}
+        {/* Body */}
         <div className="max-h-[55vh] overflow-y-auto px-5 pt-3 pb-5">
-          <ProviderContent
-            state={current}
-            episodeNumber={episodeNumber}
-            activeGroup={activeGroup}
-            torrentSource={torrentSource}
-            onPlay={handlePlay}
-          />
+          {isTorrentTab ? (
+            <ProviderContent
+              state={currentTorrent}
+              episodeNumber={episodeNumber}
+              activeGroup={activeGroup}
+              torrentSource={torrentSource}
+              onPlay={handleTorrentPlay}
+            />
+          ) : (
+            <OnlineContent
+              online={online}
+              episodeNumber={episodeNumber}
+              onPlay={handleOnlinePlay}
+            />
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -284,6 +335,159 @@ function ProviderContent({
       >
         <Play size={16} fill="currentColor" />
         开始播放
+      </Button>
+    </div>
+  );
+}
+
+// ── Online source content panel ─────────────────────────────────
+
+function OnlineContent({
+  online,
+  episodeNumber,
+  onPlay,
+}: {
+  online: ReturnType<typeof useOnlineSource>;
+  episodeNumber: number;
+  onPlay: (episodeUrl: string) => void;
+}) {
+  const episodeUrl = online.getEpisodeUrl(episodeNumber);
+
+  if (online.searching) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-10">
+        <Loader2 className="h-7 w-7 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">正在搜索在线资源...</p>
+      </div>
+    );
+  }
+
+  if (online.error && online.searchResults.length === 0 && online.roads.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-10">
+        <TriangleAlert className="h-8 w-8 text-destructive" />
+        <p className="max-w-xs text-center text-sm text-muted-foreground">
+          搜索在线资源失败：{online.error}
+        </p>
+      </div>
+    );
+  }
+
+  // Step 1: Show search results for user to pick the correct anime
+  if (online.roads.length === 0 && !online.loadingEpisodes) {
+    if (online.searchResults.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-3 py-10">
+          <Globe className="h-8 w-8 text-muted-foreground/30" />
+          <p className="text-sm text-muted-foreground">暂无在线资源</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        <Section icon={<Globe size={13} />} label="搜索结果（点击选择）">
+          <div className="space-y-1">
+            {online.searchResults.map((r) => (
+              <button
+                key={r.url}
+                type="button"
+                onClick={() => online.selectAnime(r)}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors bg-white/5 hover:bg-white/10 text-white/70 hover:text-white"
+              >
+                <span className="min-w-0 flex-1 truncate">{r.name}</span>
+                <ChevronRight size={14} className="shrink-0 text-white/30" />
+              </button>
+            ))}
+          </div>
+        </Section>
+      </div>
+    );
+  }
+
+  // Loading episodes
+  if (online.loadingEpisodes) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-10">
+        <Loader2 className="h-7 w-7 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">正在加载剧集列表...</p>
+      </div>
+    );
+  }
+
+  // Step 2: Show roads & episodes — user picks a road, we resolve the episode
+  return (
+    <div className="space-y-4">
+      {/* Road selector (if multiple roads) */}
+      {online.roads.length > 1 && (
+        <Section icon={<Monitor size={13} />} label="线路">
+          <div className="flex flex-wrap gap-1.5">
+            {online.roads.map((road, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => online.selectRoad(i)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all",
+                  online.selectedRoadIndex === i
+                    ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                    : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
+                )}
+              >
+                {road.name}
+                <span className={cn(
+                  "tabular-nums",
+                  online.selectedRoadIndex === i ? "text-primary/60" : "text-white/25",
+                )}>
+                  {road.episodes.length}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {/* Episode preview */}
+      {online.roads[online.selectedRoadIndex] && (
+        <Section icon={<Subtitles size={13} />} label={`剧集（共 ${online.roads[online.selectedRoadIndex].episodes.length} 集）`}>
+          <div className="flex flex-wrap gap-1">
+            {online.roads[online.selectedRoadIndex].episodes.map((ep, i) => {
+              const isCurrent = i === episodeNumber - 1;
+              return (
+                <span
+                  key={ep.url}
+                  className={cn(
+                    "inline-flex h-7 items-center justify-center rounded-md px-2 text-[11px] font-medium tabular-nums",
+                    isCurrent
+                      ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                      : "bg-white/5 text-white/30",
+                  )}
+                >
+                  {isCurrent && <Check size={10} className="mr-0.5" />}
+                  {ep.name}
+                </span>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* No matching episode warning */}
+      {!episodeUrl && (
+        <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
+          <TriangleAlert size={14} />
+          当前线路暂无第 {episodeNumber} 话，请尝试切换线路
+        </div>
+      )}
+
+      {/* Play button */}
+      <Button
+        onClick={() => episodeUrl && onPlay(episodeUrl)}
+        disabled={!episodeUrl}
+        className="w-full gap-2"
+      >
+        <Play size={16} fill="currentColor" />
+        在线播放
       </Button>
     </div>
   );

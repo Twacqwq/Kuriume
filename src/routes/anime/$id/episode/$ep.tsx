@@ -3,6 +3,7 @@ import type { HistoryContext } from "@/components/torrent-player";
 import { Button } from "@/components/ui/button";
 import { historyApi } from "@/lib/store";
 import { useTorrentSource } from "@/hooks/use-torrent-source";
+import { useVideoSniffer } from "@/hooks/use-video-sniffer";
 import type { CacheContext } from "@/hooks/use-torrent-stream";
 import { cn } from "@/lib/utils";
 import { detailQueryOptions, episodesQueryOptions } from "@/routes/anime/$id";
@@ -12,6 +13,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ArrowLeft,
   Check,
+  Globe,
   Languages,
   Loader2,
   Monitor,
@@ -28,13 +30,14 @@ export const Route = createFileRoute("/anime/$id/episode/$ep")({
     subtitle: (search.subtitle as string) || undefined,
     provider: (search.provider as string) || undefined,
     t: Number(search.t) || undefined,
+    onlineUrl: (search.onlineUrl as string) || undefined,
   }),
   component: EpisodePage,
 });
 
 function EpisodePage() {
   const { id, ep } = Route.useParams();
-  const { groupId, resolution, subtitle: searchSubtitle, provider: searchProvider, t: startTime } = Route.useSearch();
+  const { groupId, resolution, subtitle: searchSubtitle, provider: searchProvider, t: startTime, onlineUrl } = Route.useSearch();
   const router = useRouter();
   const epNum = Number(ep);
 
@@ -81,6 +84,21 @@ function EpisodePage() {
     ? `${animeTitle} · 第 ${epNum} 话`
     : `第 ${epNum} 话`;
 
+  // ── Determine mode ──────────────────────────────────────────────
+
+  const isOnline = !!onlineUrl;
+
+  // ── Video sniffer (online mode) ────────────────────────────────
+
+  const sniffer = useVideoSniffer();
+
+  useEffect(() => {
+    if (isOnline && onlineUrl) {
+      sniffer.sniff(onlineUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onlineUrl, isOnline]);
+
   // ── Resolve torrent source ─────────────────────────────────────
 
   const source = useTorrentSource(
@@ -101,10 +119,12 @@ function EpisodePage() {
       router.navigate({
         to: "/anime/$id/episode/$ep",
         params: { id, ep: String(targetEp) },
-        search: { groupId, resolution, subtitle: searchSubtitle, provider: searchProvider, t: undefined },
+        search: onlineUrl
+          ? { onlineUrl, t: undefined, groupId: undefined, resolution: undefined, subtitle: undefined, provider: undefined }
+          : { groupId, resolution, subtitle: searchSubtitle, provider: searchProvider, t: undefined, onlineUrl: undefined },
       });
     },
-    [router, id, groupId, resolution, searchSubtitle, searchProvider],
+    [router, id, groupId, resolution, searchSubtitle, searchProvider, onlineUrl],
   );
 
   const navPrev = hasPrev ? () => navigateToEp(epNum - 1) : undefined;
@@ -182,7 +202,45 @@ function EpisodePage() {
       <div className="flex min-h-0 flex-1">
         {/* Player area */}
         <div className="relative min-w-0 flex-1">
-          {source.isLoading ? (
+          {isOnline ? (
+            sniffer.phase === "sniffing" || sniffer.phase === "idle" ? (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <div className="flex items-center gap-2 text-sm text-white/60">
+                  <Globe className="h-4 w-4" />
+                  <span>正在解析视频地址…</span>
+                </div>
+              </div>
+            ) : sniffer.phase === "error" ? (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-black">
+                <TriangleAlert className="h-10 w-10 text-destructive" />
+                <p className="max-w-sm text-center text-sm text-white/60">
+                  {sniffer.error || "视频解析失败"}
+                </p>
+                <Button
+                  variant="secondary"
+                  onClick={() => onlineUrl && sniffer.sniff(onlineUrl)}
+                  className="gap-2"
+                >
+                  重试
+                </Button>
+              </div>
+            ) : (
+              <TorrentPlayer
+                key={`online-${id}-${ep}-${sniffer.videoUrl}`}
+                videoUrl={sniffer.videoUrl!}
+                title={title}
+                subtitle={subtitle}
+                historyContext={historyContext}
+                startTime={effectiveStartTime}
+                onBack={navBack}
+                onPrev={navPrev}
+                onNext={navNext}
+                onToggleFullscreen={toggleFullscreen}
+                isFullscreen={isFullscreen}
+              />
+            )
+          ) : source.isLoading ? (
             <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <p className="text-sm text-white/50">正在搜索字幕组...</p>
@@ -231,7 +289,8 @@ function EpisodePage() {
         {/* ── Sidebar (hidden in fullscreen) ───────────────────── */}
         {!isFullscreen && (
           <aside className="flex w-80 shrink-0 flex-col border-l border-white/5 bg-background">
-            {/* ── Source selector ── */}
+            {/* ── Source selector (torrent mode only) ── */}
+            {!isOnline && (
             <div className="max-h-[50%] shrink-0 overflow-y-auto border-b border-white/5 px-4 py-3">
               <p className="mb-2.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50">
                 资源
@@ -339,6 +398,17 @@ function EpisodePage() {
                 </div>
               )}
             </div>
+            )}
+
+            {/* Online mode indicator */}
+            {isOnline && (
+              <div className="shrink-0 border-b border-white/5 px-4 py-3">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
+                  <Globe size={12} />
+                  在线播放
+                </div>
+              </div>
+            )}
 
             {/* ── Episode list ── */}
             <div className="flex items-center justify-between px-4 pt-3 pb-2">

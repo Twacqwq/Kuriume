@@ -44,6 +44,8 @@ tauri-plugin-opener = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+reqwest = { workspace = true }
+regex = "1"
 kuriume-provider = { workspace = true }
 kuriume-torrent = { workspace = true }
 kuriume-store = { workspace = true }
