@@ -1,13 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import {
-  mikanApi,
+  torrentSourceApi,
   extractEpisodeNumber,
   extractResolution,
   extractSubtitleLang,
   type EpisodeTorrentMatch,
   type GroupTorrents,
-} from "@/lib/mikan";
+} from "@/lib/torrent-source";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -22,7 +22,7 @@ export interface GroupData {
   episodes: Map<number, Map<string, EpisodeTorrentMatch>>;
 }
 
-interface UseMikanTorrentsResult {
+interface UseTorrentSourceResult {
   isLoading: boolean;
   error: string | null;
   groups: GroupData[];
@@ -118,28 +118,29 @@ function buildGroupData(raw: GroupTorrents[], totalEpisodes?: number): GroupData
 
 // ── Hook ─────────────────────────────────────────────────────────
 
-export function useMikanTorrents(
+export function useTorrentSource(
   bgmId: string | undefined,
   title: string | undefined,
   initialGroupId?: string,
   initialResolution?: string,
   totalEpisodes?: number,
   initialSubtitle?: string,
-): UseMikanTorrentsResult {
+  provider = "Mikan",
+): UseTorrentSourceResult {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(initialGroupId ?? null);
   const [preferredResolution, setPreferredResolution] = useState<string | null>(initialResolution ?? null);
   const [preferredSubtitle, setPreferredSubtitle] = useState<string | null>(initialSubtitle ?? null);
 
-  // Step 1: Resolve Mikan ID from bgm.tv subject ID
+  // Step 1: Resolve torrent source ID from bgm.tv subject ID
   const {
-    data: mikanEntry,
+    data: sourceEntry,
     isLoading: isResolving,
     error: resolveError,
   } = useQuery({
-    queryKey: ["mikan-resolve", bgmId],
+    queryKey: ["torrent-resolve", provider, bgmId],
     queryFn: async ({ signal }) => {
       if (!bgmId || !title) return null;
-      return mikanApi.resolve(title, bgmId, signal);
+      return torrentSourceApi.resolve(title, bgmId, signal, provider);
     },
     enabled: !!bgmId && !!title,
     staleTime: 10 * 60 * 1000,
@@ -147,7 +148,7 @@ export function useMikanTorrents(
     retry: 1,
   });
 
-  const mikanId = mikanEntry?.provider_id;
+  const sourceId = sourceEntry?.provider_id;
 
   // Step 2: Fetch ALL groups with their torrents in one go
   const {
@@ -155,12 +156,12 @@ export function useMikanTorrents(
     isLoading: isFetchingAll,
     error: fetchError,
   } = useQuery({
-    queryKey: ["mikan-all-torrents", mikanId],
+    queryKey: ["torrent-all-torrents", provider, sourceId],
     queryFn: async ({ signal }) => {
-      if (!mikanId) return [];
-      return mikanApi.getAllTorrents(mikanId, signal);
+      if (!sourceId) return [];
+      return torrentSourceApi.getAllTorrents(sourceId, signal, provider);
     },
-    enabled: !!mikanId,
+    enabled: !!sourceId,
     staleTime: 5 * 60 * 1000,
     gcTime: 15 * 60 * 1000,
     retry: 1,
@@ -242,6 +243,9 @@ export function useMikanTorrents(
     (ep: number): string | undefined => {
       const m = getMatch(ep);
       if (!m) return undefined;
+      // Prefer .torrent URL (contains full metadata — instant) over magnet
+      // (requires peer discovery for metadata — can be slow).
+      // DMHY's torrentUrl is empty, so it naturally falls back to magnet.
       return m.torrentUrl || m.magnet || undefined;
     },
     [getMatch],

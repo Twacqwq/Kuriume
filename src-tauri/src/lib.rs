@@ -1,7 +1,7 @@
 use crate::commands::{ProviderState, TorrentProviderState};
 use crate::store_commands::StoreState;
 use crate::torrent_commands::TorrentState;
-use kuriume_provider::{Bangumi, Mikan};
+use kuriume_provider::{Bangumi, Dmhy, Mikan, Nyaa};
 use std::sync::Arc;
 use tauri::Manager;
 use tauri::menu::Menu;
@@ -36,6 +36,7 @@ pub fn run() {
             crate::commands::torrent_source_get_groups,
             crate::commands::torrent_source_get_group_torrents,
             crate::commands::torrent_source_get_all_torrents,
+            crate::commands::torrent_source_list_providers,
             crate::torrent_commands::torrent_add,
             crate::torrent_commands::torrent_list_files,
             crate::torrent_commands::torrent_stream_url,
@@ -90,7 +91,9 @@ pub fn run() {
             };
 
             let mut torrent_providers = TorrentProviderState::new();
-            torrent_providers.register(Arc::new(Mikan::new(tracker_list)));
+            torrent_providers.register(Arc::new(Mikan::new(tracker_list.clone())));
+            torrent_providers.register(Arc::new(Nyaa::new(tracker_list)));
+            torrent_providers.register(Arc::new(Dmhy::new()));
             app.manage(torrent_providers);
 
             if let Ok(data_dir) = app.path().app_data_dir() {

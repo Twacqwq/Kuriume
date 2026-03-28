@@ -2,7 +2,7 @@ import { TorrentPlayer } from "@/components/torrent-player";
 import type { HistoryContext } from "@/components/torrent-player";
 import { Button } from "@/components/ui/button";
 import { historyApi } from "@/lib/store";
-import { useMikanTorrents } from "@/hooks/use-mikan-torrents";
+import { useTorrentSource } from "@/hooks/use-torrent-source";
 import type { CacheContext } from "@/hooks/use-torrent-stream";
 import { cn } from "@/lib/utils";
 import { detailQueryOptions, episodesQueryOptions } from "@/routes/anime/$id";
@@ -26,6 +26,7 @@ export const Route = createFileRoute("/anime/$id/episode/$ep")({
     groupId: (search.groupId as string) || undefined,
     resolution: (search.resolution as string) || undefined,
     subtitle: (search.subtitle as string) || undefined,
+    provider: (search.provider as string) || undefined,
     t: Number(search.t) || undefined,
   }),
   component: EpisodePage,
@@ -33,7 +34,7 @@ export const Route = createFileRoute("/anime/$id/episode/$ep")({
 
 function EpisodePage() {
   const { id, ep } = Route.useParams();
-  const { groupId, resolution, subtitle: searchSubtitle, t: startTime } = Route.useSearch();
+  const { groupId, resolution, subtitle: searchSubtitle, provider: searchProvider, t: startTime } = Route.useSearch();
   const router = useRouter();
   const epNum = Number(ep);
 
@@ -82,15 +83,16 @@ function EpisodePage() {
 
   // ── Resolve torrent source ─────────────────────────────────────
 
-  const mikan = useMikanTorrents(
+  const source = useTorrentSource(
     id,
     animeTitle,
     groupId,
     resolution,
     animeInfo?.total_episodes,
     searchSubtitle,
+    searchProvider,
   );
-  const torrentSource = mikan.getTorrentSource(epNum);
+  const torrentSource = source.getTorrentSource(epNum);
 
   const navBack = () => router.navigate({ to: "/anime/$id", params: { id } });
 
@@ -99,10 +101,10 @@ function EpisodePage() {
       router.navigate({
         to: "/anime/$id/episode/$ep",
         params: { id, ep: String(targetEp) },
-        search: { groupId, resolution, subtitle: searchSubtitle, t: undefined },
+        search: { groupId, resolution, subtitle: searchSubtitle, provider: searchProvider, t: undefined },
       });
     },
-    [router, id, groupId, resolution, searchSubtitle],
+    [router, id, groupId, resolution, searchSubtitle, searchProvider],
   );
 
   const navPrev = hasPrev ? () => navigateToEp(epNum - 1) : undefined;
@@ -121,8 +123,8 @@ function EpisodePage() {
     bgmId: id,
     episode: epNum,
     animeTitle: animeTitle ?? `Unknown-${id}`,
-    groupName: mikan.selectedGroupName ?? "",
-    resolution: mikan.preferredResolution ?? "",
+    groupName: source.selectedGroupName ?? "",
+    resolution: source.preferredResolution ?? "",
     torrentSource: torrentSource ?? "",
   };
 
@@ -142,11 +144,11 @@ function EpisodePage() {
 
   // ── Derived ────────────────────────────────────────────────────
 
-  const activeGroup = mikan.selectedGroupId
-    ? mikan.getGroupData(mikan.selectedGroupId)
+  const activeGroup = source.selectedGroupId
+    ? source.getGroupData(source.selectedGroupId)
     : undefined;
   const hasSource = !!torrentSource;
-  const hasError = !!mikan.error && mikan.groups.length === 0;
+  const hasError = !!source.error && source.groups.length === 0;
 
   // ── Render ────────────────────────────────────────────────────
 
@@ -180,7 +182,7 @@ function EpisodePage() {
       <div className="flex min-h-0 flex-1">
         {/* Player area */}
         <div className="relative min-w-0 flex-1">
-          {mikan.isLoading ? (
+          {source.isLoading ? (
             <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <p className="text-sm text-white/50">正在搜索字幕组...</p>
@@ -189,7 +191,7 @@ function EpisodePage() {
             <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-black">
               <TriangleAlert className="h-10 w-10 text-destructive" />
               <p className="max-w-sm text-center text-sm text-white/60">
-                搜索种子资源失败：{mikan.error}
+                搜索种子资源失败：{source.error}
               </p>
               <Button variant="secondary" onClick={navBack} className="gap-2">
                 <ArrowLeft size={16} />
@@ -200,11 +202,11 @@ function EpisodePage() {
             <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
               <Subtitles className="h-10 w-10 text-white/15" />
               <p className="text-sm text-white/50">
-                {mikan.groups.length === 0
+                {source.groups.length === 0
                   ? "未找到可用的字幕组"
                   : `当前字幕组暂无第 ${epNum} 话资源`}
               </p>
-              {mikan.groups.length > 0 && (
+              {source.groups.length > 0 && (
                 <p className="text-xs text-white/30">请在右侧切换字幕组</p>
               )}
             </div>
@@ -213,7 +215,7 @@ function EpisodePage() {
               key={`${id}-${ep}-${torrentSource}`}
               source={torrentSource}
               title={title}
-              subtitle={`${subtitle} · ${mikan.selectedGroupName ?? ""}`}
+              subtitle={`${subtitle} · ${source.selectedGroupName ?? ""}`}
               cacheContext={cacheContext}
               historyContext={historyContext}
               startTime={effectiveStartTime}
@@ -235,14 +237,14 @@ function EpisodePage() {
                 资源
               </p>
 
-              {mikan.isLoading ? (
+              {source.isLoading ? (
                 <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground/50">
                   <Loader2 size={12} className="animate-spin" />
                   正在搜索字幕组...
                 </div>
-              ) : mikan.groups.length === 0 ? (
+              ) : source.groups.length === 0 ? (
                 <p className="py-1 text-xs text-muted-foreground/40">
-                  {mikan.error ? "搜索失败" : "暂无可用资源"}
+                  {source.error ? "搜索失败" : "暂无可用资源"}
                 </p>
               ) : (
                 <div className="space-y-3">
@@ -253,14 +255,14 @@ function EpisodePage() {
                       字幕组
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {mikan.groups.map((g) => (
+                      {source.groups.map((g) => (
                         <button
                           key={g.id}
                           type="button"
-                          onClick={() => mikan.selectGroup(g.id)}
+                          onClick={() => source.selectGroup(g.id)}
                           className={cn(
                             "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-all",
-                            mikan.selectedGroupId === g.id
+                            source.selectedGroupId === g.id
                               ? "bg-primary/15 text-primary ring-1 ring-primary/30"
                               : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
                           )}
@@ -269,7 +271,7 @@ function EpisodePage() {
                           <span
                             className={cn(
                               "tabular-nums",
-                              mikan.selectedGroupId === g.id
+                              source.selectedGroupId === g.id
                                 ? "text-primary/60"
                                 : "text-white/25",
                             )}
@@ -293,10 +295,10 @@ function EpisodePage() {
                           <button
                             key={res}
                             type="button"
-                            onClick={() => mikan.setPreferredResolution(res)}
+                            onClick={() => source.setPreferredResolution(res)}
                             className={cn(
                               "rounded-md px-2 py-1 text-[11px] font-medium transition-all",
-                              mikan.preferredResolution === res
+                              source.preferredResolution === res
                                 ? "bg-primary/15 text-primary ring-1 ring-primary/30"
                                 : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
                             )}
@@ -320,10 +322,10 @@ function EpisodePage() {
                           <button
                             key={sub}
                             type="button"
-                            onClick={() => mikan.setPreferredSubtitle(sub)}
+                            onClick={() => source.setPreferredSubtitle(sub)}
                             className={cn(
                               "rounded-md px-2 py-1 text-[11px] font-medium transition-all",
-                              mikan.preferredSubtitle === sub
+                              source.preferredSubtitle === sub
                                 ? "bg-primary/15 text-primary ring-1 ring-primary/30"
                                 : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
                             )}

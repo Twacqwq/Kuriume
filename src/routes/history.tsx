@@ -78,6 +78,7 @@ function HistoryPage() {
           groupId: entry.group_id ?? undefined,
           resolution: entry.resolution ?? undefined,
           subtitle: entry.subtitle ?? undefined,
+          provider: undefined,
           t: entry.position > 5 ? entry.position : undefined,
         },
       });

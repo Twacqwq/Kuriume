@@ -21,15 +21,19 @@
 //! ```
 
 mod bangumi;
+mod dmhy;
 mod error;
 mod mikan;
 mod models;
+mod nyaa;
 mod provider;
 mod torrent_provider;
 
 pub use bangumi::Bangumi;
+pub use dmhy::Dmhy;
 pub use error::{ProviderError, Result};
 pub use mikan::Mikan;
+pub use nyaa::Nyaa;
 pub use models::{
     AnimeInfo, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery,
     PagedResult, SearchQuery, SortBy, Weekday,

@@ -12,5 +12,6 @@ axum = "0.8"
 serde = { workspace = true }
 thiserror = { workspace = true }
 anyhow = "1"
+reqwest = { workspace = true }
 tracing = "0.1"
 url = "2"

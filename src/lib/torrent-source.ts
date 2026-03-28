@@ -50,6 +50,9 @@ function abortableInvoke<T>(cmd: string, args: Record<string, unknown>, signal?:
 const DEFAULT_PROVIDER = "Mikan";
 
 export const torrentSourceApi = {
+  /** List all registered torrent provider names. */
+  listProviders: () => invoke<string[]>("torrent_source_list_providers"),
+
   /** Resolve a bgm.tv anime to a torrent source. */
   resolve: (keyword: string, bgmId: string, signal?: AbortSignal, provider = DEFAULT_PROVIDER) =>
     abortableInvoke<TorrentSourceEntry | null>("torrent_source_resolve", { provider, keyword, bgmId }, signal),
@@ -73,6 +76,10 @@ export const torrentSourceApi = {
 
 // Keep backward-compatible alias so existing callsites can migrate gradually.
 export const mikanApi = torrentSourceApi;
+
+/** Known provider names — used for prefetch and static tab rendering. */
+export const KNOWN_PROVIDERS = ["Mikan", "Nyaa", "DMHY"] as const;
+export type ProviderName = (typeof KNOWN_PROVIDERS)[number];
 
 // ── Episode number extraction ───────────────────────────────────
 

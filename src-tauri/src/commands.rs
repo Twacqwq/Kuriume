@@ -117,6 +117,12 @@ impl TorrentProviderState {
     fn get(&self, name: &str) -> Option<&Arc<dyn TorrentProvider>> {
         self.providers.get(name)
     }
+
+    pub fn list_providers(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.providers.keys().cloned().collect();
+        names.sort();
+        names
+    }
 }
 
 impl Default for TorrentProviderState {
@@ -185,4 +191,12 @@ pub(crate) async fn torrent_source_get_all_torrents(
     p.get_all_torrents(anime_id)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// List all registered torrent provider names.
+#[command]
+pub(crate) async fn torrent_source_list_providers(
+    state: State<'_, TorrentProviderState>,
+) -> Result<Vec<String>, String> {
+    Ok(state.list_providers())
 }

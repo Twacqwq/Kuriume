@@ -84,6 +84,8 @@ pub struct TorrentEngine {
     _server_handle: tokio::task::JoinHandle<()>,
     /// Effective tracker list used for every torrent.
     trackers: Vec<String>,
+    /// HTTP client for downloading .torrent files (with proper User-Agent).
+    http_client: reqwest::Client,
 }
 
 impl TorrentEngine {
@@ -128,12 +130,20 @@ impl TorrentEngine {
 
         info!(port, "torrent streaming server started");
 
+        let http_client = reqwest::Client::builder()
+            .user_agent("Kuriume/0.1 (https://github.com/Kuriume/Kuriume)")
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .build()
+            .expect("failed to build HTTP client");
+
         Ok(Self {
             state: shared,
             download_dir,
             server_port: port,
             _server_handle: handle,
             trackers: effective,
+            http_client,
         })
     }
 
@@ -141,7 +151,30 @@ impl TorrentEngine {
     const INIT_TIMEOUT_SECS: u64 = 60;
 
     pub async fn add_torrent(&self, source: &str) -> Result<usize> {
-        let add_torrent = AddTorrent::from_url(source);
+        // For HTTP(S) URLs (.torrent files), download with our own client
+        // (proper User-Agent) to avoid being blocked by Cloudflare, then pass
+        // the raw bytes to librqbit. Magnet URIs go through directly.
+        let add_torrent = if source.starts_with("http://") || source.starts_with("https://") {
+            let resp = self
+                .http_client
+                .get(source)
+                .send()
+                .await
+                .map_err(|e| TorrentError::Engine(anyhow::anyhow!("download .torrent failed: {e}")))?;
+            if !resp.status().is_success() {
+                return Err(TorrentError::Engine(anyhow::anyhow!(
+                    "download .torrent returned {}",
+                    resp.status()
+                )));
+            }
+            let bytes = resp
+                .bytes()
+                .await
+                .map_err(|e| TorrentError::Engine(anyhow::anyhow!("read .torrent body failed: {e}")))?;
+            AddTorrent::from_bytes(bytes)
+        } else {
+            AddTorrent::from_url(source)
+        };
 
         let extra_trackers: Vec<String> = self.trackers.clone();
 

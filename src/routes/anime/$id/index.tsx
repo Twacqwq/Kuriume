@@ -6,7 +6,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { AnimeInfo, AnimeEpisodes, AnimeCharacters } from "@/lib/types";
 import { watchlistApi, type WatchStatus } from "@/lib/store";
-import { mikanApi } from "@/lib/mikan";
+import { torrentSourceApi } from "@/lib/torrent-source";
 
 import {
   detailQueryOptions,
@@ -80,19 +80,17 @@ function AnimeDetailPage() {
 
   const animeTitle = info?.title_cn || info?.title;
 
-  // Background prefetch: warm the Mikan cache so the episode page
-  // can resolve torrent sources faster when the user picks an episode.
-  useQuery({
-    queryKey: ["mikan-resolve", id],
-    queryFn: async ({ signal }) => {
-      if (!id || !animeTitle) return null;
-      return mikanApi.resolve(animeTitle, id, signal);
-    },
-    enabled: !!id && !!animeTitle,
-    staleTime: 10 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
-    retry: 1,
-  });
+  // Background prefetch: warm the torrent source cache for ALL known providers
+  // so the source picker dialog can open instantly when the user picks an episode.
+  const prefetchEnabled = !!id && !!animeTitle;
+  const resolveFn = (provider: string) => async ({ signal }: { signal: AbortSignal }) => {
+    if (!id || !animeTitle) return null;
+    return torrentSourceApi.resolve(animeTitle, id, signal, provider);
+  };
+  const resolveOpts = { staleTime: 10 * 60 * 1000, gcTime: 30 * 60 * 1000, retry: 1 as const, enabled: prefetchEnabled };
+  useQuery({ queryKey: ["torrent-resolve", "Mikan", id], queryFn: resolveFn("Mikan"), ...resolveOpts });
+  useQuery({ queryKey: ["torrent-resolve", "Nyaa", id], queryFn: resolveFn("Nyaa"), ...resolveOpts });
+  useQuery({ queryKey: ["torrent-resolve", "DMHY", id], queryFn: resolveFn("DMHY"), ...resolveOpts });
 
   // ── Watchlist ──
   const qc = useQueryClient();
