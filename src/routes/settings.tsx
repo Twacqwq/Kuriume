@@ -17,6 +17,7 @@ import {
   Cpu,
   Database,
   SkipForward,
+  Sparkles,
 } from "lucide-react";
 
 export const Route = createFileRoute("/settings")({
@@ -321,6 +322,35 @@ function SettingsPage() {
                     }`}
                   />
                 </button>
+              </div>
+
+              {/* Anime4K super-resolution */}
+              <div className="flex items-center justify-between rounded-xl bg-card/50 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <Sparkles size={20} className={settings.anime4k_mode !== "off" ? "text-primary" : "text-muted-foreground"} />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">超分辨率 (Anime4K)</p>
+                    <p className="text-xs text-muted-foreground">
+                      实时画质增强，使用 GPU 后处理着色器。更高模式需要更强的 GPU
+                    </p>
+                  </div>
+                </div>
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  size="sm"
+                  value={settings.anime4k_mode}
+                  onValueChange={async (value) => {
+                    if (!value) return;
+                    await settingsApi.setAnime4kMode(value);
+                    setSettings((s) => (s ? { ...s, anime4k_mode: value } : s));
+                  }}
+                >
+                  <ToggleGroupItem value="off">关闭</ToggleGroupItem>
+                  <ToggleGroupItem value="A">模式 A</ToggleGroupItem>
+                  <ToggleGroupItem value="B">模式 B</ToggleGroupItem>
+                  <ToggleGroupItem value="C">模式 C</ToggleGroupItem>
+                </ToggleGroup>
               </div>
             </div>
           )}

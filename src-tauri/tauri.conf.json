@@ -84,6 +84,9 @@
         "libs/macos/libzimg.2.dylib",
         "libs/macos/libzstd.1.5.7.dylib"
       ]
-    }
+    },
+    "resources": [
+      "resources/shaders/*"
+    ]
   }
 }

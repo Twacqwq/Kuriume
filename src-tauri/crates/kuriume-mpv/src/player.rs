@@ -178,6 +178,23 @@ impl MpvPlayer {
         Ok(())
     }
 
+    // ── GLSL shaders (Anime4K) ──────────────────────────────────
+
+    /// Set the GLSL post-processing shader list.
+    ///
+    /// `paths` should be a colon-separated string of absolute file paths
+    /// (e.g. `/path/to/Clamp.glsl:/path/to/Restore.glsl`).
+    pub fn set_glsl_shaders(&self, paths: &str) -> Result<()> {
+        self.mpv.set_property("glsl-shaders", paths)?;
+        Ok(())
+    }
+
+    /// Clear all GLSL post-processing shaders.
+    pub fn clear_glsl_shaders(&self) -> Result<()> {
+        self.mpv.set_property("glsl-shaders", "")?;
+        Ok(())
+    }
+
     // ── Event loop ───────────────────────────────────────────────
 
     /// Start the event loop. Returns a receiver channel for `PlayerEvent`s.

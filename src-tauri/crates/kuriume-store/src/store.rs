@@ -33,6 +33,8 @@ pub struct Settings {
     pub auto_next: bool,
     /// User-configured tracker list. Empty means "use built-in defaults".
     pub tracker_list: Vec<String>,
+    /// Anime4K shader mode: "off", "A", "B", or "C".
+    pub anime4k_mode: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -322,6 +324,10 @@ impl Store {
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or_default();
 
+        let anime4k_mode = self
+            .get_setting("anime4k_mode")?
+            .unwrap_or_else(|| "off".to_string());
+
         Ok(Settings {
             cache_dir,
             cache_enabled,
@@ -331,6 +337,7 @@ impl Store {
             buffer_size,
             auto_next,
             tracker_list,
+            anime4k_mode,
         })
     }
 
@@ -366,6 +373,10 @@ impl Store {
         let json = serde_json::to_string(trackers)
             .map_err(|e| StoreError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
         self.set_setting("tracker_list", &json)
+    }
+
+    pub fn set_anime4k_mode(&self, mode: &str) -> Result<()> {
+        self.set_setting("anime4k_mode", mode)
     }
 
     // ── Media cache ──────────────────────────────────────────────

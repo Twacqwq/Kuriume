@@ -417,6 +417,74 @@ pub(crate) async fn player_destroy(state: State<'_, PlayerState>) -> Result<(), 
     Ok(())
 }
 
+/// Set Anime4K shader mode (A, B, C).
+///
+/// Resolves the bundled GLSL shader files from the app resource directory
+/// and sets the `glsl-shaders` property on the mpv player.
+#[command]
+pub(crate) async fn player_set_anime4k<R: Runtime>(
+    state: State<'_, PlayerState>,
+    app: AppHandle<R>,
+    mode: &str,
+) -> Result<(), String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("resource dir: {e}"))?
+        .join("resources")
+        .join("shaders");
+
+    // Build the shader list based on mode
+    let shader_names: Vec<&str> = match mode {
+        "A" => vec![
+            "Anime4K_Clamp_Highlights.glsl",
+            "Anime4K_Restore_CNN_VL.glsl",
+            "Anime4K_Upscale_CNN_x2_VL.glsl",
+            "Anime4K_AutoDownscalePre_x2.glsl",
+            "Anime4K_AutoDownscalePre_x4.glsl",
+            "Anime4K_Upscale_CNN_x2_M.glsl",
+        ],
+        "B" => vec![
+            "Anime4K_Clamp_Highlights.glsl",
+            "Anime4K_Restore_CNN_Soft_VL.glsl",
+            "Anime4K_Upscale_CNN_x2_VL.glsl",
+            "Anime4K_AutoDownscalePre_x2.glsl",
+            "Anime4K_AutoDownscalePre_x4.glsl",
+            "Anime4K_Upscale_CNN_x2_M.glsl",
+        ],
+        "C" => vec![
+            "Anime4K_Clamp_Highlights.glsl",
+            "Anime4K_Upscale_Denoise_CNN_x2_VL.glsl",
+            "Anime4K_AutoDownscalePre_x2.glsl",
+            "Anime4K_AutoDownscalePre_x4.glsl",
+            "Anime4K_Upscale_CNN_x2_M.glsl",
+        ],
+        _ => return Err(format!("Unknown Anime4K mode: {mode}")),
+    };
+
+    let paths: Vec<String> = shader_names
+        .iter()
+        .map(|name| {
+            resource_dir
+                .join(name)
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+
+    let joined = paths.join(":");
+
+    with_player(&state, |p| p.set_glsl_shaders(&joined)).await
+}
+
+/// Clear all Anime4K shaders.
+#[command]
+pub(crate) async fn player_clear_anime4k(
+    state: State<'_, PlayerState>,
+) -> Result<(), String> {
+    with_player(&state, |p| p.clear_glsl_shaders()).await
+}
+
 // ── Helpers ──────────────────────────────────────────────────────
 
 #[derive(serde::Serialize)]

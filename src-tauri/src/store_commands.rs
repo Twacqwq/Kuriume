@@ -212,6 +212,17 @@ pub(crate) fn set_tracker_list(
     })
 }
 
+#[command]
+pub(crate) fn set_anime4k_mode(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    mode: &str,
+) -> Result<(), String> {
+    state.with_store(&app, |store| {
+        store.set_anime4k_mode(mode).map_err(|e| e.to_string())
+    })
+}
+
 // ── Cache lookup / management commands ───────────────────────────
 
 #[command]

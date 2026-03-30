@@ -57,6 +57,11 @@ export const playerApi = {
   /** Set demuxer forward buffer size in MiB. */
   setBufferSize: (sizeMib: number) =>
     invoke<void>("plugin:mpv|player_set_buffer_size", { sizeMib }),
+  /** Set Anime4K shader mode (A, B, or C). */
+  setAnime4k: (mode: string) =>
+    invoke<void>("plugin:mpv|player_set_anime4k", { mode }),
+  /** Clear all Anime4K shaders. */
+  clearAnime4k: () => invoke<void>("plugin:mpv|player_clear_anime4k"),
   /** Reposition the native view to match a CSS rect (top-left origin). */
   setViewport: (x: number, y: number, width: number, height: number) =>
     invoke<void>("plugin:mpv|player_set_viewport", {

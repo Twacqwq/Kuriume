@@ -11,6 +11,7 @@ export interface Settings {
   buffer_size: number;
   auto_next: boolean;
   tracker_list: string[];
+  anime4k_mode: string;
 }
 
 export interface MediaEntry {
@@ -57,6 +58,9 @@ export const settingsApi = {
 
   setTrackerList: (trackers: string[]) =>
     invoke<void>("set_tracker_list", { trackers }),
+
+  setAnime4kMode: (mode: string) =>
+    invoke<void>("set_anime4k_mode", { mode }),
 };
 
 // ── Cache API ───────────────────────────────────────────────────

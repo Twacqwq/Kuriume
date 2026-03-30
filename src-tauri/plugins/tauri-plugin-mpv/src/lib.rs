@@ -34,6 +34,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::player_set_buffer_size,
             commands::player_set_viewport,
             commands::player_destroy,
+            commands::player_set_anime4k,
+            commands::player_clear_anime4k,
         ])
         .setup(|app, _api| {
             app.manage(PlayerState::new());

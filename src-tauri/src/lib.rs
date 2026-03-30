@@ -62,6 +62,7 @@ pub fn run() {
             crate::store_commands::set_buffer_size,
             crate::store_commands::set_auto_next,
             crate::store_commands::set_tracker_list,
+            crate::store_commands::set_anime4k_mode,
             crate::store_commands::cache_lookup,
             crate::store_commands::cache_register,
             crate::store_commands::cache_remove,
