@@ -2,7 +2,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { Link } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, Info, Pause, Play, Star } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 export interface BannerItem {
   id: number
@@ -52,6 +52,14 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
 
   const item = items[current]
 
+  // Only render slides near current to reduce DOM / image load
+  const visibleIndices = useMemo(() => {
+    if (count <= 3) return items.map((_, i) => i)
+    const prev = (current - 1 + count) % count
+    const next = (current + 1) % count
+    return [...new Set([prev, current, next])]
+  }, [current, count, items])
+
   if (!item) {
     // Loading skeleton while banner data is being fetched
     return (
@@ -68,21 +76,24 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
       onMouseLeave={() => setIsPaused(false)}
     >
       {/* Blurred background layer */}
-      {items.map((it, i) => (
-        <div
-          key={it.id}
-          className={cn(
-            'absolute inset-0 transition-opacity duration-700 ease-in-out',
-            i === current ? 'opacity-100' : 'opacity-0',
-          )}
-        >
-          <img
-            src={it.cover}
-            alt=""
-            className="h-full w-full scale-110 object-cover blur-sm brightness-65 saturate-130"
-          />
-        </div>
-      ))}
+      {visibleIndices.map((i) => {
+        const it = items[i]!
+        return (
+          <div
+            key={it.id}
+            className={cn(
+              'absolute inset-0 transition-opacity duration-700 ease-in-out',
+              i === current ? 'opacity-100' : 'opacity-0',
+            )}
+          >
+            <img
+              src={it.cover}
+              alt=""
+              className="h-full w-full scale-110 object-cover blur-sm brightness-65 saturate-130"
+            />
+          </div>
+        )
+      })}
 
       {/* Gradient overlay for bottom fade */}
       <div className="absolute inset-0 bg-linear-to-t from-background via-transparent to-transparent" />
@@ -144,32 +155,35 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
 
         {/* Right: cover card */}
         <div className="hidden md:block relative shrink-0">
-          {items.map((it, i) => (
-            <div
-              key={it.id}
-              className={cn(
-                'transition-all duration-700 ease-in-out',
-                i === current
-                  ? 'opacity-100 scale-100 translate-y-0'
-                  : 'opacity-0 scale-95 translate-y-4 absolute inset-0',
-              )}
-            >
-              {/* Glow */}
-              <img
-                src={it.cover}
-                alt=""
-                className="absolute inset-0 h-full w-full object-cover blur-2xl opacity-30 scale-110"
-              />
-              {/* Cover */}
-              <div className="relative h-95 lg:h-105 aspect-2/3 overflow-hidden rounded-2xl shadow-2xl shadow-black/50 ring-1 ring-white/10">
+          {visibleIndices.map((i) => {
+            const it = items[i]!
+            return (
+              <div
+                key={it.id}
+                className={cn(
+                  'transition-all duration-700 ease-in-out',
+                  i === current
+                    ? 'opacity-100 scale-100 translate-y-0'
+                    : 'opacity-0 scale-95 translate-y-4 absolute inset-0',
+                )}
+              >
+                {/* Glow */}
                 <img
                   src={it.cover}
-                  alt={it.title}
-                  className="h-full w-full object-cover"
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover blur-2xl opacity-30 scale-110"
                 />
+                {/* Cover */}
+                <div className="relative h-95 lg:h-105 aspect-2/3 overflow-hidden rounded-2xl shadow-2xl shadow-black/50 ring-1 ring-white/10">
+                  <img
+                    src={it.cover}
+                    alt={it.title}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
       {/* Navigation arrows (visible on hover) */}

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Star, Film } from "lucide-react";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { queryClient } from "@/lib/query-client";
 import type { AnimeInfo, CalendarEntry } from "@/lib/types";
@@ -107,7 +107,7 @@ function CalendarPage() {
   );
 }
 
-function CalendarCard({ item }: { item: AnimeInfo }) {
+const CalendarCard = memo(function CalendarCard({ item }: { item: AnimeInfo }) {
   const title = item.title_cn || item.title;
   const [imgFailed, setImgFailed] = useState(false);
   const hasCover = item.cover && !imgFailed;
@@ -148,7 +148,7 @@ function CalendarCard({ item }: { item: AnimeInfo }) {
       </div>
     </Link>
   );
-}
+});
 
 function CalendarCoverFallback({ title }: { title: string }) {
   let hash = 0;
