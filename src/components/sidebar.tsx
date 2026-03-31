@@ -20,7 +20,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "sticky left-0 top-0 z-40 flex h-screen w-17 shrink-0 flex-col",
+        "sticky left-0 top-0 z-40 hidden h-screen w-17 shrink-0 flex-col md:flex",
         "border-r border-white/8 bg-sidebar backdrop-blur-xl transition-all duration-300"
       )}
     >

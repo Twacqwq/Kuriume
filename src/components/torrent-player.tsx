@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/tooltip";
 import { formatBytes, formatSpeed } from "@/lib/torrent";
 import { usePlayer } from "@/hooks/use-player";
+import { usePlayerGestures } from "@/hooks/use-player-gestures";
 import { playerApi } from "@/lib/player";
 import { historyApi, settingsApi } from "@/lib/store";
 import { useTorrentStream, type TorrentStreamPhase, type CacheContext } from "@/hooks/use-torrent-stream";
@@ -430,6 +431,20 @@ export function TorrentPlayer({
     torrent.stats != null &&
     torrent.stats.progress < 1;
 
+  // ── Touch gestures (mobile) ────────────────────────────────────
+
+  const gestures = usePlayerGestures({
+    onToggleControls: () => {
+      setShowControls((v) => {
+        if (!v) resetHideTimer();
+        return !v;
+      });
+    },
+    onTogglePause: handleTogglePause,
+    onSeekDelta: (delta) => handleSeek(Math.max(0, position + delta)),
+    onResetHideTimer: resetHideTimer,
+  });
+
   return (
     <TooltipProvider delayDuration={200}>
       <div
@@ -443,11 +458,14 @@ export function TorrentPlayer({
           if (!paused) setShowControls(false);
         }}
       >
-        {/* Click-to-pause zone (when playing) */}
+        {/* Click-to-pause zone (desktop) + touch gesture zone (mobile) */}
         {(isDirectMode || torrent.phase === "streaming") && (
           <div
             className="absolute inset-0 z-10"
             onClick={handleTogglePause}
+            onTouchStart={gestures.handleTouchStart}
+            onTouchMove={gestures.handleTouchMove}
+            onTouchEnd={gestures.handleTouchEnd}
           />
         )}
 
@@ -654,6 +672,7 @@ export function TorrentPlayer({
                 >
                   <div className="flex flex-col gap-0.5">
                     <p className="px-2 py-1 text-[10px] font-medium tracking-wider text-white/40 uppercase">超分辨率</p>
+                    <p className="px-2 pb-1 text-[10px] text-white/30 md:hidden">移动端已自动使用轻量级着色器</p>
                     {(["off", "A", "B", "C"] as const).map((mode) => (
                       <button
                         key={mode}
@@ -923,6 +942,19 @@ function SeekBar({
     [getProgressFromX, onInteracting],
   );
 
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      e.stopPropagation();
+      const touch = e.touches[0];
+      if (!touch) return;
+      setIsDragging(true);
+      const p = getProgressFromX(touch.clientX);
+      setDragProgress(p);
+      onInteracting();
+    },
+    [getProgressFromX, onInteracting],
+  );
+
   useEffect(() => {
     if (!isDragging) return;
 
@@ -937,11 +969,30 @@ function SeekBar({
       setIsDragging(false);
     }
 
+    function onTouchMove(e: globalThis.TouchEvent) {
+      const touch = e.touches[0];
+      if (!touch) return;
+      const p = getProgressFromX(touch.clientX);
+      setDragProgress(p);
+    }
+
+    function onTouchEnd(e: globalThis.TouchEvent) {
+      const touch = e.changedTouches[0];
+      if (!touch) return;
+      const p = getProgressFromX(touch.clientX);
+      onSeek((p / 100) * duration);
+      setIsDragging(false);
+    }
+
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("touchmove", onTouchMove);
+    window.addEventListener("touchend", onTouchEnd);
     return () => {
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
     };
   }, [isDragging, duration, getProgressFromX, onSeek]);
 
@@ -954,6 +1005,7 @@ function SeekBar({
     <div
       className="pointer-events-auto group/seek relative px-4"
       onMouseDown={handleMouseDown}
+      onTouchStart={handleTouchStart}
       onMouseMove={(e) => {
         setHoverX(e.clientX);
         onInteracting();
@@ -991,13 +1043,13 @@ function SeekBar({
           className="absolute inset-y-0 left-0 rounded-full bg-primary"
           style={{ width: `${displayProgress}%` }}
         />
-        {/* Thumb */}
+        {/* Thumb — always visible on mobile, hover on desktop */}
         <div
           className={cn(
             "absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary shadow-md transition-[width,height,opacity] duration-150",
             isDragging
               ? "h-4 w-4 opacity-100"
-              : "h-3 w-3 opacity-0 group-hover/seek:opacity-100",
+              : "h-3 w-3 opacity-100 md:opacity-0 md:group-hover/seek:opacity-100",
           )}
           style={{ left: `${displayProgress}%` }}
         />

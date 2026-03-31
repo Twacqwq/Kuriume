@@ -29,6 +29,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { usePlayerGestures } from "@/hooks/use-player-gestures";
 import {
   ArrowLeft,
   Gauge,
@@ -316,6 +317,20 @@ export function VideoPlayer({
   const progress = duration > 0 ? (position / duration) * 100 : 0;
   const bufferProgress = duration > 0 ? ((position + buffered) / duration) * 100 : 0;
 
+  // ── Touch gestures (mobile) ────────────────────────────────────
+
+  const gestures = usePlayerGestures({
+    onToggleControls: () => {
+      setShowControls((v) => {
+        if (!v) resetHideTimer();
+        return !v;
+      });
+    },
+    onTogglePause: handleTogglePause,
+    onSeekDelta: (delta) => handleSeek(Math.max(0, Math.min(duration, position + delta))),
+    onResetHideTimer: resetHideTimer,
+  });
+
   return (
     <TooltipProvider delayDuration={200}>
       <div
@@ -337,8 +352,14 @@ export function VideoPlayer({
           preload="auto"
         />
 
-        {/* Click-to-pause zone */}
-        <div className="absolute inset-0 z-10" onClick={handleTogglePause} />
+        {/* Click-to-pause zone (desktop) + touch gestures (mobile) */}
+        <div
+          className="absolute inset-0 z-10"
+          onClick={handleTogglePause}
+          onTouchStart={gestures.handleTouchStart}
+          onTouchMove={gestures.handleTouchMove}
+          onTouchEnd={gestures.handleTouchEnd}
+        />
 
         {/* ── Top bar ─────────────────────────────────────────── */}
         <div
@@ -548,6 +569,19 @@ function SeekBar({
     [getProgressFromX, onInteracting],
   );
 
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      e.stopPropagation();
+      const touch = e.touches[0];
+      if (!touch) return;
+      setIsDragging(true);
+      const p = getProgressFromX(touch.clientX);
+      setDragProgress(p);
+      onInteracting();
+    },
+    [getProgressFromX, onInteracting],
+  );
+
   useEffect(() => {
     if (!isDragging) return;
 
@@ -562,11 +596,30 @@ function SeekBar({
       setIsDragging(false);
     }
 
+    function onTouchMove(e: globalThis.TouchEvent) {
+      const touch = e.touches[0];
+      if (!touch) return;
+      const p = getProgressFromX(touch.clientX);
+      setDragProgress(p);
+    }
+
+    function onTouchEnd(e: globalThis.TouchEvent) {
+      const touch = e.changedTouches[0];
+      if (!touch) return;
+      const p = getProgressFromX(touch.clientX);
+      onSeek((p / 100) * duration);
+      setIsDragging(false);
+    }
+
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("touchmove", onTouchMove);
+    window.addEventListener("touchend", onTouchEnd);
     return () => {
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
     };
   }, [isDragging, duration, getProgressFromX, onSeek]);
 
@@ -578,6 +631,7 @@ function SeekBar({
     <div
       className="pointer-events-auto group/seek relative px-4"
       onMouseDown={handleMouseDown}
+      onTouchStart={handleTouchStart}
       onMouseMove={(e) => { setHoverX(e.clientX); onInteracting(); }}
       onMouseLeave={() => setHoverX(null)}
     >
@@ -608,13 +662,13 @@ function SeekBar({
           className="absolute inset-y-0 left-0 rounded-full bg-primary"
           style={{ width: `${displayProgress}%` }}
         />
-        {/* Thumb */}
+        {/* Thumb — always visible on mobile, hover on desktop */}
         <div
           className={cn(
             "absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary shadow-md transition-[width,height,opacity] duration-150",
             isDragging
               ? "h-4 w-4 opacity-100"
-              : "h-3 w-3 opacity-0 group-hover/seek:opacity-100",
+              : "h-3 w-3 opacity-100 md:opacity-0 md:group-hover/seek:opacity-100",
           )}
           style={{ left: `${displayProgress}%` }}
         />
@@ -703,6 +757,17 @@ function VolumeSlider({
     [getVal, onChange],
   );
 
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      e.stopPropagation();
+      const touch = e.touches[0];
+      if (!touch) return;
+      setIsDragging(true);
+      onChange(getVal(touch.clientX));
+    },
+    [getVal, onChange],
+  );
+
   useEffect(() => {
     if (!isDragging) return;
     function onMove(e: globalThis.MouseEvent) {
@@ -711,11 +776,22 @@ function VolumeSlider({
     function onUp() {
       setIsDragging(false);
     }
+    function onTouchMove(e: globalThis.TouchEvent) {
+      const touch = e.touches[0];
+      if (touch) onChange(getVal(touch.clientX));
+    }
+    function onTouchEnd() {
+      setIsDragging(false);
+    }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onTouchMove);
+    window.addEventListener("touchend", onTouchEnd);
     return () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
     };
   }, [isDragging, getVal, onChange]);
 
@@ -724,6 +800,7 @@ function VolumeSlider({
       ref={trackRef}
       className="relative h-1 w-full cursor-pointer rounded-full bg-white/15"
       onMouseDown={handleMouseDown}
+      onTouchStart={handleTouchStart}
     >
       <div
         className="absolute inset-y-0 left-0 rounded-full bg-white/70"

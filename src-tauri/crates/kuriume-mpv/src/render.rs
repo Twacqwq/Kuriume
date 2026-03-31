@@ -65,6 +65,32 @@ unsafe extern "C" fn gl_get_proc_address(
     }
 }
 
+/// Android: resolve OpenGL ES symbols via `eglGetProcAddress`.
+#[cfg(target_os = "android")]
+unsafe extern "C" fn gl_get_proc_address(
+    _ctx: *mut c_void,
+    name: *const std::ffi::c_char,
+) -> *mut c_void {
+    extern "C" {
+        fn eglGetProcAddress(procname: *const std::ffi::c_char) -> *mut c_void;
+    }
+    unsafe { eglGetProcAddress(name) }
+}
+
+/// iOS: resolve OpenGL ES symbols via `dlsym(RTLD_DEFAULT, …)`.
+/// Same as macOS — OpenGL ES functions are in the linked framework.
+#[cfg(target_os = "ios")]
+unsafe extern "C" fn gl_get_proc_address(
+    _ctx: *mut c_void,
+    name: *const std::ffi::c_char,
+) -> *mut c_void {
+    extern "C" {
+        fn dlsym(handle: *mut c_void, symbol: *const std::ffi::c_char) -> *mut c_void;
+    }
+    const RTLD_DEFAULT: *mut c_void = -2isize as usize as *mut c_void;
+    unsafe { dlsym(RTLD_DEFAULT, name) }
+}
+
 /// mpv "update" callback — sets the atomic flag when a new frame is ready.
 unsafe extern "C" fn on_mpv_render_update(ctx: *mut c_void) {
     let flag = unsafe { &*(ctx as *const AtomicBool) };

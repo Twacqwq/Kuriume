@@ -160,9 +160,10 @@ export function AnimeDetail({
   onWatchStatusChange,
   onWatchRemove,
 }: AnimeDetailProps) {
+  const [watchMenuOpen, setWatchMenuOpen] = useState(false);
   return (
     <TooltipProvider>
-      <div className="-mt-8 min-h-screen">
+      <div className="md:-mt-8 min-h-screen">
         {/* ============ Hero Section ============ */}
         <section className="relative overflow-hidden">
           {/* Blurred background */}
@@ -190,7 +191,7 @@ export function AnimeDetail({
               <TooltipTrigger asChild>
                 <button
                   onClick={onBack}
-                  className="absolute left-6 top-14 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20"
+                  className="absolute left-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20 md:left-6 md:top-14"
                 >
                   <ArrowLeft size={18} />
                 </button>
@@ -200,7 +201,7 @@ export function AnimeDetail({
           )}
 
           {/* Content */}
-          <div className="relative flex flex-col gap-8 px-8 pb-10 pt-20 md:flex-row md:items-start md:px-16 lg:px-24">
+          <div className="relative flex flex-col gap-6 px-4 pb-8 pt-14 md:gap-8 md:px-16 md:pb-10 md:pt-20 md:flex-row md:items-start lg:px-24">
             {/* Cover */}
             <div className="group/cover relative shrink-0 self-center md:self-start">
               <img
@@ -211,10 +212,10 @@ export function AnimeDetail({
               <img
                 src={data.cover}
                 alt={data.title}
-                className="relative h-72 w-auto rounded-2xl object-cover shadow-2xl shadow-black/60 ring-1 ring-white/10 transition-transform duration-300 group-hover/cover:scale-[1.02] sm:h-80 md:h-88"
+                className="relative h-56 w-auto rounded-2xl object-cover shadow-2xl shadow-black/60 ring-1 ring-white/10 transition-transform duration-300 group-hover/cover:scale-[1.02] sm:h-72 md:h-88"
               />
-              <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/0 transition-colors duration-300 group-hover/cover:bg-black/30">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/90 text-white opacity-0 shadow-lg shadow-primary/30 transition-all duration-300 group-hover/cover:scale-100 group-hover/cover:opacity-100 scale-75">
+              <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/20 transition-colors duration-300 md:bg-black/0 md:group-hover/cover:bg-black/30">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/90 text-white opacity-80 shadow-lg shadow-primary/30 transition-all duration-300 md:opacity-0 md:scale-75 md:group-hover/cover:scale-100 md:group-hover/cover:opacity-100">
                   <Play size={24} fill="currentColor" className="ml-1" />
                 </div>
               </div>
@@ -223,7 +224,7 @@ export function AnimeDetail({
             {/* Info */}
             <div className="flex-1 space-y-4">
               <div className="space-y-1">
-                <h1 className="text-3xl font-bold tracking-tight text-white md:text-4xl">
+                <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl lg:text-4xl">
                   {data.title}
                 </h1>
                 {data.titleOriginal && (
@@ -277,7 +278,7 @@ export function AnimeDetail({
 
               {/* Action buttons */}
               <div className="flex flex-wrap items-center gap-3 pt-1">
-                {/* Watchlist button with hover dropdown */}
+                {/* Watchlist button with tap/hover dropdown */}
                 <div className="group/watch relative">
                   <Button
                     size="lg"
@@ -291,6 +292,8 @@ export function AnimeDetail({
                     onClick={() => {
                       if (!watchStatus) {
                         onWatchStatusChange?.("watching");
+                      } else {
+                        setWatchMenuOpen((v) => !v);
                       }
                     }}
                   >
@@ -300,12 +303,20 @@ export function AnimeDetail({
                       : "追番"}
                   </Button>
                   {watchStatus && (
-                    <div className="invisible absolute left-0 bottom-full z-50 pb-1 opacity-0 transition-all duration-150 group-hover/watch:visible group-hover/watch:opacity-100">
+                    <div className={cn(
+                      "absolute left-0 bottom-full z-50 pb-1 transition-all duration-150",
+                      watchMenuOpen
+                        ? "visible opacity-100"
+                        : "invisible opacity-0 md:group-hover/watch:visible md:group-hover/watch:opacity-100",
+                    )}>
                       <div className="w-36 rounded-lg border border-white/10 bg-popover p-1 shadow-xl">
                         {WATCH_STATUS_OPTIONS.map((opt) => (
                           <button
                             key={opt.value}
-                            onClick={() => onWatchStatusChange?.(opt.value)}
+                            onClick={() => {
+                              onWatchStatusChange?.(opt.value);
+                              setWatchMenuOpen(false);
+                            }}
                             className={cn(
                               "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
                               watchStatus === opt.value
@@ -319,7 +330,10 @@ export function AnimeDetail({
                         ))}
                         <div className="my-1 h-px bg-border" />
                         <button
-                          onClick={() => onWatchRemove?.()}
+                          onClick={() => {
+                            onWatchRemove?.();
+                            setWatchMenuOpen(false);
+                          }}
                           className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-red-400 transition-colors hover:bg-red-500/10"
                         >
                           <Trash2 size={14} />
@@ -338,7 +352,7 @@ export function AnimeDetail({
         {/* ============ Tabs (shadcn) ============ */}
         <Tabs defaultValue="episodes" className="gap-0">
           <div className="sticky top-0 z-30 border-b border-white/6 bg-background/80 backdrop-blur-xl">
-            <div className="px-8 md:px-16 lg:px-24">
+            <div className="px-4 md:px-16 lg:px-24">
               <TabsList variant="line" className="h-auto w-auto bg-transparent p-0">
                 <TabsTrigger
                   value="episodes"
@@ -358,7 +372,7 @@ export function AnimeDetail({
             </div>
           </div>
 
-          <div className="px-8 py-8 md:px-16 lg:px-24">
+          <div className="px-4 py-6 md:px-16 md:py-8 lg:px-24">
             <TabsContent value="episodes">
               <EpisodeList
                 episodes={data.episodes}
@@ -498,7 +512,7 @@ function EpisodeList({
                 <Play
                   size={14}
                   fill="currentColor"
-                  className="shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:text-primary group-hover:opacity-100"
+                  className="shrink-0 text-primary opacity-60 md:text-muted-foreground/40 md:opacity-0 md:transition-opacity md:group-hover:text-primary md:group-hover:opacity-100"
                 />
               </button>
             );

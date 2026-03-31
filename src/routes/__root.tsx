@@ -1,6 +1,7 @@
 import { Outlet, createRootRoute, useMatches } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { Sidebar } from "@/components/sidebar";
+import { BottomTabBar } from "@/components/bottom-tab-bar";
 import { SearchPanel } from "@/components/search-panel";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -44,10 +45,10 @@ function RootComponent() {
 
   return (
     <div className={`flex h-full ${isPlayerPage ? '' : 'bg-background'}`}>
-      {/* macOS title bar drag region — spans full width above content */}
+      {/* macOS title bar drag region — desktop only */}
       {!isPlayerPage && (
         <div
-          className="fixed inset-x-0 top-0 z-50 h-8"
+          className="fixed inset-x-0 top-0 z-50 hidden h-8 md:block"
           data-tauri-drag-region
         />
       )}
@@ -58,11 +59,12 @@ function RootComponent() {
         className={
           isPlayerPage
             ? "flex-1 overflow-hidden"
-            : "relative flex-1 overflow-y-auto pt-8 transition-all duration-300 peer-data-collapsed"
+            : "relative flex-1 overflow-y-auto pt-0 pb-16 md:pt-8 md:pb-0 transition-all duration-300"
         }
       >
         <Outlet />
       </main>
+      {!isPlayerPage && <BottomTabBar onSearchClick={openSearch} />}
       {!isPlayerPage && <TanStackRouterDevtools position="bottom-right" />}
     </div>
   );

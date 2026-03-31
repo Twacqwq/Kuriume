@@ -34,7 +34,7 @@ export function SearchPanel({ open, onClose }: SearchPanelProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[18vh]" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12vh] sm:pt-[18vh]" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div
         className="relative w-full max-w-lg rounded-xl border border-white/10 bg-card shadow-2xl shadow-black/40"

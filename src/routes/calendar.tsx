@@ -50,7 +50,7 @@ function CalendarPage() {
   }
 
   return (
-    <div className="px-6 py-8 md:px-10 lg:px-12 xl:px-16">
+    <div className="px-4 py-6 md:px-10 md:py-8 lg:px-12 xl:px-16">
       <h1 className="text-xl font-bold text-foreground mb-6">每周放送</h1>
 
       {/* Weekday tabs */}

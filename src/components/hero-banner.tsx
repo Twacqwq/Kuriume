@@ -21,6 +21,132 @@ interface HeroBannerProps {
   interval?: number
 }
 
+/* ─────────────────────────────────────────────────────────
+ *  Mobile compact carousel (< md)
+ * ───────────────────────────────────────────────────────── */
+
+interface MobileCarouselProps {
+  items: BannerItem[]
+  current: number
+  count: number
+  goTo: (i: number) => void
+  isPaused: boolean
+  setIsPaused: (v: boolean) => void
+  interval: number
+}
+
+function MobileCarousel({ items, current, count, goTo, isPaused, setIsPaused, interval }: MobileCarouselProps) {
+  const touchStartX = useRef(0)
+  const touchDelta = useRef(0)
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0]!.clientX
+    touchDelta.current = 0
+    setIsPaused(true)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchDelta.current = e.touches[0]!.clientX - touchStartX.current
+  }
+
+  const handleTouchEnd = () => {
+    const threshold = 50
+    if (touchDelta.current > threshold) {
+      goTo(current - 1)
+    } else if (touchDelta.current < -threshold) {
+      goTo(current + 1)
+    }
+    setIsPaused(false)
+  }
+
+  const item = items[current]
+  if (!item) return null
+
+  return (
+    <section
+      className="relative block w-full overflow-hidden md:hidden"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Background image */}
+      <div className="relative h-52">
+        {items.map((it, i) => (
+          <div
+            key={it.id}
+            className={cn(
+              'absolute inset-0 transition-opacity duration-500',
+              i === current ? 'opacity-100' : 'opacity-0',
+            )}
+          >
+            <img
+              src={it.cover}
+              alt=""
+              className="h-full w-full object-cover brightness-50 saturate-130"
+            />
+          </div>
+        ))}
+
+        {/* Bottom gradient */}
+        <div className="absolute inset-0 bg-linear-to-t from-background via-background/30 to-transparent" />
+
+        {/* Content overlay */}
+        <div className="absolute inset-x-0 bottom-0 px-4 pb-3">
+          <Link
+            to="/anime/$id"
+            params={{ id: String(item.id) }}
+            className="block"
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <Badge variant="secondary" className="gap-0.5 bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs px-1.5 py-0">
+                <Star size={10} fill="currentColor" />
+                {item.score}
+              </Badge>
+              <span className="text-xs text-white/60">{item.year}</span>
+              <span className="text-xs text-white/60">全{item.episodes}话</span>
+            </div>
+            <h2 className="text-lg font-bold text-white leading-tight line-clamp-1">
+              {item.title}
+            </h2>
+            <p className="text-xs text-white/50 line-clamp-1 mt-0.5">
+              {item.genre.join(' / ')}
+            </p>
+          </Link>
+        </div>
+      </div>
+
+      {/* Dots */}
+      {count > 1 && (
+        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
+          {items.map((it, i) => (
+            <button
+              key={it.id}
+              type="button"
+              onClick={() => goTo(i)}
+              className="relative h-0.5 overflow-hidden rounded-full transition-all duration-300"
+              style={{ width: i === current ? 20 : 6 }}
+            >
+              <div className="absolute inset-0 bg-white/30" />
+              {i === current && (
+                <div
+                  className="absolute inset-0 rounded-full bg-white"
+                  style={{
+                    animation: isPaused ? 'none' : `hero-progress ${interval}ms linear`,
+                  }}
+                />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────
+ *  Desktop spotlight banner (≥ md)
+ * ───────────────────────────────────────────────────────── */
+
 export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
   const [current, setCurrent] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
@@ -70,11 +196,24 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
   }
 
   return (
-    <section
-      className="group/hero relative w-full overflow-hidden"
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
-    >
+    <>
+      {/* ── Mobile: compact horizontal card carousel ── */}
+      <MobileCarousel
+        items={items}
+        current={current}
+        count={count}
+        goTo={goTo}
+        isPaused={isPaused}
+        setIsPaused={setIsPaused}
+        interval={interval}
+      />
+
+      {/* ── Desktop: full spotlight banner ── */}
+      <section
+        className="group/hero relative hidden w-full overflow-hidden md:block"
+        onMouseEnter={() => setIsPaused(true)}
+        onMouseLeave={() => setIsPaused(false)}
+      >
       {/* Blurred background layer */}
       {visibleIndices.map((i) => {
         const it = items[i]!
@@ -258,5 +397,6 @@ export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
         }
       `}</style>
     </section>
+    </>
   )
 }

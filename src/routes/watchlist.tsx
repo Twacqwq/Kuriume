@@ -52,7 +52,7 @@ function WatchlistPage() {
   });
 
   return (
-    <div className="mx-auto max-w-6xl px-8 py-8">
+    <div className="mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-8">
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">追番列表</h1>

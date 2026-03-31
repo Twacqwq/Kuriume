@@ -53,10 +53,21 @@ impl MpvPlayer {
 
             // ── Network / streaming cache ────────────────────────
             init.set_option("cache", true)?;
-            init.set_option("demuxer-max-bytes", "150MiB")?;
-            init.set_option("demuxer-max-back-bytes", "50MiB")?;
             init.set_option("cache-secs", 2)?;
             init.set_option("network-timeout", 0)?;
+
+            // Mobile: smaller buffers to conserve RAM, force GLES
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            {
+                init.set_option("demuxer-max-bytes", "50MiB")?;
+                init.set_option("demuxer-max-back-bytes", "20MiB")?;
+                init.set_option("opengl-es", "yes")?;
+            }
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            {
+                init.set_option("demuxer-max-bytes", "150MiB")?;
+                init.set_option("demuxer-max-back-bytes", "50MiB")?;
+            }
 
             Ok(())
         })?;

@@ -105,7 +105,7 @@ function SettingsPage() {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-white/6 bg-background/80 px-8 pt-2 pb-4 backdrop-blur-xl"
+      <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-white/6 bg-background/80 px-4 pt-2 pb-4 backdrop-blur-xl md:px-8"
            data-tauri-drag-region
       >
         <button
@@ -118,7 +118,7 @@ function SettingsPage() {
         <h1 className="text-xl font-bold text-foreground">设置</h1>
       </div>
 
-      <div className="mx-auto max-w-2xl space-y-8 px-8 py-8">
+      <div className="mx-auto max-w-2xl space-y-8 px-4 py-6 md:px-8 md:py-8">
         {/* ── Cache section ── */}
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-foreground">缓存</h2>
@@ -233,7 +233,7 @@ function SettingsPage() {
           {settings && (
             <div className="space-y-3">
               {/* Hardware decoding */}
-              <div className="flex items-center justify-between rounded-xl bg-card/50 px-4 py-3">
+              <div className="flex flex-col gap-3 rounded-xl bg-card/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                   <Cpu size={20} className="text-muted-foreground" />
                   <div>
@@ -261,7 +261,7 @@ function SettingsPage() {
               </div>
 
               {/* Buffer size */}
-              <div className="flex items-center justify-between rounded-xl bg-card/50 px-4 py-3">
+              <div className="flex flex-col gap-3 rounded-xl bg-card/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                   <Database size={20} className="text-muted-foreground" />
                   <div>
@@ -325,13 +325,16 @@ function SettingsPage() {
               </div>
 
               {/* Anime4K super-resolution */}
-              <div className="flex items-center justify-between rounded-xl bg-card/50 px-4 py-3">
+              <div className="flex flex-col gap-3 rounded-xl bg-card/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                   <Sparkles size={20} className={settings.anime4k_mode !== "off" ? "text-primary" : "text-muted-foreground"} />
                   <div>
                     <p className="text-sm font-medium text-foreground">超分辨率 (Anime4K)</p>
                     <p className="text-xs text-muted-foreground">
                       实时画质增强，使用 GPU 后处理着色器。更高模式需要更强的 GPU
+                    </p>
+                    <p className="text-xs text-muted-foreground/60 md:hidden">
+                      移动端已自动使用轻量级着色器
                     </p>
                   </div>
                 </div>

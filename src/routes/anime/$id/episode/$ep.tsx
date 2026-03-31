@@ -177,7 +177,7 @@ function EpisodePage() {
       {/* ── Header (hidden in fullscreen) ─────────────────────── */}
       {!isFullscreen && (
         <div
-          className="flex items-center gap-3 border-b border-white/5 bg-background px-5 pt-10 pb-2.5"
+          className="flex items-center gap-3 border-b border-white/5 bg-background px-4 pt-2 pb-2 md:px-5 md:pt-10 md:pb-2.5"
           data-tauri-drag-region
         >
           <button
@@ -199,9 +199,9 @@ function EpisodePage() {
       )}
 
       {/* ── Content ────────────────────────────────────────────── */}
-      <div className="flex min-h-0 flex-1">
-        {/* Player area */}
-        <div className="relative min-w-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        {/* Player area — on mobile: fixed aspect ratio; on desktop: fill remaining */}
+        <div className="relative aspect-video w-full shrink-0 md:aspect-auto md:min-w-0 md:flex-1">
           {isOnline ? (
             sniffer.phase === "sniffing" || sniffer.phase === "idle" ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
@@ -286,9 +286,9 @@ function EpisodePage() {
           )}
         </div>
 
-        {/* ── Sidebar (hidden in fullscreen) ───────────────────── */}
+        {/* ── Sidebar: mobile = below player, desktop = right panel ── */}
         {!isFullscreen && (
-          <aside className="flex w-80 shrink-0 flex-col border-l border-white/5 bg-background">
+          <aside className="flex min-h-0 flex-1 flex-col border-t border-white/5 md:w-80 md:flex-initial md:shrink-0 md:border-t-0 md:border-l">
             {/* ── Source selector (torrent mode only) ── */}
             {!isOnline && (
             <div className="max-h-[50%] shrink-0 overflow-y-auto border-b border-white/5 px-4 py-3">

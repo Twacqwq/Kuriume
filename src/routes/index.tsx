@@ -107,7 +107,7 @@ function IndexComponent() {
   const { data: bannerItems = [] } = useQuery(bannerQueryOptions);
 
   return (
-    <div className="-mt-8">
+    <div className="md:-mt-8">
       <HeroBanner items={bannerItems} />
       {/* Content area — overlaps banner fade zone */}
       <AnimeGrid

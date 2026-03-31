@@ -22,3 +22,14 @@ objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSThread"] }
 objc2-app-kit = { version = "0.3", features = ["NSView", "NSWindow", "NSResponder"] }
 objc2-quartz-core = { version = "0.3", features = ["CALayer", "CATransaction"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+ndk-context = "0.1"
+log = "0.4"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSThread"] }
+objc2-quartz-core = { version = "0.3", features = ["CALayer", "CATransaction"] }
+objc2-ui-kit = { version = "0.3", features = ["UIView", "UIResponder", "UIScreen"] }

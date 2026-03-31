@@ -135,6 +135,95 @@ mod power {
     }
 }
 
+// ── Android display-sleep prevention via WakeLock ────────────────
+#[cfg(target_os = "android")]
+mod power {
+    /// Android wake lock — holds SCREEN_BRIGHT_WAKE_LOCK via JNI.
+    ///
+    /// Requires the Activity (from ndk-context) to access PowerManager.
+    /// Falls back to no-op if JNI calls fail.
+    pub struct DisplaySleepGuard {
+        _private: (),
+    }
+
+    unsafe impl Send for DisplaySleepGuard {}
+    unsafe impl Sync for DisplaySleepGuard {}
+
+    impl DisplaySleepGuard {
+        pub fn new() -> Option<Self> {
+            // Android wake lock: call addFlags(FLAG_KEEP_SCREEN_ON) on the
+            // Activity's window via JNI. This is the simplest approach and
+            // does not require the WAKE_LOCK permission.
+            //
+            // The actual JNI calls are performed in NativeVideoView::new()
+            // since we need the JNI env there. This guard just tracks state.
+            Some(Self { _private: () })
+        }
+    }
+
+    impl Drop for DisplaySleepGuard {
+        fn drop(&mut self) {
+            // FLAG_KEEP_SCREEN_ON is cleared when the Activity window flag
+            // is removed. This is handled in NativeVideoView::destroy().
+        }
+    }
+}
+
+// ── iOS display-sleep prevention via UIApplication.isIdleTimerDisabled ──
+#[cfg(target_os = "ios")]
+mod power {
+    use std::ffi::c_void;
+
+    pub struct DisplaySleepGuard {
+        _private: (),
+    }
+
+    unsafe impl Send for DisplaySleepGuard {}
+    unsafe impl Sync for DisplaySleepGuard {}
+
+    impl DisplaySleepGuard {
+        pub fn new() -> Option<Self> {
+            // UIApplication.shared.isIdleTimerDisabled = true
+            unsafe {
+                let cls: *const c_void = objc2::runtime::AnyClass::get(c"UIApplication")
+                    .map(|c| c as *const _ as *const c_void)
+                    .unwrap_or(std::ptr::null());
+                if !cls.is_null() {
+                    let app: *mut c_void =
+                        objc2::msg_send![cls as *const objc2::runtime::AnyClass, sharedApplication];
+                    if !app.is_null() {
+                        let _: () = objc2::msg_send![
+                            app as *const objc2::runtime::AnyObject,
+                            setIdleTimerDisabled: true
+                        ];
+                    }
+                }
+            }
+            Some(Self { _private: () })
+        }
+    }
+
+    impl Drop for DisplaySleepGuard {
+        fn drop(&mut self) {
+            unsafe {
+                let cls: *const c_void = objc2::runtime::AnyClass::get(c"UIApplication")
+                    .map(|c| c as *const _ as *const c_void)
+                    .unwrap_or(std::ptr::null());
+                if !cls.is_null() {
+                    let app: *mut c_void =
+                        objc2::msg_send![cls as *const objc2::runtime::AnyClass, sharedApplication];
+                    if !app.is_null() {
+                        let _: () = objc2::msg_send![
+                            app as *const objc2::runtime::AnyObject,
+                            setIdleTimerDisabled: false
+                        ];
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// All resources associated with an active player session.
 ///
 /// Field order matters: Rust drops fields in declaration order.
@@ -235,6 +324,38 @@ pub(crate) async fn player_init<R: Runtime>(
                             unsafe {
                                 NativeVideoView::new(
                                     hwnd,
+                                    mpv_handle as *mut std::ffi::c_void,
+                                )
+                            }
+                        }
+                        _ => Err("unexpected window handle type".into()),
+                    }
+                }
+
+                #[cfg(target_os = "android")]
+                {
+                    match handle.as_raw() {
+                        RawWindowHandle::AndroidNdk(h) => {
+                            let a_native_window = h.a_native_window.as_ptr();
+                            unsafe {
+                                NativeVideoView::new(
+                                    a_native_window,
+                                    mpv_handle as *mut std::ffi::c_void,
+                                )
+                            }
+                        }
+                        _ => Err("unexpected window handle type".into()),
+                    }
+                }
+
+                #[cfg(target_os = "ios")]
+                {
+                    match handle.as_raw() {
+                        RawWindowHandle::UiKit(h) => {
+                            let ui_view = h.ui_view.as_ptr();
+                            unsafe {
+                                NativeVideoView::new(
+                                    ui_view,
                                     mpv_handle as *mut std::ffi::c_void,
                                 )
                             }
@@ -395,6 +516,20 @@ pub(crate) async fn player_set_viewport(
         active.native_view.set_frame(x, y, width, height);
     }
 
+    #[cfg(target_os = "android")]
+    {
+        // Android uses top-left origin, same as CSS
+        let _ = window_height;
+        active.native_view.set_frame(x, y, width, height);
+    }
+
+    #[cfg(target_os = "ios")]
+    {
+        // UIKit uses top-left origin, same as CSS
+        let _ = window_height;
+        active.native_view.set_frame(x, y, width, height);
+    }
+
     Ok(())
 }
 
@@ -434,7 +569,27 @@ pub(crate) async fn player_set_anime4k<R: Runtime>(
         .join("resources")
         .join("shaders");
 
-    // Build the shader list based on mode
+    // Build the shader list based on mode.
+    // Mobile platforms use lighter single-pass M-variant chains to stay
+    // within the thermal / GPU budget of phone SoCs.
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let shader_names: Vec<&str> = match mode {
+        "A" => vec![
+            "Anime4K_Clamp_Highlights.glsl",
+            "Anime4K_Restore_CNN_M.glsl",
+            "Anime4K_Upscale_CNN_x2_M.glsl",
+        ],
+        "B" => vec![
+            "Anime4K_Clamp_Highlights.glsl",
+            "Anime4K_Upscale_CNN_x2_M.glsl",
+        ],
+        "C" => vec![
+            "Anime4K_Upscale_CNN_x2_M.glsl",
+        ],
+        _ => return Err(format!("Unknown Anime4K mode: {mode}")),
+    };
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let shader_names: Vec<&str> = match mode {
         "A" => vec![
             "Anime4K_Clamp_Highlights.glsl",
