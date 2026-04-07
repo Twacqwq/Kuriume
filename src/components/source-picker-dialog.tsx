@@ -4,6 +4,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { useOnlineSource } from "@/hooks/use-online-source";
 import { useTorrentSource, type GroupData } from "@/hooks/use-torrent-source";
@@ -21,7 +27,18 @@ import {
   Subtitles,
   TriangleAlert,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [breakpoint]);
+  return isMobile;
+}
 
 interface SourcePickerDialogProps {
   open: boolean;
@@ -105,6 +122,8 @@ export function SourcePickerDialog({
   };
 
   // Build tab list: torrent providers + online sources
+  const isMobile = useIsMobile();
+
   type TabDef = { key: string; label: string; isLoading: boolean; hasError: boolean; count?: number; isOnline: boolean };
   const tabs: TabDef[] = [
     ...KNOWN_PROVIDERS.map((p): TabDef => ({
@@ -115,78 +134,104 @@ export function SourcePickerDialog({
       count: tabCount(p),
       isOnline: false,
     })),
-    ...online.sources.map((name): TabDef => ({
+    // Online sources require desktop WebView sniffer — hide on mobile
+    ...(!isMobile ? online.sources.map((name): TabDef => ({
       key: `online:${name}`,
       label: name,
       isLoading: false,
       hasError: false,
       isOnline: true,
-    })),
+    })) : []),
   ];
+
+  const headerContent = (
+    <>
+      <div className="text-base font-semibold">
+        第 {episodeNumber} 话 · {episodeTitle}
+      </div>
+      <div className="flex gap-1 rounded-lg bg-white/[0.03] p-1">
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => {
+                setActiveTab(tab.key);
+                if (tab.isOnline) online.selectSource(tab.label);
+              }}
+              className={cn(
+                "relative flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all",
+                isActive
+                  ? "bg-white/10 text-white shadow-sm"
+                  : "text-white/40 hover:text-white/60",
+                tab.hasError && !isActive && "text-white/20",
+              )}
+            >
+              {tab.isLoading && <Loader2 size={11} className="animate-spin" />}
+              {tab.isOnline && <Globe size={11} />}
+              {tab.label}
+              {tab.count !== undefined && tab.count > 0 && (
+                <span className={cn(
+                  "tabular-nums text-[10px]",
+                  isActive ? "text-white/40" : "text-white/20",
+                )}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+
+  const bodyContent = (
+    <div className="overflow-y-auto px-5 pt-3 pb-5" style={{ maxHeight: isMobile ? "60vh" : "55vh" }}>
+      {isTorrentTab ? (
+        <ProviderContent
+          state={currentTorrent}
+          episodeNumber={episodeNumber}
+          activeGroup={activeGroup}
+          torrentSource={torrentSource}
+          onPlay={handleTorrentPlay}
+        />
+      ) : (
+        <OnlineContent
+          online={online}
+          episodeNumber={episodeNumber}
+          onPlay={handleOnlinePlay}
+        />
+      )}
+    </div>
+  );
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent className="gap-0 overflow-hidden p-0">
+          <DrawerHeader className="space-y-3 px-5 pt-5 pb-0">
+            <DrawerTitle className="sr-only">
+              第 {episodeNumber} 话 · {episodeTitle}
+            </DrawerTitle>
+            {headerContent}
+          </DrawerHeader>
+          {bodyContent}
+        </DrawerContent>
+      </Drawer>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg gap-0 overflow-hidden p-0">
-        {/* Header + tabs */}
         <DialogHeader className="space-y-3 px-5 pt-5 pb-0">
-          <DialogTitle className="text-base">
+          <DialogTitle className="sr-only">
             第 {episodeNumber} 话 · {episodeTitle}
           </DialogTitle>
-
-          <div className="flex gap-1 rounded-lg bg-white/[0.03] p-1">
-            {tabs.map((tab) => {
-              const isActive = activeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => {
-                    setActiveTab(tab.key);
-                    if (tab.isOnline) online.selectSource(tab.label);
-                  }}
-                  className={cn(
-                    "relative flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all",
-                    isActive
-                      ? "bg-white/10 text-white shadow-sm"
-                      : "text-white/40 hover:text-white/60",
-                    tab.hasError && !isActive && "text-white/20",
-                  )}
-                >
-                  {tab.isLoading && <Loader2 size={11} className="animate-spin" />}
-                  {tab.isOnline && <Globe size={11} />}
-                  {tab.label}
-                  {tab.count !== undefined && tab.count > 0 && (
-                    <span className={cn(
-                      "tabular-nums text-[10px]",
-                      isActive ? "text-white/40" : "text-white/20",
-                    )}>
-                      {tab.count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          {headerContent}
         </DialogHeader>
-
-        {/* Body */}
-        <div className="max-h-[55vh] overflow-y-auto px-5 pt-3 pb-5">
-          {isTorrentTab ? (
-            <ProviderContent
-              state={currentTorrent}
-              episodeNumber={episodeNumber}
-              activeGroup={activeGroup}
-              torrentSource={torrentSource}
-              onPlay={handleTorrentPlay}
-            />
-          ) : (
-            <OnlineContent
-              online={online}
-              episodeNumber={episodeNumber}
-              onPlay={handleOnlinePlay}
-            />
-          )}
-        </div>
+        {bodyContent}
       </DialogContent>
     </Dialog>
   );

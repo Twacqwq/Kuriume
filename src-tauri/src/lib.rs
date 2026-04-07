@@ -5,6 +5,7 @@ use crate::torrent_commands::TorrentState;
 use kuriume_provider::{Bangumi, Dmhy, Mikan, Nyaa};
 use std::sync::Arc;
 use tauri::Manager;
+#[cfg(desktop)]
 use tauri::menu::Menu;
 
 mod commands;
@@ -19,11 +20,15 @@ pub fn run() {
     let mut state = ProviderState::new();
     state.register(Arc::new(bangumi_provider));
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_mpv::init())
-        .menu(|handle| Menu::new(handle))
+        .plugin(tauri_plugin_mpv::init());
+
+    #[cfg(desktop)]
+    let builder = builder.menu(|handle| Menu::new(handle));
+
+    builder
         .manage(state)
         .manage(TorrentState::new())
         .manage(StoreState::new())

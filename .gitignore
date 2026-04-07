@@ -24,3 +24,10 @@ dist-ssr
 *.sw?
 
 .github/copilot-instructions.md
+
+# iOS build intermediates
+.ios-build/
+.ios-sim-build/
+
+# Tauri generated code
+src-tauri/gen/

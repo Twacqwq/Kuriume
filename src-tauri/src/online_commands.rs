@@ -5,11 +5,17 @@
 
 use kuriume_provider::{OnlineRoad, OnlineSearchResult, Rule, RuleEngine};
 use std::collections::HashMap;
+#[cfg(desktop)]
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+#[cfg(desktop)]
 use tauri::{command, AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
+#[cfg(not(desktop))]
+use tauri::{command, AppHandle, Manager, State};
+#[cfg(desktop)]
 use tokio::sync::oneshot;
 
+#[cfg(desktop)]
 static SNIFFER_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 // ── State ────────────────────────────────────────────────────────
@@ -150,6 +156,7 @@ pub(crate) async fn online_source_episodes(
 /// When found, signals Rust by setting `document.title` to a sentinel value.
 /// The `on_document_title_changed` callback in Rust detects this and extracts
 /// the URL.
+#[cfg(desktop)]
 const SNIFFER_SCRIPT: &str = r#"
 (function() {
     var __found = false;
@@ -328,6 +335,15 @@ const SNIFFER_SCRIPT: &str = r#"
 })();
 "#;
 
+#[cfg(not(desktop))]
+#[command]
+pub(crate) async fn sniff_video_url(
+    _app: AppHandle,
+    _episode_url: String,
+) -> Result<String, String> {
+    Err("Video sniffing is not supported on mobile".into())
+}
+
 /// Create a hidden WebView window that loads `episode_url`, intercepts
 /// network requests for video URLs (.m3u8/.mp4/.flv), and returns the
 /// first one found.
@@ -344,6 +360,7 @@ const SNIFFER_SCRIPT: &str = r#"
 /// WebView so the hooks can capture the real video URL.
 ///
 /// Returns the video URL or an error (timeout after 30s).
+#[cfg(desktop)]
 #[command]
 pub(crate) async fn sniff_video_url(
     app: AppHandle,
@@ -414,6 +431,7 @@ pub(crate) async fn sniff_video_url(
 
 /// Fetch the episode page HTML and try to extract an `<iframe>` src.
 /// If found, return the iframe URL; otherwise return the original URL.
+#[cfg(desktop)]
 async fn resolve_sniff_target(episode_url: &str) -> Option<String> {
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")

@@ -1,6 +1,12 @@
 import { TorrentPlayer } from "@/components/torrent-player";
 import type { HistoryContext } from "@/components/torrent-player";
 import { Button } from "@/components/ui/button";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { historyApi } from "@/lib/store";
 import { useTorrentSource } from "@/hooks/use-torrent-source";
 import { useVideoSniffer } from "@/hooks/use-video-sniffer";
@@ -15,6 +21,7 @@ import {
   Check,
   Globe,
   Languages,
+  List,
   Loader2,
   Monitor,
   Play,
@@ -42,6 +49,7 @@ function EpisodePage() {
   const epNum = Number(ep);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     getCurrentWindow().isFullscreen().then(setIsFullscreen);
@@ -178,7 +186,6 @@ function EpisodePage() {
       {!isFullscreen && (
         <div
           className="flex items-center gap-3 border-b border-white/5 bg-background px-4 pt-2 pb-2 md:px-5 md:pt-10 md:pb-2.5"
-          data-tauri-drag-region
         >
           <button
             type="button"
@@ -286,215 +293,281 @@ function EpisodePage() {
           )}
         </div>
 
-        {/* ── Sidebar: mobile = below player, desktop = right panel ── */}
+        {/* ── Mobile: floating episode button + drawer ── */}
         {!isFullscreen && (
-          <aside className="flex min-h-0 flex-1 flex-col border-t border-white/5 md:w-80 md:flex-initial md:shrink-0 md:border-t-0 md:border-l">
-            {/* ── Source selector (torrent mode only) ── */}
-            {!isOnline && (
-            <div className="max-h-[50%] shrink-0 overflow-y-auto border-b border-white/5 px-4 py-3">
-              <p className="mb-2.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50">
-                资源
-              </p>
-
-              {source.isLoading ? (
-                <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground/50">
-                  <Loader2 size={12} className="animate-spin" />
-                  正在搜索字幕组...
-                </div>
-              ) : source.groups.length === 0 ? (
-                <p className="py-1 text-xs text-muted-foreground/40">
-                  {source.error ? "搜索失败" : "暂无可用资源"}
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {/* Group pills */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40">
-                      <Subtitles size={11} />
-                      字幕组
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {source.groups.map((g) => (
-                        <button
-                          key={g.id}
-                          type="button"
-                          onClick={() => source.selectGroup(g.id)}
-                          className={cn(
-                            "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-all",
-                            source.selectedGroupId === g.id
-                              ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                              : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
-                          )}
-                        >
-                          {g.name}
-                          <span
-                            className={cn(
-                              "tabular-nums",
-                              source.selectedGroupId === g.id
-                                ? "text-primary/60"
-                                : "text-white/25",
-                            )}
-                          >
-                            {g.episodeCount}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Resolution pills */}
-                  {activeGroup && activeGroup.resolutions.length > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40">
-                        <Monitor size={11} />
-                        分辨率
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {activeGroup.resolutions.map((res) => (
-                          <button
-                            key={res}
-                            type="button"
-                            onClick={() => source.setPreferredResolution(res)}
-                            className={cn(
-                              "rounded-md px-2 py-1 text-[11px] font-medium transition-all",
-                              source.preferredResolution === res
-                                ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                                : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
-                            )}
-                          >
-                            {res}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Subtitle language pills */}
-                  {activeGroup && activeGroup.subtitles.length > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40">
-                        <Languages size={11} />
-                        字幕
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {activeGroup.subtitles.map((sub) => (
-                          <button
-                            key={sub}
-                            type="button"
-                            onClick={() => source.setPreferredSubtitle(sub)}
-                            className={cn(
-                              "rounded-md px-2 py-1 text-[11px] font-medium transition-all",
-                              source.preferredSubtitle === sub
-                                ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                                : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
-                            )}
-                          >
-                            {sub}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+          <div className="flex items-center gap-2 border-t border-white/5 bg-background/80 px-4 py-2 backdrop-blur-sm md:hidden">
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              className="flex items-center gap-2 rounded-lg bg-white/6 px-3 py-2 text-xs font-medium text-white/70 active:bg-white/10"
+            >
+              <List size={14} />
+              选集 · 共 {episodes.length} 话
+            </button>
+            {!isOnline && source.selectedGroupName && (
+              <span className="truncate text-[11px] text-muted-foreground/50">
+                {source.selectedGroupName}
+              </span>
             )}
+          </div>
+        )}
 
-            {/* Online mode indicator */}
-            {isOnline && (
-              <div className="shrink-0 border-b border-white/5 px-4 py-3">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
-                  <Globe size={12} />
-                  在线播放
-                </div>
-              </div>
-            )}
+        <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
+          <DrawerContent className="max-h-[75vh]">
+            <DrawerHeader className="pb-2">
+              <DrawerTitle className="text-sm">选集</DrawerTitle>
+            </DrawerHeader>
+            <SidebarContent
+              isOnline={isOnline}
+              source={source}
+              activeGroup={activeGroup}
+              episodes={episodes}
+              epNum={epNum}
+              navigateToEp={(ep) => { setDrawerOpen(false); navigateToEp(ep); }}
+            />
+          </DrawerContent>
+        </Drawer>
 
-            {/* ── Episode list ── */}
-            <div className="flex items-center justify-between px-4 pt-3 pb-2">
-              <p className="text-xs font-medium text-muted-foreground">
-                选集
-                <span className="ml-1.5 text-muted-foreground/50">
-                  共 {episodes.length} 话
-                </span>
-              </p>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-2 pb-3">
-              {episodes.map((e) => {
-                const isCurrent = e.ep === epNum;
-                const hasAired = e.airdate
-                  ? new Date(e.airdate) <= new Date()
-                  : true;
-                const watched =
-                  e.progress !== undefined && e.progress >= 100;
-
-                return (
-                  <button
-                    key={e.id}
-                    type="button"
-                    disabled={!hasAired}
-                    onClick={() => {
-                      if (e.ep !== epNum) navigateToEp(e.ep);
-                    }}
-                    className={cn(
-                      "group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
-                      isCurrent
-                        ? "bg-primary/10 text-primary"
-                        : hasAired
-                          ? "text-foreground/70 hover:bg-white/4 hover:text-foreground"
-                          : "cursor-default text-muted-foreground/30",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold tabular-nums",
-                        isCurrent
-                          ? "bg-primary text-primary-foreground"
-                          : watched
-                            ? "bg-white/4 text-muted-foreground/50"
-                            : "bg-white/4 text-foreground/60",
-                      )}
-                    >
-                      {isCurrent ? (
-                        <Play size={12} fill="currentColor" />
-                      ) : (
-                        e.ep
-                      )}
-                    </span>
-
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium leading-tight">
-                        {e.title_cn || e.title || `第 ${e.ep} 话`}
-                      </p>
-                      {!hasAired && e.airdate && (
-                        <p className="text-[10px] text-muted-foreground/40">
-                          {(() => {
-                            const d = new Date(e.airdate);
-                            return `${d.getMonth() + 1}月${d.getDate()}日`;
-                          })()}
-                        </p>
-                      )}
-                      {hasAired && e.duration && (
-                        <p className="text-[10px] text-muted-foreground/40">
-                          {e.duration}
-                        </p>
-                      )}
-                    </div>
-
-                    {watched && (
-                      <Check
-                        size={12}
-                        className="shrink-0 text-muted-foreground/30"
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+        {/* ── Desktop sidebar ── */}
+        {!isFullscreen && (
+          <aside className="hidden min-h-0 flex-col border-t border-white/5 md:flex md:w-80 md:shrink-0 md:border-t-0 md:border-l">
+            <SidebarContent
+              isOnline={isOnline}
+              source={source}
+              activeGroup={activeGroup}
+              episodes={episodes}
+              epNum={epNum}
+              navigateToEp={navigateToEp}
+            />
           </aside>
         )}
       </div>
     </div>
+  );
+}
+
+/* ── Shared sidebar content (used in both desktop aside and mobile drawer) ── */
+
+function SidebarContent({
+  isOnline,
+  source,
+  activeGroup,
+  episodes,
+  epNum,
+  navigateToEp,
+}: {
+  isOnline: boolean;
+  source: ReturnType<typeof useTorrentSource>;
+  activeGroup: ReturnType<ReturnType<typeof useTorrentSource>["getGroupData"]>;
+  episodes: { id: number; ep: number; title?: string; title_cn?: string; airdate?: string; duration?: string; progress?: number }[];
+  epNum: number;
+  navigateToEp: (ep: number) => void;
+}) {
+  return (
+    <>
+      {/* ── Source selector (torrent mode only) ── */}
+      {!isOnline && (
+        <div className="max-h-[50%] shrink-0 overflow-y-auto border-b border-white/5 px-4 py-3">
+          <p className="mb-2.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50">
+            资源
+          </p>
+
+          {source.isLoading ? (
+            <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground/50">
+              <Loader2 size={12} className="animate-spin" />
+              正在搜索字幕组...
+            </div>
+          ) : source.groups.length === 0 ? (
+            <p className="py-1 text-xs text-muted-foreground/40">
+              {source.error ? "搜索失败" : "暂无可用资源"}
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {/* Group pills */}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40">
+                  <Subtitles size={11} />
+                  字幕组
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {source.groups.map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => source.selectGroup(g.id)}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-all",
+                        source.selectedGroupId === g.id
+                          ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                          : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
+                      )}
+                    >
+                      {g.name}
+                      <span
+                        className={cn(
+                          "tabular-nums",
+                          source.selectedGroupId === g.id
+                            ? "text-primary/60"
+                            : "text-white/25",
+                        )}
+                      >
+                        {g.episodeCount}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Resolution pills */}
+              {activeGroup && activeGroup.resolutions.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40">
+                    <Monitor size={11} />
+                    分辨率
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeGroup.resolutions.map((res) => (
+                      <button
+                        key={res}
+                        type="button"
+                        onClick={() => source.setPreferredResolution(res)}
+                        className={cn(
+                          "rounded-md px-2 py-1 text-[11px] font-medium transition-all",
+                          source.preferredResolution === res
+                            ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                            : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
+                        )}
+                      >
+                        {res}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Subtitle language pills */}
+              {activeGroup && activeGroup.subtitles.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40">
+                    <Languages size={11} />
+                    字幕
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeGroup.subtitles.map((sub) => (
+                      <button
+                        key={sub}
+                        type="button"
+                        onClick={() => source.setPreferredSubtitle(sub)}
+                        className={cn(
+                          "rounded-md px-2 py-1 text-[11px] font-medium transition-all",
+                          source.preferredSubtitle === sub
+                            ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                            : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
+                        )}
+                      >
+                        {sub}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Online mode indicator */}
+      {isOnline && (
+        <div className="shrink-0 border-b border-white/5 px-4 py-3">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
+            <Globe size={12} />
+            在线播放
+          </div>
+        </div>
+      )}
+
+      {/* ── Episode list ── */}
+      <div className="flex items-center justify-between px-4 pt-3 pb-2">
+        <p className="text-xs font-medium text-muted-foreground">
+          选集
+          <span className="ml-1.5 text-muted-foreground/50">
+            共 {episodes.length} 话
+          </span>
+        </p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-2 pb-3">
+        {episodes.map((e) => {
+          const isCurrent = e.ep === epNum;
+          const hasAired = e.airdate
+            ? new Date(e.airdate) <= new Date()
+            : true;
+          const watched =
+            e.progress !== undefined && e.progress >= 100;
+
+          return (
+            <button
+              key={e.id}
+              type="button"
+              disabled={!hasAired}
+              onClick={() => {
+                if (e.ep !== epNum) navigateToEp(e.ep);
+              }}
+              className={cn(
+                "group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
+                isCurrent
+                  ? "bg-primary/10 text-primary"
+                  : hasAired
+                    ? "text-foreground/70 hover:bg-white/4 hover:text-foreground"
+                    : "cursor-default text-muted-foreground/30",
+              )}
+            >
+              <span
+                className={cn(
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold tabular-nums",
+                  isCurrent
+                    ? "bg-primary text-primary-foreground"
+                    : watched
+                      ? "bg-white/4 text-muted-foreground/50"
+                      : "bg-white/4 text-foreground/60",
+                )}
+              >
+                {isCurrent ? (
+                  <Play size={12} fill="currentColor" />
+                ) : (
+                  e.ep
+                )}
+              </span>
+
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium leading-tight">
+                  {e.title_cn || e.title || `第 ${e.ep} 话`}
+                </p>
+                {!hasAired && e.airdate && (
+                  <p className="text-[10px] text-muted-foreground/40">
+                    {(() => {
+                      const d = new Date(e.airdate);
+                      return `${d.getMonth() + 1}月${d.getDate()}日`;
+                    })()}
+                  </p>
+                )}
+                {hasAired && e.duration && (
+                  <p className="text-[10px] text-muted-foreground/40">
+                    {e.duration}
+                  </p>
+                )}
+              </div>
+
+              {watched && (
+                <Check
+                  size={12}
+                  className="shrink-0 text-muted-foreground/30"
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 }

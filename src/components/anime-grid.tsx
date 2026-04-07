@@ -13,8 +13,7 @@ function calcColumns(width: number): number {
   if (width >= 1280) return 6  // xl
   if (width >= 1024) return 5  // lg
   if (width >= 768) return 4   // md
-  if (width >= 640) return 3   // sm
-  return 2
+  return 3
 }
 
 function useColumnCount(): number {
@@ -149,14 +148,14 @@ export function AnimeGrid<TPageParam>({
   }, [virtualItems, rowCount, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   return (
-    <section className="px-6 py-8 md:px-10 lg:px-12 xl:px-16">
+    <section className="px-4 py-6 md:px-10 md:py-8 lg:px-12 xl:px-16">
       {title && (
         <h2 className="text-xl font-bold text-foreground mb-6">{title}</h2>
       )}
 
       {isLoading ? (
         /* Skeleton while initial data loads */
-        <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+        <div className="grid grid-cols-3 gap-x-3 gap-y-6 md:grid-cols-4 md:gap-x-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
           {Array.from({ length: pageSize }).map((_, i) => (
             <SkeletonCard key={i} />
           ))}
@@ -189,7 +188,7 @@ export function AnimeGrid<TPageParam>({
                   }}
                 >
                   <div
-                    className="grid gap-x-4 pb-6"
+                    className="grid gap-x-3 pb-6 md:gap-x-4"
                     style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
                   >
                     {rowItems.map((item) => (
@@ -203,7 +202,7 @@ export function AnimeGrid<TPageParam>({
 
           {/* Loading more indicator */}
           {isFetchingNextPage && (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+            <div className="grid grid-cols-3 gap-x-3 gap-y-6 md:grid-cols-4 md:gap-x-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
               {Array.from({ length: Math.min(pageSize, 14) }).map((_, i) => (
                 <SkeletonCard key={i} />
               ))}
@@ -287,7 +286,7 @@ const AnimeCard = memo(function AnimeCard({ item }: AnimeCardProps) {
           <span>·</span>
           <span>{item.episodes}话</span>
         </div>
-        <div className="flex gap-1.5">
+        <div className="hidden gap-1.5 sm:flex">
           {item.genre.slice(0, 2).map((g, i) => (
             <span key={`${g}-${i}`} className="text-xs text-muted-foreground/70">
               {g}

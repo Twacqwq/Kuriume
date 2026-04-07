@@ -209,7 +209,7 @@ function HistoryCard({
           <button
             type="button"
             onClick={onRemove}
-            className="shrink-0 rounded-md p-1 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50 hover:text-destructive!"
+            className="shrink-0 rounded-md p-1 text-muted-foreground/50 transition-colors md:text-muted-foreground/0 md:group-hover:text-muted-foreground/50 hover:text-destructive!"
           >
             <X size={14} />
           </button>
@@ -232,7 +232,7 @@ function HistoryCard({
         variant="ghost"
         size="sm"
         onClick={onResume}
-        className="shrink-0 gap-1.5 text-xs opacity-0 transition-opacity group-hover:opacity-100"
+        className="shrink-0 gap-1.5 text-xs transition-opacity md:opacity-0 md:group-hover:opacity-100"
       >
         <Play size={12} />
         {isFinished ? "重新观看" : "继续观看"}

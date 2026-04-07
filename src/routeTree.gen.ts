@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SearchRouteImport } from './routes/search'
+import { Route as MeRouteImport } from './routes/me'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as IndexRouteImport } from './routes/index'
@@ -32,6 +33,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const SearchRoute = SearchRouteImport.update({
   id: '/search',
   path: '/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MeRoute = MeRouteImport.update({
+  id: '/me',
+  path: '/me',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HistoryRoute = HistoryRouteImport.update({
@@ -69,6 +75,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/calendar': typeof CalendarRoute
   '/history': typeof HistoryRoute
+  '/me': typeof MeRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
@@ -80,6 +87,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/calendar': typeof CalendarRoute
   '/history': typeof HistoryRoute
+  '/me': typeof MeRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
@@ -91,6 +99,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/calendar': typeof CalendarRoute
   '/history': typeof HistoryRoute
+  '/me': typeof MeRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
@@ -104,6 +113,7 @@ export interface FileRouteTypes {
     | '/'
     | '/calendar'
     | '/history'
+    | '/me'
     | '/search'
     | '/settings'
     | '/watchlist'
@@ -115,6 +125,7 @@ export interface FileRouteTypes {
     | '/'
     | '/calendar'
     | '/history'
+    | '/me'
     | '/search'
     | '/settings'
     | '/watchlist'
@@ -125,6 +136,7 @@ export interface FileRouteTypes {
     | '/'
     | '/calendar'
     | '/history'
+    | '/me'
     | '/search'
     | '/settings'
     | '/watchlist'
@@ -137,6 +149,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CalendarRoute: typeof CalendarRoute
   HistoryRoute: typeof HistoryRoute
+  MeRoute: typeof MeRoute
   SearchRoute: typeof SearchRoute
   SettingsRoute: typeof SettingsRoute
   WatchlistRoute: typeof WatchlistRoute
@@ -164,6 +177,13 @@ declare module '@tanstack/react-router' {
       path: '/search'
       fullPath: '/search'
       preLoaderRoute: typeof SearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/me': {
+      id: '/me'
+      path: '/me'
+      fullPath: '/me'
+      preLoaderRoute: typeof MeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/history': {
@@ -228,6 +248,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CalendarRoute: CalendarRoute,
   HistoryRoute: HistoryRoute,
+  MeRoute: MeRoute,
   SearchRoute: SearchRoute,
   SettingsRoute: SettingsRoute,
   WatchlistRoute: WatchlistRoute,

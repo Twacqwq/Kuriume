@@ -44,7 +44,7 @@ function RootComponent() {
   }, [isPlayerPage]);
 
   return (
-    <div className={`flex h-full ${isPlayerPage ? '' : 'bg-background'}`}>
+    <div className={`flex h-full overflow-x-hidden ${isPlayerPage ? '' : 'bg-background'}`}>
       {/* macOS title bar drag region — desktop only */}
       {!isPlayerPage && (
         <div
@@ -59,7 +59,7 @@ function RootComponent() {
         className={
           isPlayerPage
             ? "flex-1 overflow-hidden"
-            : "relative flex-1 overflow-y-auto pt-0 pb-16 md:pt-8 md:pb-0 transition-all duration-300"
+            : "relative flex-1 overflow-x-hidden overflow-y-auto pt-0 pb-16 md:pt-8 md:pb-0 transition-all duration-300"
         }
       >
         <Outlet />

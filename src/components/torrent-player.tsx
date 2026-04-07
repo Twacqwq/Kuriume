@@ -620,13 +620,13 @@ export function TorrentPlayer({
 
             {/* Right group */}
             <div className="flex items-center gap-0.5">
-              {/* Volume */}
+              {/* Volume — desktop only (phones use physical buttons) */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    className="text-white/70 hover:bg-white/10 hover:text-white"
+                    className="hidden text-white/70 hover:bg-white/10 hover:text-white md:flex"
                     onClick={(e) => {
                       e.stopPropagation();
                       toggleMute();

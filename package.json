@@ -24,7 +24,8 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwind-merge": "^3.4.1",
-    "tailwindcss": "^4.1.18"
+    "tailwindcss": "^4.1.18",
+    "vaul": "^1.1.2"
   },
   "devDependencies": {
     "@tanstack/react-router-devtools": "^1.160.0",

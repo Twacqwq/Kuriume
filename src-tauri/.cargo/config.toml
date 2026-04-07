@@ -1,0 +1,8 @@
+[target.aarch64-apple-ios]
+rustflags = ["-L", "native=libs/ios/lib"]
+
+[target.aarch64-apple-ios-sim]
+rustflags = ["-L", "native=libs/ios-sim/lib"]
+
+[target.x86_64-apple-ios]
+rustflags = ["-L", "native=libs/ios-sim/lib"]

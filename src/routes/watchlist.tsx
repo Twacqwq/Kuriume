@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookmarkX, Check, Eye, EyeOff, Film, Library } from "lucide-react";
 import { useState } from "react";
 
+
 export const Route = createFileRoute("/watchlist")({
   component: WatchlistPage,
 });
@@ -114,14 +115,11 @@ function WatchlistCard({
   onStatusChange: (status: WatchStatus) => void;
   onRemove: () => void;
 }) {
-  const [showActions, setShowActions] = useState(false);
   const badge = STATUS_BADGE[entry.status as WatchStatus] ?? STATUS_BADGE.watching;
 
   return (
     <div
       className="group relative flex flex-col"
-      onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => setShowActions(false)}
     >
       {/* Cover */}
       <Link
@@ -144,7 +142,7 @@ function WatchlistCard({
         <div
           className={cn(
             "absolute inset-0 bg-black/50 transition-opacity duration-200",
-            showActions ? "opacity-100" : "opacity-0",
+            "opacity-0 md:group-hover:opacity-100",
           )}
         />
 
@@ -164,11 +162,11 @@ function WatchlistCard({
         )}
       </Link>
 
-      {/* Hover action buttons */}
+      {/* Action buttons — always visible on mobile, hover on desktop */}
       <div
         className={cn(
           "absolute right-2 top-2 flex gap-1 transition-opacity duration-200",
-          showActions ? "opacity-100" : "opacity-0",
+          "md:opacity-0 md:group-hover:opacity-100",
         )}
       >
         {/* Cycle status */}

@@ -1,13 +1,13 @@
 import { cn } from "@/lib/utils";
 import { Link, useMatches } from "@tanstack/react-router";
-import { Clapperboard, CalendarDays, Library, Clock, Search } from "lucide-react";
+import { Clapperboard, CalendarDays, Library, User, Search } from "lucide-react";
 
 const navTabs = [
   { icon: Clapperboard, label: "番剧", to: "/" },
   { icon: CalendarDays, label: "放送", to: "/calendar" },
   { icon: Search, label: "搜索", to: null }, // placeholder – triggers search panel
   { icon: Library, label: "追番", to: "/watchlist" },
-  { icon: Clock, label: "历史", to: "/history" },
+  { icon: User, label: "我的", to: "/me" },
 ] as const;
 
 interface BottomTabBarProps {
