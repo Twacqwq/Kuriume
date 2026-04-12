@@ -135,10 +135,10 @@ build_ffmpeg() {
         --disable-doc \
         --disable-debug \
         --enable-pic \
+        --enable-network \
         --enable-videotoolbox \
         --enable-audiotoolbox \
         --disable-avdevice \
-        --disable-network \
         --disable-encoders \
         --disable-muxers \
         --enable-demuxers \
@@ -155,6 +155,21 @@ build_ffmpeg() {
         --enable-bsf=hevc_mp4toannexb \
         --enable-bsf=aac_adtstoasc \
         --enable-bsf=vp9_superframe
+
+    # Patch config.h: force-enable network structs that configure can't detect
+    # during cross-compilation (iOS SDK absolutely has these).
+    info "Patching config.h for iOS network support..."
+    sed -i '' 's/#define HAVE_STRUCT_SOCKADDR_IN6 0/#define HAVE_STRUCT_SOCKADDR_IN6 1/' config.h
+    sed -i '' 's/#define HAVE_STRUCT_SOCKADDR_SA_LEN 0/#define HAVE_STRUCT_SOCKADDR_SA_LEN 1/' config.h
+    sed -i '' 's/#define HAVE_STRUCT_SOCKADDR_STORAGE 0/#define HAVE_STRUCT_SOCKADDR_STORAGE 1/' config.h
+    sed -i '' 's/#define CONFIG_NETWORK 0/#define CONFIG_NETWORK 1/' config.h
+    # Also patch config.asm if it exists
+    if [ -f config.asm ]; then
+        sed -i '' 's/%define HAVE_STRUCT_SOCKADDR_IN6 0/%define HAVE_STRUCT_SOCKADDR_IN6 1/' config.asm
+        sed -i '' 's/%define HAVE_STRUCT_SOCKADDR_SA_LEN 0/%define HAVE_STRUCT_SOCKADDR_SA_LEN 1/' config.asm
+        sed -i '' 's/%define HAVE_STRUCT_SOCKADDR_STORAGE 0/%define HAVE_STRUCT_SOCKADDR_STORAGE 1/' config.asm
+        sed -i '' 's/%define CONFIG_NETWORK 0/%define CONFIG_NETWORK 1/' config.asm
+    fi
 
     info "Building FFmpeg (${NJOBS} jobs)..."
     make -j"${NJOBS}"

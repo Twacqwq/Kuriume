@@ -1,10 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { HeroBanner, type BannerItem } from "@/components/hero-banner";
 import { AnimeGrid } from "@/components/anime-grid";
+import { SearchPanel } from "@/components/search-panel";
 import { invoke } from "@tauri-apps/api/core";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/query-client";
 import type { AnimeInfo, PagedResult } from "@/lib/types";
+import { Search } from "lucide-react";
+import { useCallback, useState } from "react";
 
 const PAGE_SIZE = 50;
 const START_YEAR = new Date().getFullYear();
@@ -105,9 +108,23 @@ function toBannerItem(info: AnimeInfo): BannerItem {
 
 function IndexComponent() {
   const { data: bannerItems = [] } = useQuery(bannerQueryOptions);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const openSearch = useCallback(() => setSearchOpen(true), []);
+  const closeSearch = useCallback(() => setSearchOpen(false), []);
 
   return (
     <div className="md:-mt-8">
+      {/* Mobile search bar */}
+      <button
+        type="button"
+        onClick={openSearch}
+        className="mx-4 mt-3 mb-2 flex items-center gap-2.5 rounded-xl bg-white/5 px-4 py-2.5 text-sm text-muted-foreground active:bg-white/8 md:hidden"
+      >
+        <Search size={16} strokeWidth={2} />
+        搜索番剧...
+      </button>
+      <SearchPanel open={searchOpen} onClose={closeSearch} />
+
       <HeroBanner items={bannerItems} />
       {/* Content area — overlaps banner fade zone */}
       <AnimeGrid

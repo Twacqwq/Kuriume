@@ -110,7 +110,7 @@ function SettingsPage() {
       >
         <button
           type="button"
-          onClick={() => router.history.back()}
+          onClick={() => router.navigate({ to: "/" })}
           className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/70 transition-colors hover:bg-white/20"
         >
           <ArrowLeft size={18} />

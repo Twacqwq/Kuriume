@@ -13,7 +13,7 @@ function calcColumns(width: number): number {
   if (width >= 1280) return 6  // xl
   if (width >= 1024) return 5  // lg
   if (width >= 768) return 4   // md
-  return 3
+  return 2
 }
 
 function useColumnCount(): number {

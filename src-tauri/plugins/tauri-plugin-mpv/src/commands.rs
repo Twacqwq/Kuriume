@@ -174,6 +174,54 @@ mod power {
 mod power {
     use std::ffi::c_void;
 
+    type DispatchQueue = *mut c_void;
+
+    extern "C" {
+        static _dispatch_main_q: c_void;
+        fn dispatch_async_f(
+            queue: DispatchQueue,
+            context: *mut c_void,
+            work: unsafe extern "C" fn(*mut c_void),
+        );
+    }
+
+    #[inline]
+    unsafe fn dispatch_get_main_queue() -> DispatchQueue {
+        unsafe { &_dispatch_main_q as *const c_void as *mut c_void }
+    }
+
+    /// Set `UIApplication.shared.isIdleTimerDisabled` on the main thread.
+    fn set_idle_timer_disabled(disabled: bool) {
+        unsafe extern "C" fn apply(raw: *mut c_void) {
+            let disabled = raw as usize != 0;
+            unsafe {
+                let cls: *const c_void = objc2::runtime::AnyClass::get(c"UIApplication")
+                    .map(|c| c as *const _ as *const c_void)
+                    .unwrap_or(std::ptr::null());
+                if !cls.is_null() {
+                    let app: *mut c_void = objc2::msg_send![
+                        cls as *const objc2::runtime::AnyClass,
+                        sharedApplication
+                    ];
+                    if !app.is_null() {
+                        let _: () = objc2::msg_send![
+                            app as *const objc2::runtime::AnyObject,
+                            setIdleTimerDisabled: disabled
+                        ];
+                    }
+                }
+            }
+        }
+
+        unsafe {
+            dispatch_async_f(
+                dispatch_get_main_queue(),
+                disabled as usize as *mut c_void,
+                apply,
+            );
+        }
+    }
+
     pub struct DisplaySleepGuard {
         _private: (),
     }
@@ -183,43 +231,14 @@ mod power {
 
     impl DisplaySleepGuard {
         pub fn new() -> Option<Self> {
-            // UIApplication.shared.isIdleTimerDisabled = true
-            unsafe {
-                let cls: *const c_void = objc2::runtime::AnyClass::get(c"UIApplication")
-                    .map(|c| c as *const _ as *const c_void)
-                    .unwrap_or(std::ptr::null());
-                if !cls.is_null() {
-                    let app: *mut c_void =
-                        objc2::msg_send![cls as *const objc2::runtime::AnyClass, sharedApplication];
-                    if !app.is_null() {
-                        let _: () = objc2::msg_send![
-                            app as *const objc2::runtime::AnyObject,
-                            setIdleTimerDisabled: true
-                        ];
-                    }
-                }
-            }
+            set_idle_timer_disabled(true);
             Some(Self { _private: () })
         }
     }
 
     impl Drop for DisplaySleepGuard {
         fn drop(&mut self) {
-            unsafe {
-                let cls: *const c_void = objc2::runtime::AnyClass::get(c"UIApplication")
-                    .map(|c| c as *const _ as *const c_void)
-                    .unwrap_or(std::ptr::null());
-                if !cls.is_null() {
-                    let app: *mut c_void =
-                        objc2::msg_send![cls as *const objc2::runtime::AnyClass, sharedApplication];
-                    if !app.is_null() {
-                        let _: () = objc2::msg_send![
-                            app as *const objc2::runtime::AnyObject,
-                            setIdleTimerDisabled: false
-                        ];
-                    }
-                }
-            }
+            set_idle_timer_disabled(false);
         }
     }
 }

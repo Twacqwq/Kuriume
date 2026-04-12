@@ -104,12 +104,15 @@ extern "C" {
     fn CVPixelBufferRelease(pixel_buffer: CVPixelBufferRef);
 }
 
-/// Create a CVPixelBuffer backed by IOSurface with Metal compatibility.
+/// Create a CVPixelBuffer backed by IOSurface with Metal + OpenGL ES compatibility.
 unsafe fn create_pixel_buffer(width: i32, height: i32) -> Result<CVPixelBufferRef, String> {
     // Build attributes dictionary:
-    // { kCVPixelBufferIOSurfacePropertiesKey: {}, kCVPixelBufferMetalCompatibilityKey: true }
+    // { kCVPixelBufferIOSurfacePropertiesKey: {},
+    //   kCVPixelBufferMetalCompatibilityKey: true,
+    //   kCVPixelBufferOpenGLESCompatibilityKey: true }
     let k_iosurface = cfstr("IOSurfaceProperties" /* kCVPixelBufferIOSurfacePropertiesKey */);
     let k_metal = cfstr("MetalCompatibility" /* kCVPixelBufferMetalCompatibilityKey */);
+    let k_gles = cfstr("OpenGLESCompatibility" /* kCVPixelBufferOpenGLESCompatibilityKey */);
 
     // Empty dictionary for IOSurface properties
     let empty_dict = unsafe {
@@ -123,15 +126,23 @@ unsafe fn create_pixel_buffer(width: i32, height: i32) -> Result<CVPixelBufferRe
         )
     };
 
-    let keys: [CFTypeRef; 2] = [k_iosurface as CFTypeRef, k_metal as CFTypeRef];
-    let values: [CFTypeRef; 2] = [empty_dict as CFTypeRef, unsafe { kCFBooleanTrue } as CFTypeRef];
+    let keys: [CFTypeRef; 3] = [
+        k_iosurface as CFTypeRef,
+        k_metal as CFTypeRef,
+        k_gles as CFTypeRef,
+    ];
+    let values: [CFTypeRef; 3] = [
+        empty_dict as CFTypeRef,
+        unsafe { kCFBooleanTrue } as CFTypeRef,
+        unsafe { kCFBooleanTrue } as CFTypeRef,
+    ];
 
     let attrs = unsafe {
         CFDictionaryCreate(
             kCFAllocatorDefault,
             keys.as_ptr(),
             values.as_ptr(),
-            2,
+            3,
             &kCFTypeDictionaryKeyCallBacks as *const c_void,
             &kCFTypeDictionaryValueCallBacks as *const c_void,
         )
@@ -152,6 +163,7 @@ unsafe fn create_pixel_buffer(width: i32, height: i32) -> Result<CVPixelBufferRe
     unsafe {
         CFRelease(attrs as CFTypeRef);
         CFRelease(empty_dict as CFTypeRef);
+        CFRelease(k_gles as CFTypeRef);
         CFRelease(k_iosurface as CFTypeRef);
         CFRelease(k_metal as CFTypeRef);
     }
@@ -251,6 +263,57 @@ extern "C" {
     fn glDeleteFramebuffers(n: c_int, framebuffers: *const u32);
     fn glViewport(x: c_int, y: c_int, width: c_int, height: c_int);
     fn glFlush();
+    fn glGenTextures(n: c_int, textures: *mut u32);
+    fn glBindTexture(target: u32, texture: u32);
+    fn glTexImage2D(
+        target: u32,
+        level: c_int,
+        internal_format: i32,
+        width: c_int,
+        height: c_int,
+        border: c_int,
+        format: u32,
+        type_: u32,
+        pixels: *const c_void,
+    );
+    fn glReadPixels(
+        x: c_int,
+        y: c_int,
+        width: c_int,
+        height: c_int,
+        format: u32,
+        type_: u32,
+        pixels: *mut c_void,
+    );
+    fn glDeleteTextures(n: c_int, textures: *const u32);
+    fn glTexParameteri(target: u32, pname: u32, param: i32);
+    fn glGenRenderbuffers(n: c_int, renderbuffers: *mut u32);
+    fn glBindRenderbuffer(target: u32, renderbuffer: u32);
+    fn glRenderbufferStorage(target: u32, internal_format: u32, width: c_int, height: c_int);
+    fn glFramebufferRenderbuffer(
+        target: u32,
+        attachment: u32,
+        renderbuffer_target: u32,
+        renderbuffer: u32,
+    );
+    fn glDeleteRenderbuffers(n: c_int, renderbuffers: *const u32);
+    fn glCheckFramebufferStatus(target: u32) -> u32;
+}
+
+const GL_TEXTURE_MIN_FILTER: u32 = 0x2801;
+const GL_TEXTURE_MAG_FILTER: u32 = 0x2800;
+const GL_LINEAR: i32 = 0x2601;
+const GL_RENDERBUFFER: u32 = 0x8D41;
+const GL_RGBA8: u32 = 0x8058;
+const GL_FRAMEBUFFER_COMPLETE: u32 = 0x8CD5;
+
+// ── CVPixelBuffer lock/unlock FFI ────────────────────────────────
+
+extern "C" {
+    fn CVPixelBufferLockBaseAddress(pixel_buffer: CVPixelBufferRef, lock_flags: u64) -> CVReturn;
+    fn CVPixelBufferUnlockBaseAddress(pixel_buffer: CVPixelBufferRef, lock_flags: u64) -> CVReturn;
+    fn CVPixelBufferGetBaseAddress(pixel_buffer: CVPixelBufferRef) -> *mut c_void;
+    fn CVPixelBufferGetBytesPerRow(pixel_buffer: CVPixelBufferRef) -> usize;
 }
 
 // ── Metal constant ───────────────────────────────────────────────
@@ -331,8 +394,16 @@ struct RenderCtx {
 
     // CVPixelBuffer (IOSurface-backed, shared between GL and Metal)
     pixel_buffer: CVPixelBufferRef,
+    // On real devices: CVOpenGLESTextureCache for zero-copy GL↔CVPixelBuffer sharing.
+    // On simulator: null (we use a plain GL texture + glReadPixels instead).
     gl_texture_cache: CVOpenGLESTextureCacheRef,
     gl_cv_texture: CVOpenGLESTextureRef,
+    // Plain GL texture name — used on simulator where CVOpenGLES texture cache doesn't work.
+    // On real devices this is 0 (unused).
+    plain_gl_texture: u32,
+    // Renderbuffer for simulator FBO color attachment (more stable than plain texture).
+    // On real devices this is 0 (unused).
+    sim_renderbuffer: u32,
     metal_texture_cache: CVMetalTextureCacheRef,
     metal_cv_texture: CVMetalTextureRef,
 
@@ -484,66 +555,108 @@ impl NativeVideoView {
             // ── CVPixelBuffer (IOSurface-backed) ─────────────────
             let pixel_buffer = create_pixel_buffer(init_w, init_h)?;
 
-            // ── CVOpenGLESTextureCache → GL texture ──────────────
+            // ── GL texture setup ─────────────────────────────────
+            // On simulator, CVOpenGLESTextureCache doesn't work with IOSurface-backed
+            // pixel buffers (returns -6683). Use a renderbuffer FBO + glReadPixels instead.
+            // On real devices, use CVOpenGLESTextureCache for zero-copy sharing.
+            let is_sim = cfg!(target_abi = "sim");
+
             let mut gl_texture_cache: CVOpenGLESTextureCacheRef = ptr::null_mut();
-            let status = CVOpenGLESTextureCacheCreate(
-                kCFAllocatorDefault,
-                ptr::null(),
-                eagl_ctx as CVEAGLContext,
-                ptr::null(),
-                &mut gl_texture_cache,
-            );
-            if status != K_CV_RETURN_SUCCESS {
-                CVPixelBufferRelease(pixel_buffer);
-                eagl_set_current(ptr::null_mut());
-                let _: () = msg_send![eagl_ctx, release];
-                let _: () = msg_send![video_view, removeFromSuperview];
-                let _: () = msg_send![metal_queue, release];
-                let _: () = msg_send![metal_device, release];
-                return Err(format!("CVOpenGLESTextureCacheCreate failed: {status}"));
-            }
-
             let mut gl_cv_texture: CVOpenGLESTextureRef = ptr::null_mut();
-            let status = CVOpenGLESTextureCacheCreateTextureFromImage(
-                kCFAllocatorDefault,
-                gl_texture_cache,
-                pixel_buffer,
-                ptr::null(),
-                GL_TEXTURE_2D,
-                GL_RGBA as i32,
-                init_w,
-                init_h,
-                GL_BGRA_EXT,
-                GL_UNSIGNED_BYTE,
-                0,
-                &mut gl_cv_texture,
-            );
-            if status != K_CV_RETURN_SUCCESS {
-                CFRelease(gl_texture_cache as CFTypeRef);
-                CVPixelBufferRelease(pixel_buffer);
-                eagl_set_current(ptr::null_mut());
-                let _: () = msg_send![eagl_ctx, release];
-                let _: () = msg_send![video_view, removeFromSuperview];
-                let _: () = msg_send![metal_queue, release];
-                let _: () = msg_send![metal_device, release];
-                return Err(format!(
-                    "CVOpenGLESTextureCacheCreateTextureFromImage failed: {status}"
-                ));
-            }
+            let mut plain_gl_texture: u32 = 0;
+            let mut sim_renderbuffer: u32 = 0;
 
-            let gl_texture_name = CVOpenGLESTextureGetName(gl_cv_texture);
-
-            // ── FBO with CV-created GL texture ───────────────────
+            // ── FBO ──────────────────────────────────────────────
             let mut fbo: u32 = 0;
             glGenFramebuffers(1, &mut fbo);
             glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-            glFramebufferTexture2D(
-                GL_FRAMEBUFFER,
-                GL_COLOR_ATTACHMENT0,
-                GL_TEXTURE_2D,
-                gl_texture_name,
-                0,
-            );
+
+            if is_sim {
+                // Simulator path: renderbuffer for FBO color attachment
+                glGenRenderbuffers(1, &mut sim_renderbuffer);
+                glBindRenderbuffer(GL_RENDERBUFFER, sim_renderbuffer);
+                glRenderbufferStorage(
+                    GL_RENDERBUFFER,
+                    GL_RGBA8,
+                    init_w as c_int,
+                    init_h as c_int,
+                );
+                glFramebufferRenderbuffer(
+                    GL_FRAMEBUFFER,
+                    GL_COLOR_ATTACHMENT0,
+                    GL_RENDERBUFFER,
+                    sim_renderbuffer,
+                );
+                let fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+                if fb_status != GL_FRAMEBUFFER_COMPLETE {
+                    glDeleteRenderbuffers(1, &sim_renderbuffer);
+                    glDeleteFramebuffers(1, &fbo);
+                    CVPixelBufferRelease(pixel_buffer);
+                    eagl_set_current(ptr::null_mut());
+                    let _: () = msg_send![eagl_ctx, release];
+                    let _: () = msg_send![video_view, removeFromSuperview];
+                    let _: () = msg_send![metal_queue, release];
+                    let _: () = msg_send![metal_device, release];
+                    return Err(format!("FBO incomplete (simulator renderbuffer): {fb_status:#X}"));
+                }
+                log::info!("iOS simulator: using renderbuffer FBO + glReadPixels path");
+            } else {
+                // Device path: CVOpenGLESTextureCache for zero-copy
+                let status = CVOpenGLESTextureCacheCreate(
+                    kCFAllocatorDefault,
+                    ptr::null(),
+                    eagl_ctx as CVEAGLContext,
+                    ptr::null(),
+                    &mut gl_texture_cache,
+                );
+                if status != K_CV_RETURN_SUCCESS {
+                    glDeleteFramebuffers(1, &fbo);
+                    CVPixelBufferRelease(pixel_buffer);
+                    eagl_set_current(ptr::null_mut());
+                    let _: () = msg_send![eagl_ctx, release];
+                    let _: () = msg_send![video_view, removeFromSuperview];
+                    let _: () = msg_send![metal_queue, release];
+                    let _: () = msg_send![metal_device, release];
+                    return Err(format!("CVOpenGLESTextureCacheCreate failed: {status}"));
+                }
+
+                let status = CVOpenGLESTextureCacheCreateTextureFromImage(
+                    kCFAllocatorDefault,
+                    gl_texture_cache,
+                    pixel_buffer,
+                    ptr::null(),
+                    GL_TEXTURE_2D,
+                    GL_RGBA as i32,
+                    init_w,
+                    init_h,
+                    GL_BGRA_EXT,
+                    GL_UNSIGNED_BYTE,
+                    0,
+                    &mut gl_cv_texture,
+                );
+                if status != K_CV_RETURN_SUCCESS {
+                    CFRelease(gl_texture_cache as CFTypeRef);
+                    glDeleteFramebuffers(1, &fbo);
+                    CVPixelBufferRelease(pixel_buffer);
+                    eagl_set_current(ptr::null_mut());
+                    let _: () = msg_send![eagl_ctx, release];
+                    let _: () = msg_send![video_view, removeFromSuperview];
+                    let _: () = msg_send![metal_queue, release];
+                    let _: () = msg_send![metal_device, release];
+                    return Err(format!(
+                        "CVOpenGLESTextureCacheCreateTextureFromImage failed: {status}"
+                    ));
+                }
+
+                let gl_texture_name = CVOpenGLESTextureGetName(gl_cv_texture);
+                glFramebufferTexture2D(
+                    GL_FRAMEBUFFER,
+                    GL_COLOR_ATTACHMENT0,
+                    GL_TEXTURE_2D,
+                    gl_texture_name,
+                    0,
+                );
+            }
 
             // ── CVMetalTextureCache → Metal texture ──────────────
             let mut metal_texture_cache: CVMetalTextureCacheRef = ptr::null_mut();
@@ -610,6 +723,8 @@ impl NativeVideoView {
                 pixel_buffer,
                 gl_texture_cache,
                 gl_cv_texture,
+                plain_gl_texture,
+                sim_renderbuffer,
                 metal_texture_cache,
                 metal_cv_texture,
                 metal_device,
@@ -734,6 +849,12 @@ impl NativeVideoView {
 
             // Clean up GL resources
             glDeleteFramebuffers(1, &self.ctx.fbo);
+            if self.ctx.plain_gl_texture != 0 {
+                glDeleteTextures(1, &self.ctx.plain_gl_texture);
+            }
+            if self.ctx.sim_renderbuffer != 0 {
+                glDeleteRenderbuffers(1, &self.ctx.sim_renderbuffer);
+            }
 
             // Release CV textures and caches
             if !self.ctx.gl_cv_texture.is_null() {
@@ -836,6 +957,7 @@ unsafe fn resize_surface(ctx: &Arc<RenderCtx>, new_w: i32, new_h: i32) {
         return;
     }
 
+    let is_sim = cfg!(target_abi = "sim");
     let ctx_ptr = Arc::as_ptr(ctx) as *mut RenderCtx;
 
     // Release old CV textures
@@ -871,39 +993,51 @@ unsafe fn resize_surface(ctx: &Arc<RenderCtx>, new_w: i32, new_h: i32) {
         }
     };
 
-    // Create new GL texture from CVPixelBuffer
-    let mut gl_cv_texture: CVOpenGLESTextureRef = ptr::null_mut();
-    let status = CVOpenGLESTextureCacheCreateTextureFromImage(
-        kCFAllocatorDefault,
-        (*ctx_ptr).gl_texture_cache,
-        pixel_buffer,
-        ptr::null(),
-        GL_TEXTURE_2D,
-        GL_RGBA as i32,
-        new_w,
-        new_h,
-        GL_BGRA_EXT,
-        GL_UNSIGNED_BYTE,
-        0,
-        &mut gl_cv_texture,
-    );
-    if status != K_CV_RETURN_SUCCESS {
-        log::error!("resize_surface: CVOpenGLESTextureCacheCreateTextureFromImage failed: {status}");
-        CVPixelBufferRelease(pixel_buffer);
-        return;
-    }
-
-    let gl_texture_name = CVOpenGLESTextureGetName(gl_cv_texture);
-
-    // Rebind FBO
+    // Recreate GL FBO attachment
     glBindFramebuffer(GL_FRAMEBUFFER, (*ctx_ptr).fbo);
-    glFramebufferTexture2D(
-        GL_FRAMEBUFFER,
-        GL_COLOR_ATTACHMENT0,
-        GL_TEXTURE_2D,
-        gl_texture_name,
-        0,
-    );
+    if is_sim {
+        // Simulator: resize renderbuffer
+        let rbo = (*ctx_ptr).sim_renderbuffer;
+        glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, new_w as c_int, new_h as c_int);
+        glFramebufferRenderbuffer(
+            GL_FRAMEBUFFER,
+            GL_COLOR_ATTACHMENT0,
+            GL_RENDERBUFFER,
+            rbo,
+        );
+    } else {
+        // Device: CVOpenGLESTextureCache
+        let mut gl_cv_texture: CVOpenGLESTextureRef = ptr::null_mut();
+        let status = CVOpenGLESTextureCacheCreateTextureFromImage(
+            kCFAllocatorDefault,
+            (*ctx_ptr).gl_texture_cache,
+            pixel_buffer,
+            ptr::null(),
+            GL_TEXTURE_2D,
+            GL_RGBA as i32,
+            new_w,
+            new_h,
+            GL_BGRA_EXT,
+            GL_UNSIGNED_BYTE,
+            0,
+            &mut gl_cv_texture,
+        );
+        if status != K_CV_RETURN_SUCCESS {
+            log::error!("resize_surface: CVOpenGLESTextureCacheCreateTextureFromImage failed: {status}");
+            CVPixelBufferRelease(pixel_buffer);
+            return;
+        }
+        let gl_texture_name = CVOpenGLESTextureGetName(gl_cv_texture);
+        glFramebufferTexture2D(
+            GL_FRAMEBUFFER,
+            GL_COLOR_ATTACHMENT0,
+            GL_TEXTURE_2D,
+            gl_texture_name,
+            0,
+        );
+        (*ctx_ptr).gl_cv_texture = gl_cv_texture;
+    }
 
     // Create new Metal texture from CVPixelBuffer
     let mut metal_cv_texture: CVMetalTextureRef = ptr::null_mut();
@@ -920,7 +1054,12 @@ unsafe fn resize_surface(ctx: &Arc<RenderCtx>, new_w: i32, new_h: i32) {
     );
     if status != K_CV_RETURN_SUCCESS {
         log::error!("resize_surface: CVMetalTextureCacheCreateTextureFromImage failed: {status}");
-        CFRelease(gl_cv_texture as CFTypeRef);
+        if !is_sim {
+            if !(*ctx_ptr).gl_cv_texture.is_null() {
+                CFRelease((*ctx_ptr).gl_cv_texture as CFTypeRef);
+                (*ctx_ptr).gl_cv_texture = ptr::null_mut();
+            }
+        }
         CVPixelBufferRelease(pixel_buffer);
         return;
     }
@@ -933,7 +1072,6 @@ unsafe fn resize_surface(ctx: &Arc<RenderCtx>, new_w: i32, new_h: i32) {
 
     // Store new resources
     (*ctx_ptr).pixel_buffer = pixel_buffer;
-    (*ctx_ptr).gl_cv_texture = gl_cv_texture;
     (*ctx_ptr).metal_cv_texture = metal_cv_texture;
 
     ctx.surface_width.store(new_w, Ordering::Release);
@@ -942,6 +1080,25 @@ unsafe fn resize_surface(ctx: &Arc<RenderCtx>, new_w: i32, new_h: i32) {
 
 /// Render loop running on a dedicated thread.
 fn render_loop(ctx: Arc<RenderCtx>) {
+    // Simulator's software OpenGL ES cannot handle mpv's GL rendering pipeline
+    // (glClear crashes with Data Abort in _platform_memset_pattern16).
+    // Skip GL rendering entirely on simulator — audio still works.
+    if cfg!(target_abi = "sim") {
+        log::warn!("render_loop: simulator detected, skipping GL rendering (audio only)");
+        while ctx.alive.load(Ordering::Acquire) {
+            let mut pending = ctx.wake_lock.lock().unwrap();
+            while !*pending && ctx.alive.load(Ordering::Acquire) {
+                let result = ctx
+                    .wake
+                    .wait_timeout(pending, std::time::Duration::from_secs(1))
+                    .unwrap();
+                pending = result.0;
+            }
+            *pending = false;
+        }
+        return;
+    }
+
     // Make EAGL context current on this thread
     unsafe {
         if !eagl_set_current(ctx.eagl_ctx) {
@@ -991,11 +1148,49 @@ fn render_loop(ctx: Arc<RenderCtx>) {
         }
 
         unsafe {
-            // ── Step 1: OpenGL ES — render mpv frame → CVPixelBuffer ─
+            // ── Step 1: OpenGL ES — render mpv frame into FBO ────
             glBindFramebuffer(GL_FRAMEBUFFER, ctx.fbo);
             glViewport(0, 0, w as c_int, h as c_int);
             let _ = ctx.renderer.render(ctx.fbo as i32, w, h);
             glFlush();
+
+            // ── Step 1.5 (simulator only): copy GL pixels → CVPixelBuffer ─
+            if cfg!(target_abi = "sim") {
+                // On simulator, GL and CVPixelBuffer are not zero-copy shared.
+                // Read pixels from GL FBO and write into CVPixelBuffer manually.
+                CVPixelBufferLockBaseAddress(ctx.pixel_buffer, 0);
+                let base = CVPixelBufferGetBaseAddress(ctx.pixel_buffer);
+                let row_bytes = CVPixelBufferGetBytesPerRow(ctx.pixel_buffer);
+                if !base.is_null() {
+                    if row_bytes == (w as usize) * 4 {
+                        // Rows are tightly packed — read directly
+                        glReadPixels(
+                            0, 0, w as c_int, h as c_int,
+                            GL_BGRA_EXT, GL_UNSIGNED_BYTE, base,
+                        );
+                    } else {
+                        // Rows have padding — read into temp buffer then copy row by row
+                        let tight_size = (w as usize) * (h as usize) * 4;
+                        let mut tmp = vec![0u8; tight_size];
+                        glReadPixels(
+                            0, 0, w as c_int, h as c_int,
+                            GL_BGRA_EXT, GL_UNSIGNED_BYTE,
+                            tmp.as_mut_ptr() as *mut c_void,
+                        );
+                        let row_w = (w as usize) * 4;
+                        for y in 0..h as usize {
+                            ptr::copy_nonoverlapping(
+                                tmp.as_ptr().add(y * row_w),
+                                (base as *mut u8).add(y * row_bytes),
+                                row_w,
+                            );
+                        }
+                    }
+                }
+                CVPixelBufferUnlockBaseAddress(ctx.pixel_buffer, 0);
+                // Flush the Metal texture cache so it picks up the new pixel data
+                CVMetalTextureCacheFlush(ctx.metal_texture_cache, 0);
+            }
 
             // ── Step 2: Metal — blit CVPixelBuffer → CAMetalLayer ────
             let pool = objc_autoreleasePoolPush();

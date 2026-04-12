@@ -70,7 +70,7 @@ function MobileCarousel({ items, current, count, goTo, isPaused, setIsPaused, in
       onTouchEnd={handleTouchEnd}
     >
       {/* Background image */}
-      <div className="relative h-52">
+      <div className="relative h-40">
         {items.map((it, i) => (
           <div
             key={it.id}

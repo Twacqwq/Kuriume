@@ -42,6 +42,7 @@ fn main() {
             "VideoToolbox", "AudioToolbox", "CoreMedia",
             "CoreVideo", "CoreAudio", "AVFoundation",
             "OpenGLES", "CoreText", "CoreFoundation",
+            "Security",
         ] {
             println!("cargo:rustc-link-lib=framework={fw}");
         }

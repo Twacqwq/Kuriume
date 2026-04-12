@@ -13,7 +13,7 @@ import {
 import { AnimeCharacters, AnimeEpisodes } from "@/lib/types";
 import type { WatchStatus } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { SourcePickerDialog } from "@/components/source-picker-dialog";
+import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
   BookmarkCheck,
@@ -187,35 +187,33 @@ export function AnimeDetail({
 
           {/* Back button */}
           {onBack && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={onBack}
-                  className="absolute left-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20 md:left-6 md:top-14"
-                >
-                  <ArrowLeft size={18} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">返回</TooltipContent>
-            </Tooltip>
+            <button
+              onClick={onBack}
+              className="absolute left-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/80 backdrop-blur-sm transition-colors hover:bg-white/20 md:left-6 md:top-14"
+              aria-label="返回"
+            >
+              <ArrowLeft size={18} />
+            </button>
           )}
 
           {/* Content */}
-          <div className="relative flex flex-col gap-6 px-4 pb-8 pt-14 md:gap-8 md:px-16 md:pb-10 md:pt-20 md:flex-row md:items-start lg:px-24">
+          <div
+            className="relative flex flex-row items-start gap-4 px-4 pb-6 pt-14 md:flex-col md:gap-8 md:px-16 md:pb-10 md:pt-20 md:flex-row md:items-start lg:px-24"
+          >
             {/* Cover */}
-            <div className="group/cover relative shrink-0 self-center md:self-start">
+            <div className="group/cover relative shrink-0">
               <img
                 src={data.cover}
                 alt=""
-                className="absolute inset-0 m-auto h-full w-full scale-110 rounded-2xl object-cover opacity-30 blur-2xl"
+                className="absolute inset-0 m-auto hidden h-full w-full scale-110 rounded-2xl object-cover opacity-30 blur-2xl md:block"
               />
               <img
                 src={data.cover}
                 alt={data.title}
-                className="relative h-56 w-auto rounded-2xl object-cover shadow-2xl shadow-black/60 ring-1 ring-white/10 transition-transform duration-300 group-hover/cover:scale-[1.02] sm:h-72 md:h-88"
+                className="relative h-[180px] w-[120px] rounded-xl object-cover shadow-xl ring-1 ring-white/10 md:h-88 md:w-auto md:rounded-2xl md:shadow-2xl md:shadow-black/60 md:transition-transform md:duration-300 md:group-hover/cover:scale-[1.02]"
               />
-              <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/20 transition-colors duration-300 md:bg-black/0 md:group-hover/cover:bg-black/30">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/90 text-white opacity-80 shadow-lg shadow-primary/30 transition-all duration-300 md:opacity-0 md:scale-75 md:group-hover/cover:scale-100 md:group-hover/cover:opacity-100">
+              <div className="absolute inset-0 hidden items-center justify-center rounded-2xl bg-black/0 transition-colors duration-300 md:flex md:group-hover/cover:bg-black/30">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/90 text-white opacity-0 shadow-lg shadow-primary/30 transition-all duration-300 scale-75 group-hover/cover:scale-100 group-hover/cover:opacity-100">
                   <Play size={24} fill="currentColor" className="ml-1" />
                 </div>
               </div>
@@ -399,8 +397,6 @@ type EpisodeViewMode = "list" | "grid";
 function EpisodeList({
   episodes,
   animeId,
-  animeTitle,
-  totalEpisodes,
 }: {
   episodes: AnimeEpisodes[];
   animeId: number;
@@ -408,7 +404,6 @@ function EpisodeList({
   totalEpisodes: number;
 }) {
   const [viewMode, setViewMode] = useState<EpisodeViewMode>("list");
-  const [pickerEp, setPickerEp] = useState<AnimeEpisodes | null>(null);
 
   return (
     <div className="space-y-5">
@@ -478,10 +473,11 @@ function EpisodeList({
             }
 
             return (
-              <button
+              <Link
                 key={ep.id}
-                type="button"
-                onClick={() => setPickerEp(ep)}
+                to="/anime/$id/episode/$ep"
+                params={{ id: String(animeId), ep: String(ep.ep) }}
+                search={{ t: undefined, onlineUrl: undefined }}
                 className="group flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-white/2"
               >
                 <span className={cn(
@@ -514,7 +510,7 @@ function EpisodeList({
                   fill="currentColor"
                   className="shrink-0 text-primary opacity-60 md:text-muted-foreground/40 md:opacity-0 md:transition-opacity md:group-hover:text-primary md:group-hover:opacity-100"
                 />
-              </button>
+              </Link>
             );
           })}
         </div>
@@ -544,9 +540,10 @@ function EpisodeList({
             return (
               <Tooltip key={ep.id}>
                 <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => setPickerEp(ep)}
+                  <Link
+                    to="/anime/$id/episode/$ep"
+                    params={{ id: String(animeId), ep: String(ep.ep) }}
+                    search={{ t: undefined, onlineUrl: undefined }}
                     className={cn(
                       "relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium tabular-nums transition-all",
                       watched
@@ -560,7 +557,7 @@ function EpisodeList({
                     {watching && (
                       <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary shadow-[0_0_4px_var(--primary)]" />
                     )}
-                  </button>
+                  </Link>
                 </TooltipTrigger>
                 <TooltipContent>第 {ep.ep} 话 · {ep.title_cn || ep.title || ""}</TooltipContent>
               </Tooltip>
@@ -568,17 +565,6 @@ function EpisodeList({
           })}
         </div>
       )}
-
-      {/* Source picker dialog */}
-      <SourcePickerDialog
-        open={!!pickerEp}
-        onOpenChange={(open) => { if (!open) setPickerEp(null); }}
-        animeId={String(animeId)}
-        animeTitle={animeTitle}
-        episodeNumber={pickerEp?.ep ?? 0}
-        episodeTitle={pickerEp?.title_cn || pickerEp?.title || `第 ${pickerEp?.ep ?? 0} 话`}
-        totalEpisodes={totalEpisodes}
-      />
     </div>
   );
 }

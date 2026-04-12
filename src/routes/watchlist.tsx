@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookmarkX, Check, Eye, EyeOff, Film, Library } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 
 export const Route = createFileRoute("/watchlist")({
@@ -117,9 +117,34 @@ function WatchlistCard({
 }) {
   const badge = STATUS_BADGE[entry.status as WatchStatus] ?? STATUS_BADGE.watching;
 
+  // ── Long-press context menu (mobile) ──
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const LONG_PRESS_MS = 500;
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    timerRef.current = setTimeout(() => {
+      setMenuPos({ x: touch.clientX, y: touch.clientY });
+      setMenuOpen(true);
+    }, LONG_PRESS_MS);
+  }, []);
+
+  const onTouchEnd = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+
+  const onTouchMove = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+
   return (
     <div
       className="group relative flex flex-col"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      onTouchMove={onTouchMove}
     >
       {/* Cover */}
       <Link
@@ -162,11 +187,11 @@ function WatchlistCard({
         )}
       </Link>
 
-      {/* Action buttons — always visible on mobile, hover on desktop */}
+      {/* Action buttons — desktop hover only */}
       <div
         className={cn(
           "absolute right-2 top-2 flex gap-1 transition-opacity duration-200",
-          "md:opacity-0 md:group-hover:opacity-100",
+          "hidden md:flex md:opacity-0 md:group-hover:opacity-100",
         )}
       >
         {/* Cycle status */}
@@ -216,6 +241,46 @@ function WatchlistCard({
       >
         {entry.anime_title}
       </Link>
+
+      {/* Long-press context menu (mobile) */}
+      {menuOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-50 md:hidden"
+            onClick={() => setMenuOpen(false)}
+            onTouchEnd={() => setMenuOpen(false)}
+          />
+          <div
+            className="fixed z-50 min-w-36 rounded-xl border border-white/10 bg-background/95 py-1 shadow-xl backdrop-blur-xl md:hidden"
+            style={{ left: menuPos.x, top: menuPos.y, transform: "translate(-50%, -100%)" }}
+          >
+            {(["watching", "unwatched", "completed"] as WatchStatus[])
+              .filter((s) => s !== entry.status)
+              .map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-foreground/80 active:bg-white/8"
+                  onClick={() => { onStatusChange(s); setMenuOpen(false); }}
+                >
+                  {s === "watching" && <Eye size={14} />}
+                  {s === "unwatched" && <EyeOff size={14} />}
+                  {s === "completed" && <Check size={14} />}
+                  {STATUS_BADGE[s].label}
+                </button>
+              ))}
+            <div className="my-1 h-px bg-white/5" />
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-destructive active:bg-white/8"
+              onClick={() => { onRemove(); setMenuOpen(false); }}
+            >
+              <BookmarkX size={14} />
+              取消追番
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

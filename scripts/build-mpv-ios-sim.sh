@@ -95,13 +95,15 @@ build_ffmpeg() {
         --enable-pic \
         --enable-videotoolbox --enable-audiotoolbox \
         --disable-avdevice --disable-postproc \
-        --disable-network --disable-encoders --disable-muxers \
+        --disable-encoders --disable-muxers \
         --enable-encoder=aac --enable-encoder=libx264 \
         --disable-bsfs --disable-filters \
         --enable-filter=aresample --enable-filter=scale \
         --enable-filter=format --enable-filter=aformat \
         --enable-filter=null --enable-filter=anull \
-        --disable-protocols --enable-protocol=file --enable-protocol=pipe \
+        --disable-protocols \
+        --enable-protocol=file --enable-protocol=pipe \
+        --enable-protocol=http --enable-protocol=tcp \
         --enable-swresample --enable-swscale
 
     make -j"$NJOBS"

@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { historyApi, type WatchHistoryEntry } from "@/lib/store";
-import { ChevronRight, Clock, Film, Play, Settings } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { ChevronRight, Film, Play, Settings } from "lucide-react";
 
 export const Route = createFileRoute("/me")({
   component: MePage,
@@ -17,12 +18,12 @@ function MePage() {
     <div className="mx-auto max-w-lg px-4 py-6">
       <h1 className="mb-6 text-2xl font-bold">我的</h1>
 
-      {/* Recent history */}
+      {/* Continue watching */}
       {recentHistory.length > 0 && (
-        <section className="mb-4">
+        <section className="mb-6">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-muted-foreground">
-              最近观看
+              继续观看
             </h2>
             <Link
               to="/history"
@@ -41,14 +42,6 @@ function MePage() {
 
       {/* Menu links */}
       <div className="space-y-1.5">
-        <Link
-          to="/history"
-          className="flex items-center gap-3 rounded-xl bg-white/4 p-4 transition-colors active:bg-white/8"
-        >
-          <Clock size={20} className="text-muted-foreground" />
-          <span className="flex-1 text-sm font-medium">观看历史</span>
-          <ChevronRight size={16} className="text-muted-foreground/50" />
-        </Link>
         <Link
           to="/settings"
           className="flex items-center gap-3 rounded-xl bg-white/4 p-4 transition-colors active:bg-white/8"
@@ -74,11 +67,7 @@ function RecentHistoryItem({ entry }: { entry: WatchHistoryEntry }) {
       to="/anime/$id/episode/$ep"
       params={{ id: entry.bgm_id, ep: String(entry.episode) }}
       search={{
-        groupId: entry.group_id ?? undefined,
-        resolution: entry.resolution ?? undefined,
-        subtitle: entry.subtitle ?? undefined,
-        provider: undefined,
-        t: entry.position > 5 ? entry.position : undefined,
+        t: entry.position > 5 && !isFinished ? entry.position : undefined,
         onlineUrl: undefined,
       }}
       className="flex items-center gap-3 rounded-xl bg-white/4 p-3 transition-colors active:bg-white/8"
@@ -101,13 +90,18 @@ function RecentHistoryItem({ entry }: { entry: WatchHistoryEntry }) {
       {/* Info */}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{entry.anime_title}</p>
-        <p className="text-xs text-muted-foreground">
+        <p className="mb-1 text-xs text-muted-foreground">
           第 {entry.episode} 话 ·{" "}
           {isFinished ? "已看完" : `看到 ${Math.round(progress)}%`}
         </p>
+        {!isFinished && progress > 0 && (
+          <Progress value={progress} className="h-1 bg-white/10" />
+        )}
       </div>
 
-      <Play size={14} className="shrink-0 text-muted-foreground/50" />
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+        <Play size={14} fill="currentColor" className="ml-0.5" />
+      </div>
     </Link>
   );
 }

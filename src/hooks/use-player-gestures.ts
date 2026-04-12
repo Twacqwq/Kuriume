@@ -58,6 +58,10 @@ export function usePlayerGestures({
       const start = touchStartRef.current;
       if (!start) return;
 
+      // Prevent the browser from synthesising a click event after the
+      // touch sequence — the gesture system handles taps itself.
+      e.preventDefault();
+
       // If swipe was handled, don't process tap
       if (swipeHandledRef.current) {
         touchStartRef.current = null;

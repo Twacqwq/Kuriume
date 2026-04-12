@@ -8,7 +8,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-build = { version = "2", features = [] }
 async-trait = "0.1"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "charset", "http2"] }
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 
@@ -51,4 +51,7 @@ kuriume-torrent = { workspace = true }
 kuriume-store = { workspace = true }
 tauri-plugin-mpv = { workspace = true }
 tauri-plugin-dialog = "2.6.0"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "0.6"
 

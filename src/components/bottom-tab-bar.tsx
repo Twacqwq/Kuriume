@@ -1,20 +1,16 @@
 import { cn } from "@/lib/utils";
 import { Link, useMatches } from "@tanstack/react-router";
-import { Clapperboard, CalendarDays, Library, User, Search } from "lucide-react";
+import { Clapperboard, CalendarDays, Library, User, Clock } from "lucide-react";
 
 const navTabs = [
   { icon: Clapperboard, label: "番剧", to: "/" },
   { icon: CalendarDays, label: "放送", to: "/calendar" },
-  { icon: Search, label: "搜索", to: null }, // placeholder – triggers search panel
   { icon: Library, label: "追番", to: "/watchlist" },
+  { icon: Clock, label: "历史", to: "/history" },
   { icon: User, label: "我的", to: "/me" },
 ] as const;
 
-interface BottomTabBarProps {
-  onSearchClick?: () => void;
-}
-
-export function BottomTabBar({ onSearchClick }: BottomTabBarProps) {
+export function BottomTabBar() {
   const matches = useMatches();
   const currentPath = matches[matches.length - 1]?.pathname ?? "/";
 
@@ -27,23 +23,6 @@ export function BottomTabBar({ onSearchClick }: BottomTabBarProps) {
       )}
     >
       {navTabs.map((tab) => {
-        if (tab.to === null) {
-          // Search button – opens panel instead of navigating
-          return (
-            <button
-              key="search"
-              type="button"
-              onClick={onSearchClick}
-              className="flex flex-1 flex-col items-center gap-0.5 py-2 text-muted-foreground active:text-foreground transition-colors"
-            >
-              <tab.icon size={20} strokeWidth={1.8} />
-              <span className="text-[10px] leading-none font-medium">
-                {tab.label}
-              </span>
-            </button>
-          );
-        }
-
         const isActive =
           tab.to === "/"
             ? currentPath === "/"

@@ -125,7 +125,7 @@ function AnimeDetailPage() {
   return (
     <AnimeDetail
       data={toAnimeDetailData(info, episodes, characters)}
-      onBack={() => router.history.back()}
+      onBack={() => router.navigate({ to: "/" })}
       watchStatus={watchEntry?.status as WatchStatus | undefined ?? null}
       onWatchStatusChange={(status) => addOrUpdate.mutate(status)}
       onWatchRemove={() => remove.mutate()}

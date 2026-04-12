@@ -42,35 +42,38 @@ impl MpvPlayer {
     /// Create a player configured for the render API (`vo=libmpv`).
     pub fn new_for_render() -> Result<Self> {
         let mpv = Mpv::with_initializer(|init| {
-            init.set_option("config", false)?;
-            init.set_option("idle", true)?;
-            init.set_option("input-default-bindings", false)?;
-            init.set_option("osc", false)?;
-            init.set_option("ytdl", false)?;
-            init.set_option("hwdec", "auto")?;
-            // vo=libmpv tells mpv to use the render API for output
-            init.set_option("vo", "libmpv")?;
+            let try_opt = |name: &str, val: &str| {
+                if let Err(e) = init.set_option(name, val) {
+                    eprintln!("[mpv-init] option '{name}' = '{val}' failed: {e:?}");
+                }
+            };
+            let try_opt_bool = |name: &str, val: bool| {
+                if let Err(e) = init.set_option(name, val) {
+                    eprintln!("[mpv-init] option '{name}' = {val} failed: {e:?}");
+                }
+            };
 
-            // ── Network / streaming cache ────────────────────────
-            init.set_option("cache", true)?;
-            init.set_option("cache-secs", 2)?;
-            init.set_option("network-timeout", 0)?;
-
-            // Mobile: smaller buffers to conserve RAM, force GLES
-            #[cfg(any(target_os = "android", target_os = "ios"))]
+            try_opt_bool("config", false);
+            try_opt_bool("idle", true);
+            try_opt_bool("input-default-bindings", false);
+            // osc/ytdl are lua script options, not available on iOS builds
+            #[cfg(not(target_os = "ios"))]
             {
-                init.set_option("demuxer-max-bytes", "50MiB")?;
-                init.set_option("demuxer-max-back-bytes", "20MiB")?;
-                init.set_option("opengl-es", "yes")?;
+                try_opt_bool("osc", false);
+                try_opt_bool("ytdl", false);
             }
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            {
-                init.set_option("demuxer-max-bytes", "150MiB")?;
-                init.set_option("demuxer-max-back-bytes", "50MiB")?;
-            }
+            try_opt("hwdec", "auto");
+            try_opt("vo", "libmpv");
+            try_opt_bool("cache", true);
+            try_opt("demuxer-max-bytes", "50MiB");
+            try_opt("demuxer-max-back-bytes", "20MiB");
 
             Ok(())
         })?;
+
+        // Set sub-options as properties after mpv init
+        let _ = mpv.set_property("cache-secs", 2i64);
+        let _ = mpv.set_property("network-timeout", 0i64);
 
         Ok(Self {
             mpv: Box::new(mpv),

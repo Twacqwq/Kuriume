@@ -1,27 +1,21 @@
 import { TorrentPlayer } from "@/components/torrent-player";
 import type { HistoryContext } from "@/components/torrent-player";
 import { Button } from "@/components/ui/button";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
 import { historyApi } from "@/lib/store";
 import { useTorrentSource } from "@/hooks/use-torrent-source";
+import { useOnlineSource } from "@/hooks/use-online-source";
 import { useVideoSniffer } from "@/hooks/use-video-sniffer";
 import type { CacheContext } from "@/hooks/use-torrent-stream";
+import { KNOWN_PROVIDERS, type ProviderName } from "@/lib/torrent-source";
 import { cn } from "@/lib/utils";
 import { detailQueryOptions, episodesQueryOptions } from "@/routes/anime/$id";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ArrowLeft,
   Check,
   Globe,
   Languages,
-  List,
   Loader2,
   Monitor,
   Play,
@@ -30,12 +24,10 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+type SourceTab = ProviderName | "online";
+
 export const Route = createFileRoute("/anime/$id/episode/$ep")({
   validateSearch: (search: Record<string, unknown>) => ({
-    groupId: (search.groupId as string) || undefined,
-    resolution: (search.resolution as string) || undefined,
-    subtitle: (search.subtitle as string) || undefined,
-    provider: (search.provider as string) || undefined,
     t: Number(search.t) || undefined,
     onlineUrl: (search.onlineUrl as string) || undefined,
   }),
@@ -44,16 +36,24 @@ export const Route = createFileRoute("/anime/$id/episode/$ep")({
 
 function EpisodePage() {
   const { id, ep } = Route.useParams();
-  const { groupId, resolution, subtitle: searchSubtitle, provider: searchProvider, t: startTime, onlineUrl } = Route.useSearch();
+  const { t: startTime, onlineUrl } = Route.useSearch();
   const router = useRouter();
   const epNum = Number(ep);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  // ── Source tab state ─────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<SourceTab>(
+    onlineUrl ? "online" : "Mikan",
+  );
+
+  const isMobile = typeof navigator !== "undefined" && /iPhone|iPad|Android/i.test(navigator.userAgent);
 
   useEffect(() => {
-    getCurrentWindow().isFullscreen().then(setIsFullscreen);
-  }, []);
+    if (isMobile) return;
+    import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
+      getCurrentWindow().isFullscreen().then(setIsFullscreen)
+    ).catch(() => {});
+  }, [isMobile]);
 
   const { data: animeInfo } = useQuery(detailQueryOptions(id));
   const { data: episodes = [] } = useQuery(
@@ -78,7 +78,6 @@ function EpisodePage() {
     if (startTime !== undefined) return startTime;
     if (!historyEntries) return undefined;
     const { position, duration } = historyEntries;
-    // Don't resume if nearly finished (>95%) or too early (<5s)
     if (position <= 5 || (duration > 0 && position / duration > 0.95)) return undefined;
     return position;
   }, [startTime, historyEntries]);
@@ -94,29 +93,64 @@ function EpisodePage() {
 
   // ── Determine mode ──────────────────────────────────────────────
 
-  const isOnline = !!onlineUrl;
+  const isOnline = activeTab === "online";
 
   // ── Video sniffer (online mode) ────────────────────────────────
 
   const sniffer = useVideoSniffer();
+  const onlineSrc = useOnlineSource(animeTitle);
+
+  // DEBUG: direct invoke test — bypasses hook entirely
+  useEffect(() => {
+    if (!isOnline || !onlineSrc.selectedSource || onlineSrc.searchResults.length === 0) return;
+    const url = onlineSrc.searchResults[0].url;
+    console.log("[DIRECT-TEST] calling online_source_episodes, source:", onlineSrc.selectedSource, "pageUrl:", url);
+    import("@tauri-apps/api/core").then(({ invoke }) => {
+      invoke("online_source_episodes", { source: onlineSrc.selectedSource, pageUrl: url })
+        .then((r: unknown) => console.log("[DIRECT-TEST] OK:", JSON.stringify(r)))
+        .catch((e: unknown) => console.error("[DIRECT-TEST] FAIL:", e));
+    });
+  }, [isOnline, onlineSrc.selectedSource, onlineSrc.searchResults]);
+
+  // Derive dynamic online URL: if initial onlineUrl is provided, use it;
+  // otherwise try resolving from the online source for the current episode.
+  const resolvedOnlineUrl = onlineUrl
+    || (isOnline ? onlineSrc.getEpisodeUrl(epNum) : undefined);
+
+  // Debug: log online source state on every render when online tab is active
+  useEffect(() => {
+    if (!isOnline) return;
+    console.log("[online-debug] isOnline:", isOnline,
+      "roads:", onlineSrc.roads.length,
+      "selectedRoadIndex:", onlineSrc.selectedRoadIndex,
+      "epNum:", epNum,
+      "resolvedOnlineUrl:", resolvedOnlineUrl,
+      "snifferPhase:", sniffer.phase,
+      "selectedSource:", onlineSrc.selectedSource,
+      "searching:", onlineSrc.searching,
+      "loadingEpisodes:", onlineSrc.loadingEpisodes);
+  });
 
   useEffect(() => {
-    if (isOnline && onlineUrl) {
-      sniffer.sniff(onlineUrl);
+    if (isOnline && resolvedOnlineUrl) {
+      console.log("[online-sniffer] auto-trigger:", resolvedOnlineUrl);
+      sniffer.sniff(resolvedOnlineUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onlineUrl, isOnline]);
+  }, [resolvedOnlineUrl, isOnline]);
 
-  // ── Resolve torrent source ─────────────────────────────────────
+  // ── Resolve torrent source (only when a torrent provider is active) ──
+
+  const torrentProvider = isOnline ? "Mikan" : (activeTab as ProviderName);
 
   const source = useTorrentSource(
     id,
     animeTitle,
-    groupId,
-    resolution,
+    historyEntries?.group_id ?? undefined,
+    historyEntries?.resolution ?? undefined,
     animeInfo?.total_episodes,
-    searchSubtitle,
-    searchProvider,
+    historyEntries?.subtitle ?? undefined,
+    torrentProvider,
   );
   const torrentSource = source.getTorrentSource(epNum);
 
@@ -127,25 +161,29 @@ function EpisodePage() {
       router.navigate({
         to: "/anime/$id/episode/$ep",
         params: { id, ep: String(targetEp) },
-        search: onlineUrl
-          ? { onlineUrl, t: undefined, groupId: undefined, resolution: undefined, subtitle: undefined, provider: undefined }
-          : { groupId, resolution, subtitle: searchSubtitle, provider: searchProvider, t: undefined, onlineUrl: undefined },
+        search: { t: undefined, onlineUrl: undefined },
       });
     },
-    [router, id, groupId, resolution, searchSubtitle, searchProvider, onlineUrl],
+    [router, id],
   );
 
   const navPrev = hasPrev ? () => navigateToEp(epNum - 1) : undefined;
   const navNext = hasNext ? () => navigateToEp(epNum + 1) : undefined;
 
   const toggleFullscreen = useCallback(async () => {
-    const win = getCurrentWindow();
-    const fs = await win.isFullscreen();
-    await win.setFullscreen(!fs);
-    setIsFullscreen(!fs);
-  }, []);
+    // Always toggle CSS-based fullscreen (works everywhere)
+    const newFs = !isFullscreen;
+    setIsFullscreen(newFs);
+    // On desktop, also toggle native window fullscreen
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      await getCurrentWindow().setFullscreen(newFs);
+    } catch {
+      // Tauri window API unavailable (e.g. iOS) — CSS fullscreen is enough
+    }
+  }, [isFullscreen]);
 
-  // ── Contexts (must be above early returns to satisfy Rules of Hooks) ──
+  // ── Contexts ──────────────────────────────────────────────────
 
   const cacheContext: CacheContext = {
     bgmId: id,
@@ -163,11 +201,11 @@ function EpisodePage() {
       animeTitle: animeTitle ?? "",
       episodeTitle: title,
       cover: animeInfo?.cover ?? null,
-      groupId: groupId ?? null,
-      resolution: resolution ?? null,
-      subtitle: searchSubtitle ?? null,
+      groupId: source.selectedGroupId ?? null,
+      resolution: source.preferredResolution ?? null,
+      subtitle: source.preferredSubtitle ?? null,
     }),
-    [id, epNum, animeTitle, title, animeInfo?.cover, groupId, resolution, searchSubtitle],
+    [id, epNum, animeTitle, title, animeInfo?.cover, source.selectedGroupId, source.preferredResolution, source.preferredSubtitle],
   );
 
   // ── Derived ────────────────────────────────────────────────────
@@ -181,7 +219,7 @@ function EpisodePage() {
   // ── Render ────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className={cn("flex h-full w-full flex-col", isFullscreen && "fixed inset-0 z-50")}>
       {/* ── Header (hidden in fullscreen) ─────────────────────── */}
       {!isFullscreen && (
         <div
@@ -207,16 +245,31 @@ function EpisodePage() {
 
       {/* ── Content ────────────────────────────────────────────── */}
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        {/* Player area — on mobile: fixed aspect ratio; on desktop: fill remaining */}
-        <div className="relative aspect-video w-full shrink-0 md:aspect-auto md:min-w-0 md:flex-1">
+        {/* Player area — on mobile: fixed aspect ratio (fullscreen: fill); on desktop: fill remaining */}
+        <div className={cn(
+          "relative w-full shrink-0",
+          isFullscreen ? "h-full flex-1" : "aspect-video md:aspect-auto md:min-w-0 md:flex-1",
+        )}>
           {isOnline ? (
-            sniffer.phase === "sniffing" || sniffer.phase === "idle" ? (
+            sniffer.phase === "sniffing" ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <div className="flex items-center gap-2 text-sm text-white/60">
                   <Globe className="h-4 w-4" />
                   <span>正在解析视频地址…</span>
                 </div>
+              </div>
+            ) : sniffer.phase === "idle" ? (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
+                <Globe className="h-10 w-10 text-white/15" />
+                <p className="text-sm text-white/50">
+                  {onlineSrc.loadingEpisodes
+                    ? `加载中… ${onlineSrc.error || "waiting"} (${onlineSrc.searchResults.length}结果)`
+                    : onlineSrc.searching ? "搜索中…"
+                    : onlineSrc.roads.length > 0 ? `${onlineSrc.roads.length}条线路`
+                    : onlineSrc.error ? `错误: ${onlineSrc.error}`
+                    : `src=${onlineSrc.selectedSource} res=${onlineSrc.searchResults.length}`}
+                </p>
               </div>
             ) : sniffer.phase === "error" ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-black">
@@ -226,7 +279,7 @@ function EpisodePage() {
                 </p>
                 <Button
                   variant="secondary"
-                  onClick={() => onlineUrl && sniffer.sniff(onlineUrl)}
+                  onClick={() => resolvedOnlineUrl && sniffer.sniff(resolvedOnlineUrl)}
                   className="gap-2"
                 >
                   重试
@@ -272,7 +325,7 @@ function EpisodePage() {
                   : `当前字幕组暂无第 ${epNum} 话资源`}
               </p>
               {source.groups.length > 0 && (
-                <p className="text-xs text-white/30">请在右侧切换字幕组</p>
+                <p className="text-xs text-white/30">请在侧边栏切换字幕组</p>
               )}
             </div>
           ) : (
@@ -293,48 +346,15 @@ function EpisodePage() {
           )}
         </div>
 
-        {/* ── Mobile: floating episode button + drawer ── */}
+        {/* ── Inline source panel (mobile: below player, desktop: sidebar) ── */}
         {!isFullscreen && (
-          <div className="flex items-center gap-2 border-t border-white/5 bg-background/80 px-4 py-2 backdrop-blur-sm md:hidden">
-            <button
-              type="button"
-              onClick={() => setDrawerOpen(true)}
-              className="flex items-center gap-2 rounded-lg bg-white/6 px-3 py-2 text-xs font-medium text-white/70 active:bg-white/10"
-            >
-              <List size={14} />
-              选集 · 共 {episodes.length} 话
-            </button>
-            {!isOnline && source.selectedGroupName && (
-              <span className="truncate text-[11px] text-muted-foreground/50">
-                {source.selectedGroupName}
-              </span>
-            )}
-          </div>
-        )}
-
-        <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
-          <DrawerContent className="max-h-[75vh]">
-            <DrawerHeader className="pb-2">
-              <DrawerTitle className="text-sm">选集</DrawerTitle>
-            </DrawerHeader>
-            <SidebarContent
-              isOnline={isOnline}
+          <aside className="flex min-h-0 flex-1 flex-col border-t border-white/5 md:max-h-none md:w-80 md:flex-none md:border-t-0 md:border-l">
+            <SourcePanel
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
               source={source}
               activeGroup={activeGroup}
-              episodes={episodes}
-              epNum={epNum}
-              navigateToEp={(ep) => { setDrawerOpen(false); navigateToEp(ep); }}
-            />
-          </DrawerContent>
-        </Drawer>
-
-        {/* ── Desktop sidebar ── */}
-        {!isFullscreen && (
-          <aside className="hidden min-h-0 flex-col border-t border-white/5 md:flex md:w-80 md:shrink-0 md:border-t-0 md:border-l">
-            <SidebarContent
-              isOnline={isOnline}
-              source={source}
-              activeGroup={activeGroup}
+              onlineSrc={onlineSrc}
               episodes={episodes}
               epNum={epNum}
               navigateToEp={navigateToEp}
@@ -346,32 +366,66 @@ function EpisodePage() {
   );
 }
 
-/* ── Shared sidebar content (used in both desktop aside and mobile drawer) ── */
+/* ── Inline source panel (replaces old SidebarContent + Drawer) ── */
 
-function SidebarContent({
-  isOnline,
+function SourcePanel({
+  activeTab,
+  onTabChange,
   source,
   activeGroup,
+  onlineSrc,
   episodes,
   epNum,
   navigateToEp,
 }: {
-  isOnline: boolean;
+  activeTab: SourceTab;
+  onTabChange: (tab: SourceTab) => void;
   source: ReturnType<typeof useTorrentSource>;
   activeGroup: ReturnType<ReturnType<typeof useTorrentSource>["getGroupData"]>;
-  episodes: { id: number; ep: number; title?: string; title_cn?: string; airdate?: string; duration?: string; progress?: number }[];
+  onlineSrc: ReturnType<typeof useOnlineSource>;
+  episodes: { id: string; ep: number; title?: string; title_cn?: string; airdate?: string; duration?: string; progress?: number }[];
   epNum: number;
   navigateToEp: (ep: number) => void;
 }) {
+  const isOnline = activeTab === "online";
+
   return (
     <>
-      {/* ── Source selector (torrent mode only) ── */}
-      {!isOnline && (
-        <div className="max-h-[50%] shrink-0 overflow-y-auto border-b border-white/5 px-4 py-3">
-          <p className="mb-2.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50">
-            资源
-          </p>
+      {/* ── Provider tabs ── */}
+      <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-white/5 px-3 py-2">
+        {KNOWN_PROVIDERS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onTabChange(p)}
+            className={cn(
+              "shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all",
+              activeTab === p
+                ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                : "text-white/50 hover:bg-white/6 hover:text-white/70",
+            )}
+          >
+            {p}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => onTabChange("online")}
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all",
+            activeTab === "online"
+              ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+              : "text-white/50 hover:bg-white/6 hover:text-white/70",
+          )}
+        >
+          <Globe size={11} />
+          在线
+        </button>
+      </div>
 
+      {/* ── Source selector (torrent mode) ── */}
+      {!isOnline && (
+        <div className="max-h-[40%] shrink-0 overflow-y-auto border-b border-white/5 px-4 py-3 md:max-h-[50%]">
           {source.isLoading ? (
             <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground/50">
               <Loader2 size={12} className="animate-spin" />
@@ -476,13 +530,64 @@ function SidebarContent({
         </div>
       )}
 
-      {/* Online mode indicator */}
+      {/* ── Online source info ── */}
       {isOnline && (
         <div className="shrink-0 border-b border-white/5 px-4 py-3">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
-            <Globe size={12} />
-            在线播放
-          </div>
+          {onlineSrc.sourcesLoading ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground/50">
+              <Loader2 size={12} className="animate-spin" />
+              正在加载在线源...
+            </div>
+          ) : onlineSrc.sources.length === 0 ? (
+            <p className="text-xs text-muted-foreground/40">暂无可用在线源</p>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground/40">
+                <Globe size={11} />
+                在线源
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {onlineSrc.sources.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => onlineSrc.selectSource(s)}
+                    className={cn(
+                      "rounded-md px-2 py-1 text-[11px] font-medium transition-all",
+                      onlineSrc.selectedSource === s
+                        ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+                        : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
+                    )}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              {onlineSrc.searching && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground/50">
+                  <Loader2 size={12} className="animate-spin" />
+                  正在搜索...
+                </div>
+              )}
+              {onlineSrc.searchResults.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[11px] text-muted-foreground/40">搜索结果</p>
+                  <div className="max-h-24 overflow-y-auto">
+                    {onlineSrc.searchResults.map((r) => (
+                      <button
+                        key={r.url}
+                        type="button"
+                        onClick={() => onlineSrc.selectAnime(r)}
+                        className="w-full truncate rounded px-2 py-1 text-left text-[11px] text-white/60 hover:bg-white/6 hover:text-white/80"
+                      >
+                        {r.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

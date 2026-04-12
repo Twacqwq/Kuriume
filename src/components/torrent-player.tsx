@@ -55,7 +55,7 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // ── Time formatting ──────────────────────────────────────────────
 
@@ -207,14 +207,14 @@ export function TorrentPlayer({
     };
   }, [player.state.ready, syncViewport]);
 
-  // Re-sync when fullscreen changes — macOS animation takes ~500ms
-  // and RAFs may be suspended during the space transition.
+  // Re-sync when fullscreen changes — layout needs a frame to settle
+  // after CSS changes propagate (fixed positioning, header removal, etc.).
   useEffect(() => {
     if (!player.state.ready) return;
     syncViewport();
-    const t1 = setTimeout(syncViewport, 100);
-    const t2 = setTimeout(syncViewport, 350);
-    const t3 = setTimeout(syncViewport, 600);
+    const t1 = setTimeout(syncViewport, 50);
+    const t2 = setTimeout(syncViewport, 200);
+    const t3 = setTimeout(syncViewport, 500);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [isFullscreen, player.state.ready, syncViewport]);
 
@@ -224,6 +224,7 @@ export function TorrentPlayer({
 
   useEffect(() => {
     if (!player.state.ready || !effectiveStreamUrl) return;
+    console.log("[TorrentPlayer] playing URL:", effectiveStreamUrl);
     player.play(effectiveStreamUrl);
   }, [effectiveStreamUrl, player.state.ready, player.play]);
 
@@ -294,7 +295,9 @@ export function TorrentPlayer({
     setShowControls(true);
     clearTimeout(hideTimerRef.current);
     if (!paused) {
-      hideTimerRef.current = setTimeout(() => setShowControls(false), 3000);
+      // 6s on mobile for easier interaction, 3s on desktop
+      const delay = /iPhone|iPad|Android/i.test(navigator.userAgent) ? 6000 : 3000;
+      hideTimerRef.current = setTimeout(() => setShowControls(false), delay);
     }
   }, [paused]);
 
@@ -423,13 +426,29 @@ export function TorrentPlayer({
 
   // Detect mid-playback buffering: mpv cache is empty, video is loaded,
   // not paused, and torrent download is still ongoing
-  const isBuffering =
+  const isBufferingRaw =
     !isDirectMode &&
     loaded &&
     !paused &&
     player.state.buffered < 2 &&
     torrent.stats != null &&
     torrent.stats.progress < 1;
+
+  // For direct (online) mode: cache can fluctuate around threshold,
+  // so debounce: only show after low cache persists >1s
+  const isDirectBufferingRaw = isDirectMode && loaded && !paused && player.state.buffered < 2;
+  const [debouncedDirectBuffering, setDebouncedDirectBuffering] = useState(false);
+  useEffect(() => {
+    if (isDirectBufferingRaw) {
+      const t = setTimeout(() => setDebouncedDirectBuffering(true), 1000);
+      return () => clearTimeout(t);
+    }
+    // Keep showing for a brief moment to avoid flicker
+    const t = setTimeout(() => setDebouncedDirectBuffering(false), 500);
+    return () => clearTimeout(t);
+  }, [isDirectBufferingRaw]);
+
+  const isBuffering = isDirectMode ? debouncedDirectBuffering : isBufferingRaw;
 
   // ── Touch gestures (mobile) ────────────────────────────────────
 
@@ -455,6 +474,8 @@ export function TorrentPlayer({
         )}
         onMouseMove={resetHideTimer}
         onMouseLeave={() => {
+          // Ignore synthetic mouseleave from iOS touch events
+          if ('ontouchstart' in window) return;
           if (!paused) setShowControls(false);
         }}
       >
@@ -478,8 +499,12 @@ export function TorrentPlayer({
           className={cn(
             "pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-4 px-5 pt-4 pb-12 transition-opacity duration-300",
             "bg-linear-to-b from-black/70 to-transparent",
-            showControls ? "opacity-100" : "opacity-0",
+            showControls ? "opacity-100" : "pointer-events-none opacity-0",
           )}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           <button
             type="button"
@@ -511,7 +536,7 @@ export function TorrentPlayer({
         {!isDirectMode && torrent.phase === "streaming" && !loaded && torrent.stats && (
           <BufferingOverlay stats={torrent.stats} />
         )}
-        {(isDirectMode ? loaded && !paused && player.state.buffered < 2 : torrent.phase === "streaming" && loaded && isBuffering) && (
+        {isBuffering && (
           <div className="pointer-events-none absolute inset-0 z-15 flex items-center justify-center">
             <div className="flex flex-col items-center gap-2 rounded-xl bg-black/60 px-5 py-4 backdrop-blur-sm">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -537,8 +562,12 @@ export function TorrentPlayer({
           className={cn(
             "absolute inset-x-0 bottom-0 z-20 flex flex-col transition-opacity duration-300",
             "bg-linear-to-t from-black/80 via-black/40 to-transparent pt-16",
-            showControls ? "opacity-100" : "opacity-0",
+            showControls ? "opacity-100" : "pointer-events-none opacity-0",
           )}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           {/* Seek bar */}
           <SeekBar
@@ -708,22 +737,24 @@ export function TorrentPlayer({
 
               {/* System fullscreen */}
               {onToggleFullscreen && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-white/70 hover:bg-white/10 hover:text-white"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleFullscreen();
-                      }}
-                    >
-                      {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{isFullscreen ? "退出全屏" : "全屏"}</TooltipContent>
-                </Tooltip>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-white/70 hover:bg-white/10 hover:text-white"
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onToggleFullscreen();
+                    resetHideTimer();
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleFullscreen();
+                    resetHideTimer();
+                  }}
+                >
+                  {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+                </Button>
               )}
             </div>
           </div>

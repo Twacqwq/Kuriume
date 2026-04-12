@@ -229,6 +229,7 @@ export function useTorrentStream() {
           torrentId,
           selectedFile.index,
         );
+        console.log("[useTorrentStream] streamUrl:", streamUrl);
 
         if (!mountedRef.current) return;
 

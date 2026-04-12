@@ -211,7 +211,8 @@ export function VideoPlayer({
     setShowControls(true);
     clearTimeout(hideTimerRef.current);
     if (!paused) {
-      hideTimerRef.current = setTimeout(() => setShowControls(false), 3000);
+      const delay = /iPhone|iPad|Android/i.test(navigator.userAgent) ? 6000 : 3000;
+      hideTimerRef.current = setTimeout(() => setShowControls(false), delay);
     }
   }, [paused]);
 
@@ -340,7 +341,10 @@ export function VideoPlayer({
           !showControls && "cursor-none",
         )}
         onMouseMove={resetHideTimer}
-        onMouseLeave={() => { if (!paused) setShowControls(false); }}
+        onMouseLeave={() => {
+          if ('ontouchstart' in window) return;
+          if (!paused) setShowControls(false);
+        }}
         onDoubleClick={toggleFullscreen}
       >
         {/* ── HTML5 Video element ─────────────────────────────── */}
@@ -366,9 +370,11 @@ export function VideoPlayer({
           className={cn(
             "pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-4 px-5 pt-4 pb-12 transition-opacity duration-300",
             "bg-linear-to-b from-black/70 to-transparent",
-            showControls ? "opacity-100" : "opacity-0",
-          )}
-        >
+            showControls ? "opacity-100" : "pointer-events-none opacity-0",
+          )}          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}        >
           {onBack && (
             <button
               onClick={onBack}
@@ -410,8 +416,12 @@ export function VideoPlayer({
           className={cn(
             "absolute inset-x-0 bottom-0 z-20 flex flex-col transition-opacity duration-300",
             "bg-linear-to-t from-black/80 via-black/40 to-transparent pt-16",
-            showControls ? "opacity-100" : "opacity-0",
+            showControls ? "opacity-100" : "pointer-events-none opacity-0",
           )}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           {/* Seek bar */}
           <SeekBar

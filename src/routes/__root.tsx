@@ -59,12 +59,13 @@ function RootComponent() {
         className={
           isPlayerPage
             ? "flex-1 overflow-hidden"
-            : "relative flex-1 overflow-x-hidden overflow-y-auto pt-0 pb-16 md:pt-8 md:pb-0 transition-all duration-300"
+            : "relative flex-1 overflow-x-hidden overflow-y-auto pb-16 md:pt-8 md:pb-0 transition-all duration-300"
         }
+        style={isPlayerPage ? undefined : { paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
         <Outlet />
       </main>
-      {!isPlayerPage && <BottomTabBar onSearchClick={openSearch} />}
+      {!isPlayerPage && <BottomTabBar />}
       {!isPlayerPage && <TanStackRouterDevtools position="bottom-right" />}
     </div>
   );

@@ -50,6 +50,7 @@ pub fn run() {
             crate::online_commands::online_source_add_rule,
             crate::online_commands::online_source_remove_rule,
             crate::online_commands::online_source_search,
+            crate::online_commands::online_source_echo,
             crate::online_commands::online_source_episodes,
             crate::online_commands::sniff_video_url,
             crate::torrent_commands::torrent_add,

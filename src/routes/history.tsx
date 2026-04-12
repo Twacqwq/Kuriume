@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clock, Film, Play, Trash2, X } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 
 export const Route = createFileRoute("/history")({
   component: HistoryPage,
@@ -75,10 +75,6 @@ function HistoryPage() {
         to: "/anime/$id/episode/$ep",
         params: { id: entry.bgm_id, ep: String(entry.episode) },
         search: {
-          groupId: entry.group_id ?? undefined,
-          resolution: entry.resolution ?? undefined,
-          subtitle: entry.subtitle ?? undefined,
-          provider: undefined,
           t: entry.position > 5 ? entry.position : undefined,
           onlineUrl: undefined,
         },
@@ -159,13 +155,60 @@ function HistoryCard({
     entry.duration > 0 ? Math.min(100, (entry.position / entry.duration) * 100) : 0;
   const isFinished = progress > 95;
 
+  // ── Swipe-to-delete (mobile) ──
+  const startXRef = useRef(0);
+  const startYRef = useRef(0);
+  const [offsetX, setOffsetX] = useState(0);
+  const [swiping, setSwiping] = useState(false);
+  const THRESHOLD = 80;
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    startXRef.current = e.touches[0].clientX;
+    startYRef.current = e.touches[0].clientY;
+    setSwiping(false);
+  }, []);
+
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    const dx = e.touches[0].clientX - startXRef.current;
+    const dy = e.touches[0].clientY - startYRef.current;
+    // Only swipe left; ignore if vertical scroll is dominant
+    if (!swiping && Math.abs(dy) > Math.abs(dx)) return;
+    if (dx < -10) setSwiping(true);
+    if (swiping) setOffsetX(Math.min(0, dx));
+  }, [swiping]);
+
+  const onTouchEnd = useCallback(() => {
+    if (offsetX < -THRESHOLD) {
+      // Swipe past threshold → delete
+      setOffsetX(-999);
+      setTimeout(onRemove, 200);
+    } else {
+      setOffsetX(0);
+    }
+    setSwiping(false);
+  }, [offsetX, onRemove]);
+
   return (
-    <div
-      className={cn(
-        "group relative flex items-center gap-4 rounded-xl border border-white/5 bg-white/2 p-3 transition-colors",
-        "hover:border-white/10 hover:bg-white/4",
-      )}
-    >
+    <div className="relative overflow-hidden rounded-xl md:overflow-visible">
+      {/* Delete background revealed on swipe */}
+      <div className="absolute inset-y-0 right-0 flex w-24 items-center justify-center bg-destructive text-destructive-foreground md:hidden">
+        <Trash2 size={18} />
+      </div>
+
+      <div
+        className={cn(
+          "group relative flex items-center gap-4 rounded-xl border border-white/5 bg-background p-3 transition-colors",
+          "hover:border-white/10 hover:bg-white/4",
+          offsetX < -THRESHOLD && "transition-transform duration-200",
+        )}
+        style={{
+          transform: offsetX ? `translateX(${offsetX}px)` : undefined,
+          transition: swiping ? "none" : undefined,
+        }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
       {/* Cover thumbnail */}
       <button
         type="button"
@@ -237,6 +280,7 @@ function HistoryCard({
         <Play size={12} />
         {isFinished ? "重新观看" : "继续观看"}
       </Button>
+      </div>
     </div>
   );
 }

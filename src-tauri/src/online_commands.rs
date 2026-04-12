@@ -5,17 +5,12 @@
 
 use kuriume_provider::{OnlineRoad, OnlineSearchResult, Rule, RuleEngine};
 use std::collections::HashMap;
-#[cfg(desktop)]
+use std::error::Error as StdError;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-#[cfg(desktop)]
 use tauri::{command, AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
-#[cfg(not(desktop))]
-use tauri::{command, AppHandle, Manager, State};
-#[cfg(desktop)]
 use tokio::sync::oneshot;
 
-#[cfg(desktop)]
 static SNIFFER_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 // ── State ────────────────────────────────────────────────────────
@@ -130,22 +125,51 @@ pub(crate) async fn online_source_search(
     engine.search(keyword).await.map_err(|e| e.to_string())
 }
 
+/// Simple echo test to diagnose IPC issues.
+#[command]
+pub(crate) async fn online_source_echo(
+    source: String,
+    page_url: String,
+) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15")
+        .timeout(std::time::Duration::from_secs(8))
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| format!("client build: {e}"))?;
+
+    // Test 1: search URL (known to work via RuleEngine)
+    let search_url = "https://www.agedm.io/search?query=test";
+    let r1 = match client.get(search_url).send().await {
+        Ok(resp) => format!("search={}", resp.status()),
+        Err(e) => format!("search=ERR:{e}"),
+    };
+
+    // Test 2: detail URL
+    let r2 = match client.get(&page_url).send().await {
+        Ok(resp) => format!("detail={}", resp.status()),
+        Err(e) => format!("detail=ERR:{e}"),
+    };
+
+    Ok(format!("{r1} | {r2}"))
+}
+
 /// Get episodes (roads) from an anime page on an online source.
 #[command]
 pub(crate) async fn online_source_episodes(
     state: State<'_, OnlineSourceState>,
-    source: &str,
-    page_url: &str,
+    source: String,
+    page_url: String,
 ) -> Result<Vec<OnlineRoad>, String> {
     let rule = {
         let engines = state.engines.lock().unwrap();
         let engine = engines
-            .get(source)
+            .get(source.as_str())
             .ok_or_else(|| format!("Online source not found: {source}"))?;
         engine.rule().clone()
     };
     let engine = RuleEngine::new(rule);
-    engine.get_episodes(page_url).await.map_err(|e| e.to_string())
+    engine.get_episodes(&page_url).await.map_err(|e| e.to_string())
 }
 
 // ── Video URL sniffer ────────────────────────────────────────────
@@ -156,7 +180,6 @@ pub(crate) async fn online_source_episodes(
 /// When found, signals Rust by setting `document.title` to a sentinel value.
 /// The `on_document_title_changed` callback in Rust detects this and extracts
 /// the URL.
-#[cfg(desktop)]
 const SNIFFER_SCRIPT: &str = r#"
 (function() {
     var __found = false;
@@ -335,15 +358,6 @@ const SNIFFER_SCRIPT: &str = r#"
 })();
 "#;
 
-#[cfg(not(desktop))]
-#[command]
-pub(crate) async fn sniff_video_url(
-    _app: AppHandle,
-    _episode_url: String,
-) -> Result<String, String> {
-    Err("Video sniffing is not supported on mobile".into())
-}
-
 /// Create a hidden WebView window that loads `episode_url`, intercepts
 /// network requests for video URLs (.m3u8/.mp4/.flv), and returns the
 /// first one found.
@@ -360,7 +374,6 @@ pub(crate) async fn sniff_video_url(
 /// WebView so the hooks can capture the real video URL.
 ///
 /// Returns the video URL or an error (timeout after 30s).
-#[cfg(desktop)]
 #[command]
 pub(crate) async fn sniff_video_url(
     app: AppHandle,
@@ -381,6 +394,7 @@ pub(crate) async fn sniff_video_url(
         .map_err(|_| format!("Invalid URL: {sniff_target}"))?;
 
     // Close any leftover sniffer windows from previous attempts
+    #[cfg(desktop)]
     for (label, win) in app.webview_windows() {
         if label.starts_with("sniffer-") {
             let _ = win.close();
@@ -389,9 +403,13 @@ pub(crate) async fn sniff_video_url(
 
     let label = format!("sniffer-{}", SNIFFER_COUNTER.fetch_add(1, Ordering::Relaxed));
 
-    let _webview = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(url))
-        .title("Sniffer")
-        .visible(false)
+    #[allow(unused_mut)]
+    let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(url));
+    #[cfg(desktop)]
+    {
+        builder = builder.title("Sniffer").visible(false);
+    }
+    let sniffer_webview = builder
         .initialization_script(SNIFFER_SCRIPT)
         .on_document_title_changed(move |_win, title| {
             const PREFIX: &str = "__SNIFF_RESULT__:";
@@ -405,12 +423,95 @@ pub(crate) async fn sniff_video_url(
         .build()
         .map_err(|e| format!("Failed to create sniffer window: {e}"))?;
 
+    // On iOS, tao creates a new UIWindow for each WebviewWindow.
+    // This new UIWindow becomes the key window and covers the entire screen.
+    // We hide the sniffer UIWindow and restore the main UIWindow as key.
+    // The WKWebView stays in the sniffer window (hidden) so it can still load
+    // and fire the KVO title observer; we don't reparent it.
+    #[cfg(target_os = "ios")]
+    {
+        let _ = sniffer_webview.with_webview(|platform_webview| {
+            unsafe {
+                use objc2::msg_send;
+                use objc2::runtime::{AnyClass, AnyObject, NSObject};
+
+                let wkwv = platform_webview.inner() as *const AnyObject;
+
+                // Get the UIWindow that the sniffer WKWebView belongs to
+                let sniffer_window: *const AnyObject = msg_send![wkwv, window];
+
+                // Find the main UIWindow (the one that is NOT the sniffer window)
+                let ui_app_cls = AnyClass::get(c"UIApplication").unwrap();
+                let shared_app: *const AnyObject = msg_send![ui_app_cls, sharedApplication];
+                let windows: *const NSObject = msg_send![shared_app, windows];
+                let count: usize = msg_send![windows, count];
+                let mut main_window: *const AnyObject = std::ptr::null();
+                for i in 0..count {
+                    let win: *const AnyObject = msg_send![windows, objectAtIndex: i];
+                    if win != sniffer_window {
+                        main_window = win;
+                        break;
+                    }
+                }
+
+                // Hide the sniffer UIWindow entirely and make it non-interactive
+                if !sniffer_window.is_null() {
+                    let _: () = msg_send![sniffer_window, setHidden: true];
+                    let _: () = msg_send![sniffer_window, setUserInteractionEnabled: false];
+                    // Resign key so it doesn't steal events
+                    let _: () = msg_send![sniffer_window, resignKeyWindow];
+                    eprintln!("[sniffer-ios] hidden sniffer UIWindow");
+                }
+
+                // Restore the main window as key window
+                if !main_window.is_null() {
+                    let _: () = msg_send![main_window, makeKeyAndVisible];
+                    eprintln!("[sniffer-ios] restored main UIWindow as key");
+                }
+            }
+        });
+    }
+
     // Wait for result with timeout (30s to allow for slow decryption/WASM)
     let result = tokio::time::timeout(std::time::Duration::from_secs(30), rx).await;
 
-    // Clean up: close the sniffer window
+    // Clean up: close/remove the sniffer
+    #[cfg(desktop)]
     if let Some(win) = app.get_webview_window(&label) {
         let _ = win.close();
+    }
+    #[cfg(target_os = "ios")]
+    if let Some(win) = app.get_webview_window(&label) {
+        let _ = win.with_webview(|platform_webview| {
+            unsafe {
+                use objc2::msg_send;
+                use objc2::runtime::{AnyClass, AnyObject, NSObject};
+                let wkwv = platform_webview.inner() as *const AnyObject;
+                // Get the sniffer UIWindow before removing the webview
+                let sniffer_win: *const AnyObject = msg_send![wkwv, window];
+                let _: () = msg_send![wkwv, stopLoading];
+                let _: () = msg_send![wkwv, removeFromSuperview];
+                // Ensure the sniffer UIWindow is destroyed
+                if !sniffer_win.is_null() {
+                    let _: () = msg_send![sniffer_win, setHidden: true];
+                    let _: () = msg_send![sniffer_win, setUserInteractionEnabled: false];
+                    let _: () = msg_send![sniffer_win, resignKeyWindow];
+                }
+                // Always re-ensure main window is key
+                let ui_app_cls = AnyClass::get(c"UIApplication").unwrap();
+                let shared_app: *const AnyObject = msg_send![ui_app_cls, sharedApplication];
+                let windows: *const NSObject = msg_send![shared_app, windows];
+                let count: usize = msg_send![windows, count];
+                for i in 0..count {
+                    let w: *const AnyObject = msg_send![windows, objectAtIndex: i];
+                    if w != sniffer_win {
+                        let _: () = msg_send![w, makeKeyAndVisible];
+                        break;
+                    }
+                }
+                eprintln!("[sniffer-ios] cleaned up sniffer WKWebView + UIWindow");
+            }
+        });
     }
 
     match result {
@@ -431,7 +532,6 @@ pub(crate) async fn sniff_video_url(
 
 /// Fetch the episode page HTML and try to extract an `<iframe>` src.
 /// If found, return the iframe URL; otherwise return the original URL.
-#[cfg(desktop)]
 async fn resolve_sniff_target(episode_url: &str) -> Option<String> {
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
