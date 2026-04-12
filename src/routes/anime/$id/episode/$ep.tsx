@@ -348,7 +348,7 @@ function EpisodePage() {
 
         {/* ── Inline source panel (mobile: below player, desktop: sidebar) ── */}
         {!isFullscreen && (
-          <aside className="flex min-h-0 flex-1 flex-col border-t border-white/5 md:max-h-none md:w-80 md:flex-none md:border-t-0 md:border-l">
+          <aside className="flex min-h-0 flex-1 flex-col border-t border-white/5 bg-background md:max-h-none md:w-80 md:flex-none md:border-t-0 md:border-l">
             <SourcePanel
               activeTab={activeTab}
               onTabChange={setActiveTab}
