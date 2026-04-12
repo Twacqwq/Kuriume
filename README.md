@@ -165,3 +165,7 @@ Kuriume depends on the following copyleft-licensed libraries:
 | [libbluray](https://www.videolan.org/developers/libbluray.html) | LGPLv2.1+ | Blu-ray playback |
 
 Full dependency licenses can be found in the respective upstream repositories.
+
+### Icon
+
+App icon artwork by [ゆきうなぎ](https://www.pixiv.net/artworks/138196800) on Pixiv.
