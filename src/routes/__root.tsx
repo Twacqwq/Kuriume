@@ -66,7 +66,7 @@ function RootComponent() {
         <Outlet />
       </main>
       {!isPlayerPage && <BottomTabBar />}
-      {!isPlayerPage && <TanStackRouterDevtools position="bottom-right" />}
+      {/* {!isPlayerPage && <TanStackRouterDevtools position="bottom-right" />} */}
     </div>
   );
 }

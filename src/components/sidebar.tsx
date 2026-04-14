@@ -31,9 +31,9 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
       <div className="flex h-10 items-center justify-center">
         <Link
           to="/"
-          className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary font-bold text-white text-sm shadow-lg shadow-primary/25 transition-opacity hover:opacity-80"
+          className="flex size-10 shrink-0 items-center justify-center transition-opacity hover:opacity-80"
         >
-          K
+          <img src="/icon.png" alt="Kuriume" className="size-11 rounded-xl" />
         </Link>
       </div>
 
