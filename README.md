@@ -19,7 +19,9 @@
 </p>
 
 <!-- Preview -->
-<img src="assets/preview.gif" width="900px" />
+<p align="center">
+  <img src="assets/preview.gif" width="900px" />
+</p>
 
 ## Features
 

@@ -19,7 +19,9 @@
 </p>
 
 <!-- 预览 -->
-<img src="assets/preview.gif" width="900px" />
+<p align="center">
+  <img src="assets/preview.gif" width="900px" />
+</p>
 
 ## 特性
 
