@@ -4,22 +4,22 @@
   <img src="src-tauri/icons/icon.png" width="138" />
   <h1 align="center">Kuriume</h1>
   <div align="center">
-    <a href="https://github.com/Kuriume/Kuriume/releases" target="_blank">
-      <img alt="GitHub Release" src="https://img.shields.io/github/v/release/Kuriume/Kuriume?style=flat-square" /></a>
-    <a href="https://github.com/Kuriume/Kuriume/releases" target="_blank">
-      <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/Kuriume/Kuriume/total?style=flat-square" /></a>
-    <a href="https://github.com/Kuriume/Kuriume/commits" target="_blank">
-      <img alt="GitHub Commit Activity" src="https://img.shields.io/github/commit-activity/m/Kuriume/Kuriume?style=flat-square" /></a>
-    <a href="https://github.com/Kuriume/Kuriume/issues?q=is%3Aissue+is%3Aclosed" target="_blank">
-      <img alt="GitHub Closed Issues" src="https://img.shields.io/github/issues-closed/Kuriume/Kuriume?style=flat-square" /></a>
-    <a href="https://github.com/Kuriume/Kuriume/blob/main/LICENSE" target="_blank">
-      <img alt="License" src="https://img.shields.io/github/license/Kuriume/Kuriume?style=flat-square" /></a>
+    <a href="https://github.com/Twacqwq/Kuriume/releases" target="_blank">
+      <img alt="GitHub Release" src="https://img.shields.io/github/v/release/Twacqwq/Kuriume?style=flat-square" /></a>
+    <a href="https://github.com/Twacqwq/Kuriume/releases" target="_blank">
+      <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/Twacqwq/Kuriume/total?style=flat-square" /></a>
+    <a href="https://github.com/Twacqwq/Kuriume/commits" target="_blank">
+      <img alt="GitHub Commit Activity" src="https://img.shields.io/github/commit-activity/m/Twacqwq/Kuriume?style=flat-square" /></a>
+    <a href="https://github.com/Twacqwq/Kuriume/issues?q=is%3Aissue+is%3Aclosed" target="_blank">
+      <img alt="GitHub Closed Issues" src="https://img.shields.io/github/issues-closed/Twacqwq/Kuriume?style=flat-square" /></a>
+    <a href="https://github.com/Twacqwq/Kuriume/blob/main/LICENSE" target="_blank">
+      <img alt="License" src="https://img.shields.io/github/license/Twacqwq/Kuriume?style=flat-square" /></a>
   </div>
   <div align="center">一个动漫采集解析播放 App</div>
 </p>
 
 <!-- 预览 -->
-<img src="https://raw.githubusercontent.com/Kuriume/Kuriume/main/assets/preview.gif" width="900px" />
+<img src="https://raw.githubusercontent.com/Twacqwq/Kuriume/main/assets/preview.gif" width="900px" />
 
 ## 特性
 
@@ -30,7 +30,7 @@
 
 ## 安装
 
-从 [GitHub Releases](https://github.com/Kuriume/Kuriume/releases/latest) 下载最新版本。
+从 [GitHub Releases](https://github.com/Twacqwq/Kuriume/releases/latest) 下载最新版本。
 
 | 平台 | 系统要求 |
 |------|----------|
