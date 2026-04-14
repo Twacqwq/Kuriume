@@ -26,7 +26,7 @@
 ## Features
 
 - **Stream & Watch** — Search torrents and start watching immediately, no waiting for downloads to finish
-- **High-Quality Playback** — GPU-accelerated video with real-time Anime4K upscaling for a sharper picture
+- **High-Quality Playback** — Real-time Anime4K upscaling for a sharper picture
 - **Multiple Sources** — Browse anime info from Bangumi, find episodes from online sites or torrent trackers
 - **Manage Your Library** — Watchlist, watch history with auto-resume, and airing calendar to track new episodes
 
