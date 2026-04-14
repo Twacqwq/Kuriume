@@ -19,7 +19,7 @@
 </p>
 
 <!-- 预览 -->
-<img src="https://raw.githubusercontent.com/Twacqwq/Kuriume/main/assets/preview.gif" width="900px" />
+<img src="assets/preview.gif" width="900px" />
 
 ## 特性
 
