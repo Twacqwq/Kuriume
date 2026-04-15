@@ -16,7 +16,7 @@
 
 <!-- 预览 -->
 <p align="center">
-  <img src="assets/preview.gif" width="900px" />
+  <img src="https://raw.githubusercontent.com/Twacqwq/Kuriume/main/assets/preview.gif" width="900px" />
 </p>
 
 ## 特性
