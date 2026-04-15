@@ -37,7 +37,9 @@ impl TorrentState {
                             .unwrap_or_else(|_| std::path::PathBuf::from("~/Downloads/Kuriume"))
                             .to_string_lossy()
                             .into_owned();
-                        let settings = store.get_settings(&default_dir).map_err(|e| e.to_string())?;
+                        let settings = store
+                            .get_settings(&default_dir)
+                            .map_err(|e| e.to_string())?;
                         Ok(settings.tracker_list)
                     })
                     .unwrap_or_default();

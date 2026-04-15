@@ -16,32 +16,47 @@ fn main() {
     } else if target_os == "ios" {
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
         let target = std::env::var("TARGET").unwrap_or_default();
-        let subdir = if target.contains("sim") { "ios-sim" } else { "ios" };
+        let subdir = if target.contains("sim") {
+            "ios-sim"
+        } else {
+            "ios"
+        };
         let libs_dir = std::path::Path::new(&manifest_dir)
             .join("libs")
             .join(subdir)
             .join("lib");
         if libs_dir.exists() {
-            println!(
-                "cargo:rustc-link-search=native={}",
-                libs_dir.display()
-            );
+            println!("cargo:rustc-link-search=native={}", libs_dir.display());
         }
 
         // Static linking: must explicitly link all transitive deps of libmpv
         for lib in &[
-            "avcodec", "avformat", "avfilter", "avutil",
-            "swresample", "swscale", "placebo", "ass",
-            "harfbuzz", "freetype", "fribidi",
+            "avcodec",
+            "avformat",
+            "avfilter",
+            "avutil",
+            "swresample",
+            "swscale",
+            "placebo",
+            "ass",
+            "harfbuzz",
+            "freetype",
+            "fribidi",
         ] {
             println!("cargo:rustc-link-lib=static={lib}");
         }
 
         // System frameworks required by mpv + FFmpeg on iOS
         for fw in &[
-            "VideoToolbox", "AudioToolbox", "CoreMedia",
-            "CoreVideo", "CoreAudio", "AVFoundation",
-            "OpenGLES", "CoreText", "CoreFoundation",
+            "VideoToolbox",
+            "AudioToolbox",
+            "CoreMedia",
+            "CoreVideo",
+            "CoreAudio",
+            "AVFoundation",
+            "OpenGLES",
+            "CoreText",
+            "CoreFoundation",
             "Security",
         ] {
             println!("cargo:rustc-link-lib=framework={fw}");
@@ -69,10 +84,7 @@ fn main() {
         if let Ok(dir) = std::env::var("MPV_LIB_DIR") {
             println!("cargo:rustc-link-search=native={dir}");
         } else if libs_dir.exists() {
-            println!(
-                "cargo:rustc-link-search=native={}",
-                libs_dir.display()
-            );
+            println!("cargo:rustc-link-search=native={}", libs_dir.display());
         }
     }
 

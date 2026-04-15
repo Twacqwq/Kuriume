@@ -1,4 +1,6 @@
-use kuriume_store::{episode_path, MediaEntry, Settings, Store, WatchHistoryEntry, WatchStatus, WatchlistEntry};
+use kuriume_store::{
+    episode_path, MediaEntry, Settings, Store, WatchHistoryEntry, WatchStatus, WatchlistEntry,
+};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{command, AppHandle, Manager, State};
@@ -106,13 +108,12 @@ pub(crate) fn cache_migrate_dir(
                     // Try rename first (fast, same filesystem), fall back to copy
                     if std::fs::rename(file, &dest).is_ok()
                         || std::fs::copy(file, &dest)
-                            .map(|_| { let _ = std::fs::remove_file(file); })
+                            .map(|_| {
+                                let _ = std::fs::remove_file(file);
+                            })
                             .is_ok()
                     {
-                        let _ = store.update_file_path(
-                            entry.id,
-                            &dest.to_string_lossy(),
-                        );
+                        let _ = store.update_file_path(entry.id, &dest.to_string_lossy());
                     }
                 }
             }
@@ -138,9 +139,7 @@ pub(crate) fn set_cache_enabled(
     enabled: bool,
 ) -> Result<(), String> {
     state.with_store(&app, |store| {
-        store
-            .set_cache_enabled(enabled)
-            .map_err(|e| e.to_string())
+        store.set_cache_enabled(enabled).map_err(|e| e.to_string())
     })
 }
 
@@ -206,9 +205,7 @@ pub(crate) fn set_tracker_list(
     trackers: Vec<String>,
 ) -> Result<(), String> {
     state.with_store(&app, |store| {
-        store
-            .set_tracker_list(&trackers)
-            .map_err(|e| e.to_string())
+        store.set_tracker_list(&trackers).map_err(|e| e.to_string())
     })
 }
 
@@ -242,7 +239,10 @@ pub(crate) fn cache_lookup(
         if let Some(ref e) = entry {
             if !std::path::Path::new(&e.file_path).exists() {
                 // Stale entry — remove from DB
-                eprintln!("[store] cached file missing, removing entry id={} path={}", e.id, e.file_path);
+                eprintln!(
+                    "[store] cached file missing, removing entry id={} path={}",
+                    e.id, e.file_path
+                );
                 let _ = store.remove_entry(e.id);
                 return Ok(None);
             }
@@ -301,9 +301,7 @@ pub(crate) fn cache_list(
     bgm_id: &str,
 ) -> Result<Vec<MediaEntry>, String> {
     state.with_store(&app, |store| {
-        store
-            .list_anime_entries(bgm_id)
-            .map_err(|e| e.to_string())
+        store.list_anime_entries(bgm_id).map_err(|e| e.to_string())
     })
 }
 
@@ -404,8 +402,7 @@ pub(crate) fn cache_organize(
 
         // Move (rename) or copy+delete
         if std::fs::rename(src, &dest).is_err() {
-            std::fs::copy(src, &dest)
-                .map_err(|e| format!("failed to copy to cache: {e}"))?;
+            std::fs::copy(src, &dest).map_err(|e| format!("failed to copy to cache: {e}"))?;
             let _ = std::fs::remove_file(src);
         }
 
@@ -527,8 +524,16 @@ pub(crate) fn history_upsert(
     state.with_store(&app, |store| {
         store
             .history_upsert(
-                bgm_id, episode, anime_title, episode_title, cover,
-                position, duration, group_id, resolution, subtitle,
+                bgm_id,
+                episode,
+                anime_title,
+                episode_title,
+                cover,
+                position,
+                duration,
+                group_id,
+                resolution,
+                subtitle,
             )
             .map_err(|e| e.to_string())
     })
@@ -558,10 +563,7 @@ pub(crate) fn history_remove(
 }
 
 #[command]
-pub(crate) fn history_clear(
-    state: State<'_, StoreState>,
-    app: AppHandle,
-) -> Result<(), String> {
+pub(crate) fn history_clear(state: State<'_, StoreState>, app: AppHandle) -> Result<(), String> {
     state.with_store(&app, |store| {
         store.history_clear().map_err(|e| e.to_string())
     })

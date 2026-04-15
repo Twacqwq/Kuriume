@@ -4,9 +4,9 @@ use crate::store_commands::StoreState;
 use crate::torrent_commands::TorrentState;
 use kuriume_provider::{Bangumi, Dmhy, Mikan, Nyaa};
 use std::sync::Arc;
-use tauri::Manager;
 #[cfg(desktop)]
 use tauri::menu::Menu;
+use tauri::Manager;
 
 mod commands;
 mod online_commands;
@@ -101,7 +101,9 @@ pub fn run() {
                             .unwrap_or_else(|_| std::path::PathBuf::from("~/Downloads/Kuriume"))
                             .to_string_lossy()
                             .into_owned();
-                        let settings = store.get_settings(&default_dir).map_err(|e| e.to_string())?;
+                        let settings = store
+                            .get_settings(&default_dir)
+                            .map_err(|e| e.to_string())?;
                         Ok(settings.tracker_list)
                     })
                     .unwrap_or_default()

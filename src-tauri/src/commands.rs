@@ -110,8 +110,7 @@ impl TorrentProviderState {
     }
 
     pub fn register(&mut self, provider: Arc<dyn TorrentProvider>) {
-        self.providers
-            .insert(provider.name().to_string(), provider);
+        self.providers.insert(provider.name().to_string(), provider);
     }
 
     fn get(&self, name: &str) -> Option<&Arc<dyn TorrentProvider>> {
@@ -142,9 +141,7 @@ pub(crate) async fn torrent_source_resolve(
     let p = state
         .get(provider)
         .ok_or_else(|| format!("Torrent provider not found: {provider}"))?;
-    p.resolve(keyword, bgm_id)
-        .await
-        .map_err(|e| e.to_string())
+    p.resolve(keyword, bgm_id).await.map_err(|e| e.to_string())
 }
 
 /// List subtitle / release groups for an anime.
@@ -157,9 +154,7 @@ pub(crate) async fn torrent_source_get_groups(
     let p = state
         .get(provider)
         .ok_or_else(|| format!("Torrent provider not found: {provider}"))?;
-    p.get_groups(anime_id)
-        .await
-        .map_err(|e| e.to_string())
+    p.get_groups(anime_id).await.map_err(|e| e.to_string())
 }
 
 /// Get torrents for a specific release group.

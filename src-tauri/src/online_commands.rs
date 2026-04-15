@@ -52,7 +52,12 @@ impl OnlineSourceState {
 
     /// Get a snapshot of all rule names.
     pub fn list_names(&self) -> Vec<String> {
-        self.rules.lock().unwrap().iter().map(|r| r.name.clone()).collect()
+        self.rules
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|r| r.name.clone())
+            .collect()
     }
 
     /// Get a snapshot of all rules.
@@ -127,10 +132,7 @@ pub(crate) async fn online_source_search(
 
 /// Simple echo test to diagnose IPC issues.
 #[command]
-pub(crate) async fn online_source_echo(
-    source: String,
-    page_url: String,
-) -> Result<String, String> {
+pub(crate) async fn online_source_echo(source: String, page_url: String) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15")
         .timeout(std::time::Duration::from_secs(8))
@@ -169,7 +171,10 @@ pub(crate) async fn online_source_episodes(
         engine.rule().clone()
     };
     let engine = RuleEngine::new(rule);
-    engine.get_episodes(&page_url).await.map_err(|e| e.to_string())
+    engine
+        .get_episodes(&page_url)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ── Video URL sniffer ────────────────────────────────────────────
@@ -375,10 +380,7 @@ const SNIFFER_SCRIPT: &str = r#"
 ///
 /// Returns the video URL or an error (timeout after 30s).
 #[command]
-pub(crate) async fn sniff_video_url(
-    app: AppHandle,
-    episode_url: String,
-) -> Result<String, String> {
+pub(crate) async fn sniff_video_url(app: AppHandle, episode_url: String) -> Result<String, String> {
     let sniff_target = resolve_sniff_target(&episode_url)
         .await
         .unwrap_or_else(|| episode_url.clone());
@@ -401,7 +403,10 @@ pub(crate) async fn sniff_video_url(
         }
     }
 
-    let label = format!("sniffer-{}", SNIFFER_COUNTER.fetch_add(1, Ordering::Relaxed));
+    let label = format!(
+        "sniffer-{}",
+        SNIFFER_COUNTER.fetch_add(1, Ordering::Relaxed)
+    );
 
     #[allow(unused_mut)]
     let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(url));
@@ -553,8 +558,11 @@ async fn resolve_sniff_target(episode_url: &str) -> Option<String> {
     for cap in re.captures_iter(&html) {
         let src = &cap[1];
         // Filter: skip iframes that are obviously not video players (ads, analytics, etc.)
-        if src.contains("google") || src.contains("facebook") || src.contains("twitter")
-            || src.contains("baidu.com/hm") || src.contains("analytics")
+        if src.contains("google")
+            || src.contains("facebook")
+            || src.contains("twitter")
+            || src.contains("baidu.com/hm")
+            || src.contains("analytics")
         {
             continue;
         }
