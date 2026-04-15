@@ -1,9 +1,8 @@
-name: Release
+name: Build & Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -53,8 +52,8 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Kuriume ${{ github.ref_name }}'
-          releaseBody: 'See the assets below for download links.'
-          releaseDraft: true
+          releaseBody: ''
+          releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}
 
@@ -92,10 +91,9 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Kuriume ${{ github.ref_name }}'
-          releaseBody: 'See the assets below for download links.'
-          releaseDraft: true
+          releaseBody: ''
+          releaseDraft: false
           prerelease: false
-  #
   # build-linux:
   #   runs-on: ubuntu-22.04
   #   steps:

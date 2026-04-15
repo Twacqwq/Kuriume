@@ -1,0 +1,44 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "kuriume",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "src-tauri/tauri.conf.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "toml",
+          "path": "src-tauri/Cargo.toml",
+          "key": "package.version"
+        },
+        {
+          "type": "toml",
+          "path": "src-tauri/crates/kuriume-mpv/Cargo.toml",
+          "key": "package.version"
+        },
+        {
+          "type": "toml",
+          "path": "src-tauri/crates/kuriume-provider/Cargo.toml",
+          "key": "package.version"
+        },
+        {
+          "type": "toml",
+          "path": "src-tauri/crates/kuriume-store/Cargo.toml",
+          "key": "package.version"
+        },
+        {
+          "type": "toml",
+          "path": "src-tauri/crates/kuriume-torrent/Cargo.toml",
+          "key": "package.version"
+        }
+      ]
+    }
+  },
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
+}
