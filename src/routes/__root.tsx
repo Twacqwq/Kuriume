@@ -1,5 +1,4 @@
 import { Outlet, createRootRoute, useMatches } from "@tanstack/react-router";
-// import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { Sidebar } from "@/components/sidebar";
 import { BottomTabBar } from "@/components/bottom-tab-bar";
 import { SearchPanel } from "@/components/search-panel";

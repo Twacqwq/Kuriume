@@ -129,32 +129,6 @@ pub(crate) async fn online_source_search(
     engine.search(keyword).await.map_err(|e| e.to_string())
 }
 
-/// Simple echo test to diagnose IPC issues.
-#[command]
-pub(crate) async fn online_source_echo(_source: String, page_url: String) -> Result<String, String> {
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15")
-        .timeout(std::time::Duration::from_secs(8))
-        .connect_timeout(std::time::Duration::from_secs(5))
-        .build()
-        .map_err(|e| format!("client build: {e}"))?;
-
-    // Test 1: search URL (known to work via RuleEngine)
-    let search_url = "https://www.agedm.io/search?query=test";
-    let r1 = match client.get(search_url).send().await {
-        Ok(resp) => format!("search={}", resp.status()),
-        Err(e) => format!("search=ERR:{e}"),
-    };
-
-    // Test 2: detail URL
-    let r2 = match client.get(&page_url).send().await {
-        Ok(resp) => format!("detail={}", resp.status()),
-        Err(e) => format!("detail=ERR:{e}"),
-    };
-
-    Ok(format!("{r1} | {r2}"))
-}
-
 /// Get episodes (roads) from an anime page on an online source.
 #[command]
 pub(crate) async fn online_source_episodes(
@@ -552,7 +526,6 @@ async fn resolve_sniff_target(episode_url: &str) -> Option<String> {
         .ok()?;
 
     // Look for <iframe ... src="..."> that looks like a video player
-    // Use a simple regex to be lightweight (no need for full HTML parser here)
     let re = regex::Regex::new(r#"<iframe[^>]+src="([^"]+)"[^>]*>"#).ok()?;
     for cap in re.captures_iter(&html) {
         let src = &cap[1];

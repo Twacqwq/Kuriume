@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Basic anime information.
+/// Anime information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnimeInfo {
     /// Internal ID from the data source.

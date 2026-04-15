@@ -281,7 +281,7 @@ fn decode_html_entities(s: &str) -> String {
         .replace("&#39;", "'")
 }
 
-/// Simple URL-encoding for query parameters.
+/// URL-encode query parameters.
 fn urlencoding(s: &str) -> String {
     let mut result = String::with_capacity(s.len() * 2);
     for ch in s.chars() {

@@ -245,7 +245,7 @@ impl TorrentProvider for Mikan {
 }
 
 // ---------------------------------------------------------------------------
-// HTML parsing helpers (no external dependency — pure string parsing)
+// HTML parsing helpers
 // ---------------------------------------------------------------------------
 
 /// Parse Mikan search HTML for anime bangumi cards.

@@ -151,9 +151,8 @@ mod power {
 
     impl DisplaySleepGuard {
         pub fn new() -> Option<Self> {
-            // Android wake lock: call addFlags(FLAG_KEEP_SCREEN_ON) on the
-            // Activity's window via JNI. This is the simplest approach and
-            // does not require the WAKE_LOCK permission.
+            // Set wake lock via Activity window (JNI).
+            // Does not require the WAKE_LOCK permission.
             //
             // The actual JNI calls are performed in NativeVideoView::new()
             // since we need the JNI env there. This guard just tracks state.

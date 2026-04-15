@@ -100,40 +100,11 @@ function EpisodePage() {
   const sniffer = useVideoSniffer();
   const onlineSrc = useOnlineSource(animeTitle);
 
-  // DEBUG: direct invoke test — bypasses hook entirely
-  useEffect(() => {
-    if (!isOnline || !onlineSrc.selectedSource || onlineSrc.searchResults.length === 0) return;
-    const url = onlineSrc.searchResults[0].url;
-    console.log("[DIRECT-TEST] calling online_source_episodes, source:", onlineSrc.selectedSource, "pageUrl:", url);
-    import("@tauri-apps/api/core").then(({ invoke }) => {
-      invoke("online_source_episodes", { source: onlineSrc.selectedSource, pageUrl: url })
-        .then((r: unknown) => console.log("[DIRECT-TEST] OK:", JSON.stringify(r)))
-        .catch((e: unknown) => console.error("[DIRECT-TEST] FAIL:", e));
-    });
-  }, [isOnline, onlineSrc.selectedSource, onlineSrc.searchResults]);
-
-  // Derive dynamic online URL: if initial onlineUrl is provided, use it;
-  // otherwise try resolving from the online source for the current episode.
   const resolvedOnlineUrl = onlineUrl
     || (isOnline ? onlineSrc.getEpisodeUrl(epNum) : undefined);
 
-  // Debug: log online source state on every render when online tab is active
-  useEffect(() => {
-    if (!isOnline) return;
-    console.log("[online-debug] isOnline:", isOnline,
-      "roads:", onlineSrc.roads.length,
-      "selectedRoadIndex:", onlineSrc.selectedRoadIndex,
-      "epNum:", epNum,
-      "resolvedOnlineUrl:", resolvedOnlineUrl,
-      "snifferPhase:", sniffer.phase,
-      "selectedSource:", onlineSrc.selectedSource,
-      "searching:", onlineSrc.searching,
-      "loadingEpisodes:", onlineSrc.loadingEpisodes);
-  });
-
   useEffect(() => {
     if (isOnline && resolvedOnlineUrl) {
-      console.log("[online-sniffer] auto-trigger:", resolvedOnlineUrl);
       sniffer.sniff(resolvedOnlineUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
