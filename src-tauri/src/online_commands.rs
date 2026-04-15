@@ -5,7 +5,6 @@
 
 use kuriume_provider::{OnlineRoad, OnlineSearchResult, Rule, RuleEngine};
 use std::collections::HashMap;
-use std::error::Error as StdError;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{command, AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -132,7 +131,7 @@ pub(crate) async fn online_source_search(
 
 /// Simple echo test to diagnose IPC issues.
 #[command]
-pub(crate) async fn online_source_echo(source: String, page_url: String) -> Result<String, String> {
+pub(crate) async fn online_source_echo(_source: String, page_url: String) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15")
         .timeout(std::time::Duration::from_secs(8))
@@ -414,7 +413,7 @@ pub(crate) async fn sniff_video_url(app: AppHandle, episode_url: String) -> Resu
     {
         builder = builder.title("Sniffer").visible(false);
     }
-    let sniffer_webview = builder
+    let _sniffer_webview = builder
         .initialization_script(SNIFFER_SCRIPT)
         .on_document_title_changed(move |_win, title| {
             const PREFIX: &str = "__SNIFF_RESULT__:";

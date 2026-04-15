@@ -252,6 +252,7 @@ pub(crate) fn cache_lookup(
 }
 
 #[command]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn cache_register(
     state: State<'_, StoreState>,
     app: AppHandle,
@@ -355,6 +356,7 @@ pub(crate) fn cache_clear_all(
 
 /// Move a file to the organized cache directory and register it in the database.
 #[command]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn cache_organize(
     state: State<'_, StoreState>,
     app: AppHandle,
@@ -488,7 +490,7 @@ pub(crate) fn watchlist_set_status(
 ) -> Result<(), String> {
     state.with_store(&app, |store| {
         store
-            .watchlist_set_status(bgm_id, WatchStatus::from_str(status))
+            .watchlist_set_status(bgm_id, WatchStatus::parse(status))
             .map_err(|e| e.to_string())
     })
 }
@@ -507,6 +509,7 @@ pub(crate) fn watchlist_list(
 // ── Watch History commands ───────────────────────────────────────
 
 #[command]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn history_upsert(
     state: State<'_, StoreState>,
     app: AppHandle,

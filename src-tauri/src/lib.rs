@@ -26,7 +26,7 @@ pub fn run() {
         .plugin(tauri_plugin_mpv::init());
 
     #[cfg(desktop)]
-    let builder = builder.menu(|handle| Menu::new(handle));
+    let builder = builder.menu(Menu::new);
 
     builder
         .manage(state)

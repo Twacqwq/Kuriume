@@ -403,7 +403,7 @@ impl NativeVideoView {
             // the layer. Dynamic resize keeps drawable dimensions in sync with
             // the view's backing pixel size.
             let gravity: *mut AnyObject = msg_send![objc2::class!(NSString),
-                stringWithUTF8String: b"resize\0".as_ptr()];
+                stringWithUTF8String: c"resize".as_ptr()];
             let _: () = msg_send![metal_layer, setContentsGravity: gravity];
 
             // Insert below WKWebView

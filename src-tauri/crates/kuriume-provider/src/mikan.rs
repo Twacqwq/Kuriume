@@ -298,7 +298,7 @@ fn parse_search_results(html: &str) -> Vec<TorrentSourceEntry> {
 
         // Title is in <div class="an-text" title="...">
         let title = extract_attr_value(window, "title")
-            .map(|s| decode_html_entities(s))
+            .map(decode_html_entities)
             .unwrap_or_default();
 
         if !title.is_empty() {

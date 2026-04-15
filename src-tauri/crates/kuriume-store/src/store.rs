@@ -53,7 +53,7 @@ impl WatchStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "unwatched" => Self::Unwatched,
             "completed" => Self::Completed,
@@ -428,6 +428,7 @@ impl Store {
     }
 
     /// Insert or update a cache entry. Returns the row ID.
+    #[allow(clippy::too_many_arguments)]
     pub fn upsert_entry(
         &self,
         bgm_id: &str,
@@ -621,6 +622,7 @@ impl Store {
     // ── Watch History ─────────────────────────────────────────────
 
     /// Upsert a watch history entry (one entry per anime, updates to latest episode).
+    #[allow(clippy::too_many_arguments)]
     pub fn history_upsert(
         &self,
         bgm_id: &str,
