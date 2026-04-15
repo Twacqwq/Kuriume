@@ -4,14 +4,10 @@
   <img src="src-tauri/icons/icon.png" width="138" />
   <h1 align="center">Kuriume</h1>
   <div align="center">
+    <a href="https://github.com/Twacqwq/Kuriume" target="_blank">
+      <img alt="GitHub Stars" src="https://img.shields.io/github/stars/Twacqwq/Kuriume?style=flat-square" /></a>
     <a href="https://github.com/Twacqwq/Kuriume/releases" target="_blank">
       <img alt="GitHub Release" src="https://img.shields.io/github/v/release/Twacqwq/Kuriume?style=flat-square" /></a>
-    <a href="https://github.com/Twacqwq/Kuriume/releases" target="_blank">
-      <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/Twacqwq/Kuriume/total?style=flat-square" /></a>
-    <a href="https://github.com/Twacqwq/Kuriume/commits" target="_blank">
-      <img alt="GitHub Commit Activity" src="https://img.shields.io/github/commit-activity/m/Twacqwq/Kuriume?style=flat-square" /></a>
-    <a href="https://github.com/Twacqwq/Kuriume/issues?q=is%3Aissue+is%3Aclosed" target="_blank">
-      <img alt="GitHub Closed Issues" src="https://img.shields.io/github/issues-closed/Twacqwq/Kuriume?style=flat-square" /></a>
     <a href="https://github.com/Twacqwq/Kuriume/blob/main/LICENSE" target="_blank">
       <img alt="License" src="https://img.shields.io/github/license/Twacqwq/Kuriume?style=flat-square" /></a>
   </div>
