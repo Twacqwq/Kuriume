@@ -198,7 +198,7 @@ export function AnimeDetail({
 
           {/* Content */}
           <div
-            className="relative flex flex-row items-start gap-4 px-4 pb-6 pt-14 md:flex-col md:gap-8 md:px-16 md:pb-10 md:pt-20 md:flex-row md:items-start lg:px-24"
+            className="relative flex flex-row items-start gap-4 px-4 pb-6 pt-14 md:flex-col md:gap-8 md:px-16 md:pb-10 md:pt-20 md:items-start lg:px-24"
           >
             {/* Cover */}
             <div className="group/cover relative shrink-0">
@@ -210,7 +210,7 @@ export function AnimeDetail({
               <img
                 src={data.cover}
                 alt={data.title}
-                className="relative h-[180px] w-[120px] rounded-xl object-cover shadow-xl ring-1 ring-white/10 md:h-88 md:w-auto md:rounded-2xl md:shadow-2xl md:shadow-black/60 md:transition-transform md:duration-300 md:group-hover/cover:scale-[1.02]"
+                className="relative h-45 w-30 rounded-xl object-cover shadow-xl ring-1 ring-white/10 md:h-88 md:w-auto md:rounded-2xl md:shadow-2xl md:shadow-black/60 md:transition-transform md:duration-300 md:group-hover/cover:scale-[1.02]"
               />
               <div className="absolute inset-0 hidden items-center justify-center rounded-2xl bg-black/0 transition-colors duration-300 md:flex md:group-hover/cover:bg-black/30">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/90 text-white opacity-0 shadow-lg shadow-primary/30 transition-all duration-300 scale-75 group-hover/cover:scale-100 group-hover/cover:opacity-100">
