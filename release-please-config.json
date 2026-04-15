@@ -15,27 +15,27 @@
         {
           "type": "toml",
           "path": "src-tauri/Cargo.toml",
-          "key": "package.version"
+          "jsonpath": "$.package.version"
         },
         {
           "type": "toml",
           "path": "src-tauri/crates/kuriume-mpv/Cargo.toml",
-          "key": "package.version"
+          "jsonpath": "$.package.version"
         },
         {
           "type": "toml",
           "path": "src-tauri/crates/kuriume-provider/Cargo.toml",
-          "key": "package.version"
+          "jsonpath": "$.package.version"
         },
         {
           "type": "toml",
           "path": "src-tauri/crates/kuriume-store/Cargo.toml",
-          "key": "package.version"
+          "jsonpath": "$.package.version"
         },
         {
           "type": "toml",
           "path": "src-tauri/crates/kuriume-torrent/Cargo.toml",
-          "key": "package.version"
+          "jsonpath": "$.package.version"
         }
       ]
     }
