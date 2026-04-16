@@ -16,7 +16,10 @@
 
 <!-- 预览 -->
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Twacqwq/Kuriume/main/assets/preview.gif" width="900px" />
+  <video width="900" autoplay loop muted playsinline>
+    <source src="assets/preview.webm" type="video/webm" />
+    <source src="assets/preview.mp4" type="video/mp4" />
+  </video>
 </p>
 
 ## 特性
