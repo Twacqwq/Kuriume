@@ -21,7 +21,7 @@ tauri-plugin-mpv = { path = "plugins/tauri-plugin-mpv" }
 
 [package]
 name = "kuriume"
-version = "0.1.0"
+version = "0.1.1"
 description = "An anime aggregation, parsing, and playback app"
 authors = ["Twacqwq"]
 license = "GPL-3.0"
