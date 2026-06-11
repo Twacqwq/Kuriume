@@ -1,6 +1,6 @@
 [package]
 name = "kuriume-torrent"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Torrent streaming engine for Kuriume — download &amp; stream via librqbit"
 
