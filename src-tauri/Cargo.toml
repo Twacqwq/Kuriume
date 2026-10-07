@@ -2,7 +2,7 @@
 members = ["crates/kuriume-provider", "crates/kuriume-store", "crates/tauri-plugin-mobile"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 
 [workspace.dependencies]
 tauri = { version = "2", features = ["unstable"] }
