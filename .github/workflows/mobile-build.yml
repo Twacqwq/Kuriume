@@ -141,7 +141,7 @@ jobs:
         run: |
           echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
           echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
-          JAVA_HOME="$JAVA_HOME_17_X64" sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'platform-tools'
+          JAVA_HOME="$JAVA_HOME_17_X64" "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;35.0.0' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'platform-tools'
           echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
       - run: npm ci
       - name: Build and verify signed APK
