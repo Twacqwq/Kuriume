@@ -1,402 +1,188 @@
-import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
-import { Link } from '@tanstack/react-router'
-import { ChevronLeft, ChevronRight, Info, Pause, Play, Star } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-
-export interface BannerItem {
-  id: number
-  title: string
-  cover: string
-  score: number
-  year: number
-  episodes: number
-  genre: string[]
-  description: string
-}
+import { Button } from "@/components/ui/button";
+import { useDisplayLanguage } from "@/hooks/use-display-language";
+import {
+  displayAnimeDescription,
+  displayAnimeTitle,
+} from "@/lib/display-language";
+import type { AnimeInfo } from "@/lib/types";
+import { invoke } from "@tauri-apps/api/core";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface HeroBannerProps {
-  items: BannerItem[]
-  /** Auto-rotate interval in ms, default 8000 */
-  interval?: number
+  items: readonly AnimeInfo[];
 }
 
-/* ─────────────────────────────────────────────────────────
- *  Mobile compact carousel (< md)
- * ───────────────────────────────────────────────────────── */
+export function HeroBanner({ items }: HeroBannerProps) {
+  const language = useDisplayLanguage();
+  const [current, setCurrent] = useState(0);
+  const activeIndex = items.length > 0 ? Math.min(current, items.length - 1) : 0;
+  const media = items[activeIndex];
+  const { data: localizedMedia } = useQuery({
+    queryKey: ["anime-detail", media?.id, language],
+    queryFn: () =>
+      invoke<AnimeInfo>("get_detail", {
+        provider: "AniList",
+        id: media!.id,
+        language,
+      }),
+    enabled: Boolean(media && language === "zh"),
+    staleTime: 1000 * 60 * 60,
+  });
+  const nextArtwork =
+    items.length > 1
+      ? items[(activeIndex + 1) % items.length]?.banner ||
+        items[(activeIndex + 1) % items.length]?.cover
+      : undefined;
 
-interface MobileCarouselProps {
-  items: BannerItem[]
-  current: number
-  count: number
-  goTo: (i: number) => void
-  isPaused: boolean
-  setIsPaused: (v: boolean) => void
-  interval: number
-}
+  useEffect(() => {
+    if (current >= items.length && items.length > 0) setCurrent(0);
+  }, [current, items.length]);
 
-function MobileCarousel({ items, current, count, goTo, isPaused, setIsPaused, interval }: MobileCarouselProps) {
-  const touchStartX = useRef(0)
-  const touchDelta = useRef(0)
+  useEffect(() => {
+    if (!nextArtwork) return;
+    const image = new Image();
+    image.decoding = "async";
+    image.src = nextArtwork;
+  }, [nextArtwork]);
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0]!.clientX
-    touchDelta.current = 0
-    setIsPaused(true)
+  if (!media) {
+    return (
+      <section
+        aria-label="本季推荐"
+        className="h-[clamp(360px,48vh,520px)] overflow-hidden rounded-2xl bg-card"
+      >
+        <h1 className="sr-only">Kuriume</h1>
+        <div className="h-full animate-pulse bg-muted/45 motion-reduce:animate-none" />
+      </section>
+    );
   }
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    touchDelta.current = e.touches[0]!.clientX - touchStartX.current
-  }
+  const displayMedia = localizedMedia ?? media;
+  const title = displayAnimeTitle(displayMedia, language);
+  const description = displayAnimeDescription(displayMedia, language);
+  const artwork = media.banner || media.cover;
+  const hasNavigation = items.length > 1;
 
-  const handleTouchEnd = () => {
-    const threshold = 50
-    if (touchDelta.current > threshold) {
-      goTo(current - 1)
-    } else if (touchDelta.current < -threshold) {
-      goTo(current + 1)
-    }
-    setIsPaused(false)
-  }
-
-  const item = items[current]
-  if (!item) return null
+  const move = (offset: number) => {
+    setCurrent((index) => (index + offset + items.length) % items.length);
+  };
 
   return (
     <section
-      className="relative block w-full overflow-hidden md:hidden"
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
+      aria-roledescription="carousel"
+      aria-label="本季推荐"
+      aria-labelledby={`hero-title-${media.anilist_id}`}
+      className="relative isolate h-[clamp(360px,48vh,520px)] overflow-hidden rounded-2xl bg-card shadow-[0_24px_72px_-40px_rgba(0,0,0,0.9)]"
     >
-      {/* Background image */}
-      <div className="relative h-40">
-        {items.map((it, i) => (
-          <div
-            key={it.id}
-            className={cn(
-              'absolute inset-0 transition-opacity duration-500',
-              i === current ? 'opacity-100' : 'opacity-0',
-            )}
-          >
-            <img
-              src={it.cover}
-              alt=""
-              className="h-full w-full object-cover brightness-50 saturate-130"
-            />
-          </div>
-        ))}
+      {artwork && (
+        <img
+          key={`${media.id}-backdrop`}
+          src={artwork}
+          alt=""
+          loading={activeIndex === 0 ? "eager" : "lazy"}
+          fetchPriority={activeIndex === 0 ? "high" : "auto"}
+          decoding="async"
+          className="hero-media-enter absolute inset-0 h-full w-full object-cover object-center motion-reduce:animate-none"
+        />
+      )}
 
-        {/* Bottom gradient */}
-        <div className="absolute inset-0 bg-linear-to-t from-background via-background/30 to-transparent" />
+      <div className="absolute inset-0 bg-linear-to-r from-[#0b090a] via-[#0b090a]/82 to-[#0b090a]/16" />
+      <div className="absolute inset-0 bg-linear-to-t from-[#0b090a]/78 via-transparent to-black/12" />
 
-        {/* Content overlay */}
-        <div className="absolute inset-x-0 bottom-0 px-4 pb-3">
-          <Link
-            to="/anime/$id"
-            params={{ id: String(item.id) }}
-            className="block"
-          >
-            <div className="flex items-center gap-1.5 mb-1">
-              <Badge variant="secondary" className="gap-0.5 bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs px-1.5 py-0">
-                <Star size={10} fill="currentColor" />
-                {item.score}
-              </Badge>
-              <span className="text-xs text-white/60">{item.year}</span>
-              <span className="text-xs text-white/60">全{item.episodes}话</span>
-            </div>
-            <h2 className="text-lg font-bold text-white leading-tight line-clamp-1">
-              {item.title}
-            </h2>
-            <p className="text-xs text-white/50 line-clamp-1 mt-0.5">
-              {item.genre.join(' / ')}
-            </p>
-          </Link>
+      <div
+        key={`${media.id}-content`}
+        className="hero-copy-enter relative z-10 flex h-full max-w-3xl flex-col justify-end px-8 pb-10 pt-12 motion-reduce:animate-none lg:px-12 lg:pb-12"
+      >
+        <div className="mb-3 flex flex-wrap items-center gap-x-2 text-xs font-medium text-white/72">
+          {media.year && <span>{media.year}</span>}
+          {media.format && <span>· {formatMediaFormat(media.format)}</span>}
+          {media.score && <span>· {media.score.toFixed(1)}</span>}
+          {media.total_episodes > 0 && <span>· {media.total_episodes} 话</span>}
+        </div>
+
+        <h1
+          id={`hero-title-${media.anilist_id}`}
+          className="max-w-2xl text-balance text-4xl font-semibold leading-[1.08] tracking-[-0.025em] text-white xl:text-5xl"
+        >
+          {title}
+        </h1>
+
+        {description && (
+          <p className="mt-4 line-clamp-2 max-w-xl text-sm leading-6 text-white/72">
+            {description}
+          </p>
+        )}
+
+        <div className="mt-7">
+          <Button asChild size="lg" className="shadow-md shadow-black/20">
+            <Link to="/anime/$id" params={{ id: media.id }}>
+              查看详情
+              <ArrowRight aria-hidden="true" />
+            </Link>
+          </Button>
         </div>
       </div>
 
-      {/* Dots */}
-      {count > 1 && (
-        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
-          {items.map((it, i) => (
-            <button
-              key={it.id}
-              type="button"
-              onClick={() => goTo(i)}
-              className="relative h-0.5 overflow-hidden rounded-full transition-all duration-300"
-              style={{ width: i === current ? 20 : 6 }}
-            >
-              <div className="absolute inset-0 bg-white/30" />
-              {i === current && (
-                <div
-                  className="absolute inset-0 rounded-full bg-white"
-                  style={{
-                    animation: isPaused ? 'none' : `hero-progress ${interval}ms linear`,
-                  }}
-                />
-              )}
-            </button>
-          ))}
+      {media.cover && (
+        <div className="absolute bottom-12 right-12 z-10 hidden min-[1440px]:block">
+          <img
+            key={`${media.id}-poster`}
+            src={media.cover}
+            alt=""
+            loading={activeIndex === 0 ? "eager" : "lazy"}
+            decoding="async"
+            className="hero-poster-enter aspect-2/3 h-[min(34vh,330px)] rounded-2xl object-cover shadow-[0_24px_60px_-24px_rgba(0,0,0,0.82)] motion-reduce:animate-none"
+          />
         </div>
       )}
+
+      {hasNavigation && (
+        <div className="absolute right-6 top-6 z-20 flex items-center gap-1 rounded-lg bg-black/44 p-1 text-white shadow-md shadow-black/20">
+          <span className="min-w-14 px-2 text-center text-xs tabular-nums text-white/72">
+            {String(activeIndex + 1).padStart(2, "0")} / {String(items.length).padStart(2, "0")}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-lg"
+            onClick={() => move(-1)}
+            aria-label="上一部作品"
+            className="text-white/78 hover:bg-white/12 hover:text-white"
+          >
+            <ChevronLeft aria-hidden="true" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-lg"
+            onClick={() => move(1)}
+            aria-label="下一部作品"
+            className="text-white/78 hover:bg-white/12 hover:text-white"
+          >
+            <ChevronRight aria-hidden="true" />
+          </Button>
+        </div>
+      )}
+
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {title}，第 {activeIndex + 1} 部，共 {items.length} 部
+      </p>
     </section>
-  )
+  );
 }
 
-/* ─────────────────────────────────────────────────────────
- *  Desktop spotlight banner (≥ md)
- * ───────────────────────────────────────────────────────── */
-
-export function HeroBanner({ items, interval = 8000 }: HeroBannerProps) {
-  const [current, setCurrent] = useState(0)
-  const [isPaused, setIsPaused] = useState(false)
-  const [isTransitioning, setIsTransitioning] = useState(false)
-  const timerRef = useRef<ReturnType<typeof setInterval>>(null)
-  const count = items.length
-
-  const goTo = useCallback(
-    (index: number) => {
-      if (isTransitioning) return
-      setIsTransitioning(true)
-      setCurrent((index + count) % count)
-      setTimeout(() => setIsTransitioning(false), 600)
-    },
-    [count, isTransitioning],
-  )
-
-  const next = useCallback(() => goTo(current + 1), [current, goTo])
-  const prev = useCallback(() => goTo(current - 1), [current, goTo])
-
-  // Auto-rotate
-  useEffect(() => {
-    if (isPaused || count <= 1) return
-    timerRef.current = setInterval(next, interval)
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [isPaused, next, interval, count])
-
-  const item = items[current]
-
-  // Only render slides near current to reduce DOM / image load
-  const visibleIndices = useMemo(() => {
-    if (count <= 3) return items.map((_, i) => i)
-    const prev = (current - 1 + count) % count
-    const next = (current + 1) % count
-    return [...new Set([prev, current, next])]
-  }, [current, count, items])
-
-  if (!item) {
-    // Loading skeleton while banner data is being fetched
-    return (
-      <section className="relative w-full overflow-hidden" style={{ height: '50vh' }}>
-        <div className="absolute inset-0 animate-pulse bg-card" />
-      </section>
-    )
-  }
-
+function formatMediaFormat(format: string) {
   return (
-    <>
-      {/* ── Mobile: compact horizontal card carousel ── */}
-      <MobileCarousel
-        items={items}
-        current={current}
-        count={count}
-        goTo={goTo}
-        isPaused={isPaused}
-        setIsPaused={setIsPaused}
-        interval={interval}
-      />
-
-      {/* ── Desktop: full spotlight banner ── */}
-      <section
-        className="group/hero relative hidden w-full overflow-hidden md:block"
-        onMouseEnter={() => setIsPaused(true)}
-        onMouseLeave={() => setIsPaused(false)}
-      >
-      {/* Blurred background layer */}
-      {visibleIndices.map((i) => {
-        const it = items[i]!
-        return (
-          <div
-            key={it.id}
-            className={cn(
-              'absolute inset-0 transition-opacity duration-700 ease-in-out',
-              i === current ? 'opacity-100' : 'opacity-0',
-            )}
-          >
-            <img
-              src={it.cover}
-              alt=""
-              className="h-full w-full scale-110 object-cover blur-sm brightness-65 saturate-130"
-            />
-          </div>
-        )
-      })}
-
-      {/* Gradient overlay for bottom fade */}
-      <div className="absolute inset-0 bg-linear-to-t from-background via-transparent to-transparent" />
-      {/* Top gradient for titlebar readability */}
-      <div className="absolute inset-x-0 top-0 h-20 bg-linear-to-b from-black/40 to-transparent" />
-
-      {/* Spotlight layout */}
-      <div className="relative flex min-h-120 items-center px-8 pt-20 pb-16 md:px-16 lg:px-24">
-        {/* Left: text info */}
-        <div
-          key={`info-${current}`}
-          className="flex-1 space-y-4 pr-8 animate-in fade-in slide-in-from-left-4 duration-500 md:pr-16"
-        >
-          {/* Badges */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="secondary" className="gap-1 bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
-              <Star size={12} fill="currentColor" />
-              {item.score}
-            </Badge>
-            <Badge variant="outline" className="border-white/20 text-white/70">
-              {item.year}
-            </Badge>
-            <Badge variant="outline" className="border-white/20 text-white/70">
-              全{item.episodes}话
-            </Badge>
-          </div>
-
-          {/* Title */}
-          <h1 className="text-3xl font-bold tracking-tight text-white md:text-4xl lg:text-5xl">
-            {item.title}
-          </h1>
-
-          {/* Genre tags */}
-          <div className="flex gap-2">
-            {item.genre.map((g, i) => (
-              <span key={`${g}-${i}`} className="text-sm text-white/60">
-                {g}
-              </span>
-            ))}
-          </div>
-
-          {/* Description */}
-          <p className="text-sm leading-relaxed text-white/60 md:text-base line-clamp-3 max-w-lg">
-            {item.description}
-          </p>
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-3 pt-2">
-            <Link
-              to="/anime/$id"
-              params={{ id: String(item.id) }}
-              className="inline-flex items-center justify-center gap-2 rounded-full px-6 py-2 text-sm font-medium bg-white/10 hover:bg-white/20 border-0 text-white"
-            >
-              <Info size={18} />
-              详情
-            </Link>
-          </div>
-        </div>
-
-        {/* Right: cover card */}
-        <div className="hidden md:block relative shrink-0">
-          {visibleIndices.map((i) => {
-            const it = items[i]!
-            return (
-              <div
-                key={it.id}
-                className={cn(
-                  'transition-all duration-700 ease-in-out',
-                  i === current
-                    ? 'opacity-100 scale-100 translate-y-0'
-                    : 'opacity-0 scale-95 translate-y-4 absolute inset-0',
-                )}
-              >
-                {/* Glow */}
-                <img
-                  src={it.cover}
-                  alt=""
-                  className="absolute inset-0 h-full w-full object-cover blur-2xl opacity-30 scale-110"
-                />
-                {/* Cover */}
-                <div className="relative h-95 lg:h-105 aspect-2/3 overflow-hidden rounded-2xl shadow-2xl shadow-black/50 ring-1 ring-white/10">
-                  <img
-                    src={it.cover}
-                    alt={it.title}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-      {/* Navigation arrows (visible on hover) */}
-      {count > 1 && (
-        <>
-          <button
-            type="button"
-            onClick={prev}
-            className="absolute left-3 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white/80 opacity-0 backdrop-blur-sm transition-all hover:bg-black/60 group-hover/hero:opacity-100"
-          >
-            <ChevronLeft size={22} />
-          </button>
-          <button
-            type="button"
-            onClick={next}
-            className="absolute right-3 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white/80 opacity-0 backdrop-blur-sm transition-all hover:bg-black/60 group-hover/hero:opacity-100"
-          >
-            <ChevronRight size={22} />
-          </button>
-        </>
-      )}
-
-      {/* Bottom indicator bar */}
-      {count > 1 && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3">
-          {/* Progress dots */}
-          <div className="flex items-center gap-1.5">
-            {items.map((it, i) => (
-              <button
-                key={it.id}
-                type="button"
-                onClick={() => goTo(i)}
-                className="group/dot relative h-1 overflow-hidden rounded-full transition-all duration-300"
-                style={{ width: i === current ? 32 : 8 }}
-              >
-                <div className="absolute inset-0 bg-white/30" />
-                {i === current && (
-                  <div
-                    className="absolute inset-0 rounded-full bg-white"
-                    style={{
-                      animation: isPaused ? 'none' : `hero-progress ${interval}ms linear`,
-                    }}
-                  />
-                )}
-                {i !== current && (
-                  <div className="absolute inset-0 rounded-full bg-white/30 hover:bg-white/50 transition-colors" />
-                )}
-              </button>
-            ))}
-          </div>
-
-          {/* Play/pause toggle */}
-          <button
-            type="button"
-            onClick={() => setIsPaused((p) => !p)}
-            className="flex h-6 w-6 items-center justify-center rounded-full text-white/60 hover:text-white transition-colors"
-          >
-            {isPaused ? (
-              <Play size={12} fill="currentColor" />
-            ) : (
-              <Pause size={12} fill="currentColor" />
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* Progress animation keyframes */}
-      <style>{`
-        @keyframes hero-progress {
-          from { width: 0%; }
-          to { width: 100%; }
-        }
-      `}</style>
-    </section>
-    </>
-  )
+    {
+      TV: "TV",
+      TV_SHORT: "短篇",
+      MOVIE: "电影",
+      OVA: "OVA",
+      ONA: "ONA",
+      SPECIAL: "特别篇",
+    }[format] ?? format
+  );
 }

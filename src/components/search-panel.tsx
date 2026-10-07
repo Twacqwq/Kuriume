@@ -20,6 +20,9 @@ export function SearchPanel({ open, onClose }: SearchPanelProps) {
   }, [open]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Enter confirms an IME candidate before it submits a search. Safari can
+    // report isComposing=false on that keydown, but still uses keyCode 229.
+    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
     if (e.key === "Enter") {
       e.preventDefault();
       if (query.trim()) {
@@ -47,7 +50,7 @@ export function SearchPanel({ open, onClose }: SearchPanelProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="搜索番剧，按 Enter 搜索..."
+            placeholder="搜索动画"
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 outline-none"
           />
           <kbd className="hidden sm:inline-flex items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-muted-foreground">

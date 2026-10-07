@@ -1,6 +1,5 @@
 import { Outlet, createRootRoute, useMatches } from "@tanstack/react-router";
 import { Sidebar } from "@/components/sidebar";
-import { BottomTabBar } from "@/components/bottom-tab-bar";
 import { SearchPanel } from "@/components/search-panel";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -36,18 +35,11 @@ function RootComponent() {
     m.routeId.includes("/episode/"),
   );
 
-  // Transparent webview on player pages so mpv native view shows through
-  useEffect(() => {
-    const bg = isPlayerPage ? "transparent" : "oklch(0.1 0 0)";
-    document.documentElement.style.backgroundColor = bg;
-  }, [isPlayerPage]);
-
   return (
-    <div className={`flex h-full overflow-x-hidden ${isPlayerPage ? '' : 'bg-background'}`}>
-      {/* macOS title bar drag region — desktop only */}
+    <div className="dark flex h-full overflow-hidden bg-background">
       {!isPlayerPage && (
         <div
-          className="fixed inset-x-0 top-0 z-50 hidden h-8 md:block"
+          className="fixed left-56 right-0 top-0 z-50 h-8"
           data-tauri-drag-region
         />
       )}
@@ -58,14 +50,12 @@ function RootComponent() {
         className={
           isPlayerPage
             ? "flex-1 overflow-hidden"
-            : "relative flex-1 overflow-x-hidden overflow-y-auto pb-16 md:pt-8 md:pb-0 transition-all duration-300"
+            : "hide-scrollbar relative flex-1 overflow-x-hidden overflow-y-auto"
         }
         style={isPlayerPage ? undefined : { paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
         <Outlet />
       </main>
-      {!isPlayerPage && <BottomTabBar />}
-      {/* {!isPlayerPage && <TanStackRouterDevtools position="bottom-right" />} */}
     </div>
   );
 }

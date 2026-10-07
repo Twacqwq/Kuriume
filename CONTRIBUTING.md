@@ -22,6 +22,21 @@ just dev-frontend
 just check
 ```
 
+### VS Code Rust diagnostics
+
+If the VS Code extension reports that your toolchain is unsupported, use the
+rust-analyzer component matching your installed Rust toolchain:
+
+```bash
+rustup component add rust-analyzer
+```
+
+Set `"rust-analyzer.server.path": "rust-analyzer"` in local workspace settings
+(`.vscode/settings.json`, intentionally ignored), then run **rust-analyzer:
+Restart server**. This uses the rustup-managed analyzer on `PATH` without
+upgrading the compiler or disabling diagnostics. Confirm real errors with
+`cargo check --manifest-path src-tauri/Cargo.toml --workspace --all-targets`.
+
 ## Commit Convention
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/):
@@ -45,7 +60,11 @@ refactor: code refactoring
 
 - `src/` — Frontend (React + TypeScript). Route files go in `src/routes/`
 - `src-tauri/src/` — Tauri commands
-- `src-tauri/crates/` — Rust libraries (provider, mpv, torrent, store)
+- `src-tauri/crates/` — Rust libraries for catalog/source providers and the local store
+
+Playback providers implement `search`, `episodes`, and `resolve`. Resolution returns direct media or a background-only sniff plan; the desktop boundary returns MP4/HLS `PlayableAsset` values for ArtPlayer. Catalog identity stays independent. Do not add foreground website players, CAPTCHA workflows, external-player handoff, or arbitrary JavaScript to source rules. See [the playback contract and verification record](docs/playback-review-2026-10-07.md).
+
+Built-in sources must not require an account or user-entered key, or insert playback ads (including ads embedded in the video). Verify actual playback, not just a resolving URL. MX was removed after playback ads were reported; do not reintroduce it without reassessing this requirement.
 
 New pages are auto-registered by creating files under `src/routes/`.
 

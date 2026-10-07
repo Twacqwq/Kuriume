@@ -1,3 +1,6 @@
 mod store;
 
-pub use store::{episode_path, MediaEntry, Settings, Store, WatchHistoryEntry, WatchStatus, WatchlistEntry};
+pub use store::{
+    CatalogMediaInput, ExternalIdentity, LibraryEntry, LibraryStatus, Settings, SourceBinding,
+    SourceRuleRecord, Store, StoredMedia, WatchHistoryEntry,
+};

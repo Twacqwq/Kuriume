@@ -13,13 +13,21 @@ pub trait AnimeProvider: Send + Sync {
     fn name(&self) -> &str;
 
     /// Search for anime by keyword.
-    async fn search(&self, query: SearchQuery) -> Result<PagedResult<AnimeInfo>>;
+    async fn search(
+        &self,
+        query: SearchQuery,
+        language: Option<&str>,
+    ) -> Result<PagedResult<AnimeInfo>>;
 
     /// Get anime details by the data-source internal ID.
-    async fn get_detail(&self, id: &str) -> Result<AnimeInfo>;
+    async fn get_detail(&self, id: &str, language: Option<&str>) -> Result<AnimeInfo>;
 
     /// Get anime list
-    async fn get_list(&self, query: GetListQuery) -> Result<PagedResult<AnimeInfo>>;
+    async fn get_list(
+        &self,
+        query: GetListQuery,
+        language: Option<&str>,
+    ) -> Result<PagedResult<AnimeInfo>>;
 
     /// Get anime episodes
     async fn get_episodes(&self, query: GetEpisodesQuery) -> Result<Vec<EpisodesInfo>>;
@@ -28,5 +36,5 @@ pub trait AnimeProvider: Send + Sync {
     async fn get_characters(&self, id: &str) -> Result<Vec<CharacterInfo>>;
 
     /// Get weekly broadcast calendar.
-    async fn get_calendar(&self) -> Result<Vec<CalendarEntry>>;
+    async fn get_calendar(&self, language: Option<&str>) -> Result<Vec<CalendarEntry>>;
 }

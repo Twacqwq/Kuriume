@@ -1,188 +1,176 @@
+import type { AnimeInfo } from "@/lib/types";
 import { invoke } from "@tauri-apps/api/core";
 
-// ── Types ───────────────────────────────────────────────────────
+export type DisplayLanguage = "en" | "zh";
 
 export interface Settings {
-  cache_dir: string;
-  cache_enabled: boolean;
-  hwdec: string;
   default_volume: number;
   default_speed: number;
-  buffer_size: number;
   auto_next: boolean;
-  tracker_list: string[];
-  anime4k_mode: string;
+  display_language: DisplayLanguage;
 }
-
-export interface MediaEntry {
-  id: number;
-  bgm_id: string;
-  episode: number;
-  anime_title: string;
-  group_name: string;
-  resolution: string;
-  file_path: string;
-  file_size: number;
-  torrent_source: string;
-  cached_at: string;
-}
-
-// ── Settings API ────────────────────────────────────────────────
 
 export const settingsApi = {
   get: () => invoke<Settings>("get_settings"),
-
-  setCacheDir: (dir: string) =>
-    invoke<void>("set_cache_dir", { dir }),
-
-  migrateDir: (newDir: string, migrate: boolean) =>
-    invoke<void>("cache_migrate_dir", { newDir, migrate }),
-
-  setCacheEnabled: (enabled: boolean) =>
-    invoke<void>("set_cache_enabled", { enabled }),
-
-  setHwdec: (mode: string) =>
-    invoke<void>("set_hwdec", { mode }),
-
   setDefaultVolume: (volume: number) =>
     invoke<void>("set_default_volume", { volume }),
-
   setDefaultSpeed: (speed: number) =>
     invoke<void>("set_default_speed", { speed }),
-
-  setBufferSize: (size: number) =>
-    invoke<void>("set_buffer_size", { size }),
-
   setAutoNext: (enabled: boolean) =>
     invoke<void>("set_auto_next", { enabled }),
-
-  setTrackerList: (trackers: string[]) =>
-    invoke<void>("set_tracker_list", { trackers }),
-
-  setAnime4kMode: (mode: string) =>
-    invoke<void>("set_anime4k_mode", { mode }),
+  setDisplayLanguage: (language: DisplayLanguage) =>
+    invoke<void>("set_display_language", { language }),
 };
 
-// ── Cache API ───────────────────────────────────────────────────
-
-export const cacheApi = {
-  lookup: (bgmId: string, episode: number, groupName?: string, resolution?: string) =>
-    invoke<MediaEntry | null>("cache_lookup", {
-      bgmId,
-      episode,
-      groupName: groupName ?? null,
-      resolution: resolution ?? null,
-    }),
-
-  register: (params: {
-    bgmId: string;
-    episode: number;
-    animeTitle: string;
-    groupName: string;
-    resolution: string;
-    filePath: string;
-    fileSize: number;
-    torrentSource: string;
-  }) => invoke<number>("cache_register", params),
-
-  remove: (id: number) => invoke<void>("cache_remove", { id }),
-
-  list: (bgmId: string) =>
-    invoke<MediaEntry[]>("cache_list", { bgmId }),
-
-  totalSize: () => invoke<number>("cache_total_size"),
-
-  clearAll: (includeTempFiles = true) =>
-    invoke<void>("cache_clear_all", { includeTemp: includeTempFiles }),
-
-  organize: (params: {
-    sourcePath: string;
-    bgmId: string;
-    episode: number;
-    animeTitle: string;
-    groupName: string;
-    resolution: string;
-    torrentSource: string;
-  }) => invoke<MediaEntry>("cache_organize", params),
-};
-
-// ── Watchlist types ─────────────────────────────────────────────
-
-export type WatchStatus = "unwatched" | "watching" | "completed";
-
-export interface WatchlistEntry {
-  id: number;
-  bgm_id: string;
-  anime_title: string;
+export interface StoredMedia {
+  id: string;
+  provider: string;
+  external_id: string;
+  title: string;
   cover: string | null;
+  banner: string | null;
   total_episodes: number;
-  status: WatchStatus;
+}
+
+export const mediaApi = {
+  ensure: (media: AnimeInfo, language: DisplayLanguage = "en") =>
+    invoke<StoredMedia>("media_ensure", {
+      input: {
+        provider: "anilist",
+        external_id: String(media.anilist_id),
+        title:
+          language === "zh"
+            ? media.title_cn || media.title_en || media.title
+            : media.title_en || media.title,
+        cover: media.cover,
+        banner: media.banner,
+        total_episodes: media.total_episodes,
+      },
+    }),
+};
+
+export interface ExternalIdentity {
+  media_id: string;
+  provider: "anilist" | "tmdb_tv" | "tmdb_movie";
+  external_id: string;
+  scope: string;
+  confidence: number;
+  verified_at: string;
+}
+
+export const externalIdentityApi = {
+  list: (mediaId: string) =>
+    invoke<ExternalIdentity[]>("external_identity_list", { mediaId }),
+  upsert: (params: {
+    mediaId: string;
+    provider: "tmdb_tv" | "tmdb_movie";
+    externalId: string;
+    scope: string;
+    confidence?: number;
+  }) =>
+    invoke<ExternalIdentity>("external_identity_upsert", {
+      ...params,
+      confidence: params.confidence ?? 1,
+    }),
+  remove: (mediaId: string, provider: "tmdb_tv" | "tmdb_movie") =>
+    invoke<void>("external_identity_remove", { mediaId, provider }),
+};
+
+export const LIBRARY_STATUSES = [
+  { id: "following", zh: "追番", en: "Following" },
+  { id: "completed", zh: "已看完", en: "Completed" },
+] as const;
+
+export type LibraryStatus = (typeof LIBRARY_STATUSES)[number]["id"];
+
+export interface LibraryEntry {
+  media_id: string;
+  provider: string;
+  external_id: string;
+  title: string;
+  cover: string | null;
+  banner: string | null;
+  total_episodes: number;
+  status: LibraryStatus;
   added_at: string;
   updated_at: string;
 }
 
-// ── Watchlist API ───────────────────────────────────────────────
-
-export const watchlistApi = {
-  add: (bgmId: string, animeTitle: string, cover: string | null, totalEpisodes: number) =>
-    invoke<WatchlistEntry>("watchlist_add", {
-      bgmId,
-      animeTitle,
-      cover,
-      totalEpisodes,
-    }),
-
-  remove: (bgmId: string) =>
-    invoke<void>("watchlist_remove", { bgmId }),
-
-  get: (bgmId: string) =>
-    invoke<WatchlistEntry | null>("watchlist_get", { bgmId }),
-
-  setStatus: (bgmId: string, status: WatchStatus) =>
-    invoke<void>("watchlist_set_status", { bgmId, status }),
-
-  list: (status?: WatchStatus) =>
-    invoke<WatchlistEntry[]>("watchlist_list", { status: status ?? null }),
+export const libraryApi = {
+  add: (mediaId: string, status: LibraryStatus = "following") =>
+    invoke<LibraryEntry>("library_add", { mediaId, status }),
+  remove: (mediaId: string) =>
+    invoke<void>("library_remove", { mediaId }),
+  get: (mediaId: string) =>
+    invoke<LibraryEntry | null>("library_get", { mediaId }),
+  setStatus: (mediaId: string, status: LibraryStatus) =>
+    invoke<void>("library_set_status", { mediaId, status }),
+  list: (status?: LibraryStatus) =>
+    invoke<LibraryEntry[]>("library_list", { status: status ?? null }),
 };
 
-// ── Watch History types ─────────────────────────────────────────
-
 export interface WatchHistoryEntry {
-  id: number;
-  bgm_id: string;
+  media_id: string;
+  provider: string;
+  external_id: string;
   episode: number;
-  anime_title: string;
+  media_title: string;
   episode_title: string;
   cover: string | null;
   position: number;
   duration: number;
-  group_id: string | null;
-  resolution: string | null;
-  subtitle: string | null;
+  source_id: string | null;
   watched_at: string;
 }
 
-// ── Watch History API ───────────────────────────────────────────
+export function historyListQueryKey(limit = 200, offset = 0) {
+  return ["history-list", { limit, offset }] as const;
+}
 
 export const historyApi = {
   upsert: (params: {
-    bgmId: string;
+    mediaId: string;
     episode: number;
-    animeTitle: string;
     episodeTitle: string;
-    cover: string | null;
     position: number;
     duration: number;
-    groupId: string | null;
-    resolution: string | null;
-    subtitle: string | null;
+    sourceId: string | null;
   }) => invoke<void>("history_upsert", params),
-
-  list: (limit: number, offset: number) =>
+  list: (limit = 200, offset = 0) =>
     invoke<WatchHistoryEntry[]>("history_list", { limit, offset }),
-
-  remove: (bgmId: string) =>
-    invoke<void>("history_remove", { bgmId }),
-
+  remove: (mediaId: string, episode?: number) =>
+    invoke<void>("history_remove", {
+      mediaId,
+      episode: episode ?? null,
+    }),
   clear: () => invoke<void>("history_clear"),
 };
+
+export interface SourceBinding {
+  media_id: string;
+  source_id: string;
+  remote_media_url: string;
+  remote_title: string;
+  road_index: number;
+  verified_at: string;
+}
+
+export const sourceBindingApi = {
+  get: (mediaId: string, sourceId: string) =>
+    invoke<SourceBinding | null>("source_binding_get", { mediaId, sourceId }),
+  list: (mediaId: string) =>
+    invoke<SourceBinding[]>("source_binding_list", { mediaId }),
+  upsert: (params: {
+    mediaId: string;
+    sourceId: string;
+    remoteMediaUrl: string;
+    remoteTitle: string;
+    roadIndex: number;
+  }) => invoke<SourceBinding>("source_binding_upsert", params),
+  remove: (mediaId: string, sourceId: string) =>
+    invoke<void>("source_binding_remove", { mediaId, sourceId }),
+};
+
+export function catalogId(provider: string, externalId: string): string {
+  return `${provider}:${externalId}`;
+}

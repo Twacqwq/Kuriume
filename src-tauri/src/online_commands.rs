@@ -1,67 +1,146 @@
-//! Tauri commands for the online-source rule engine.
-//!
-//! Manages a set of [`Rule`]s and exposes search / episode-list / rule-CRUD
-//! operations to the frontend, plus a WebView-based video URL sniffer.
+//! Unified playback-source registry and Tauri command boundary.
 
-use kuriume_provider::{OnlineRoad, OnlineSearchResult, Rule, RuleEngine};
+use crate::media_proxy::MediaProxyState;
+use crate::store_commands::StoreState;
+use kuriume_provider::{
+    Anime1, HiAnime, PlaybackCandidate, PlaybackProvider, PlaybackProviderDescriptor,
+    PlaybackResolveRequest, PlaybackRoad, PlaybackSearch, PlaybackSubtitle, ResolvePlan, Rule,
+    RulePlaybackProvider, Xifan,
+};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{command, AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
-use tokio::sync::oneshot;
+use tauri::{command, AppHandle, State, WebviewUrl, WebviewWindowBuilder};
 
 static SNIFFER_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 // ── State ────────────────────────────────────────────────────────
 
-/// Holds all registered online-source rule engines, keyed by rule name.
+/// Playback providers keyed by stable machine ID. `order` is kept separately
+/// because provider order is part of the product contract: Anime1, Xifan Next,
+/// AGE, HiAnime, then imported rules. The first provider is the default.
 pub struct OnlineSourceState {
-    engines: Mutex<HashMap<String, RuleEngine>>,
-    rules: Mutex<Vec<Rule>>,
+    providers: Mutex<HashMap<String, Arc<dyn PlaybackProvider>>>,
+    order: Mutex<Vec<String>>,
+    rules: Mutex<HashMap<String, Rule>>,
 }
 
 impl OnlineSourceState {
     pub fn new() -> Self {
         let state = Self {
-            engines: Mutex::new(HashMap::new()),
-            rules: Mutex::new(Vec::new()),
+            providers: Mutex::new(HashMap::new()),
+            order: Mutex::new(Vec::new()),
+            rules: Mutex::new(HashMap::new()),
         };
 
-        // Register built-in rules.
+        state.register_provider(Arc::new(Anime1::new()));
+        state.register_provider(Arc::new(Xifan::new()));
         for rule in kuriume_provider::builtin_rules::all() {
             state.add_rule(rule);
         }
+        state.register_provider(Arc::new(HiAnime::new()));
 
         state
     }
 
-    /// Register a rule and create its engine.
+    fn register_provider(&self, provider: Arc<dyn PlaybackProvider>) {
+        let id = provider.descriptor().id.clone();
+        let mut providers = self.providers.lock().unwrap();
+        let is_new = !providers.contains_key(&id);
+        providers.insert(id.clone(), provider);
+        drop(providers);
+
+        if is_new {
+            self.order.lock().unwrap().push(id);
+        }
+    }
+
+    /// Register a rule and its provider adapter. Kept infallible for startup
+    /// compatibility; imported rules are validated before reaching this path.
     pub fn add_rule(&self, rule: Rule) {
-        let name = rule.name.clone();
-        let engine = RuleEngine::new(rule.clone());
-        self.rules.lock().unwrap().push(rule);
-        self.engines.lock().unwrap().insert(name, engine);
+        if let Err(error) = self.add_rule_checked(rule) {
+            eprintln!("Skipped invalid playback rule: {error}");
+        }
     }
 
-    /// Remove a rule by name.
-    pub fn remove_rule(&self, name: &str) {
-        self.rules.lock().unwrap().retain(|r| r.name != name);
-        self.engines.lock().unwrap().remove(name);
-    }
-
-    /// Get a snapshot of all rule names.
-    pub fn list_names(&self) -> Vec<String> {
+    fn add_rule_checked(&self, rule: Rule) -> Result<PlaybackProviderDescriptor, String> {
+        let provider =
+            RulePlaybackProvider::new(rule.clone()).map_err(|error| error.to_string())?;
+        let descriptor = provider.descriptor().clone();
         self.rules
             .lock()
             .unwrap()
+            .insert(descriptor.id.clone(), rule);
+        self.register_provider(Arc::new(provider));
+        Ok(descriptor)
+    }
+
+    /// Remove a rule by stable ID. A display-name lookup remains only for
+    /// loading databases written before stable IDs were introduced.
+    pub fn remove_rule(&self, identity: &str) {
+        let id = self.resolve_rule_id(identity);
+        let Some(id) = id else {
+            return;
+        };
+        self.rules.lock().unwrap().remove(&id);
+        self.providers.lock().unwrap().remove(&id);
+        self.order.lock().unwrap().retain(|entry| entry != &id);
+    }
+
+    fn resolve_rule_id(&self, identity: &str) -> Option<String> {
+        let rules = self.rules.lock().unwrap();
+        if rules.contains_key(identity) {
+            return Some(identity.to_string());
+        }
+        rules
             .iter()
-            .map(|r| r.name.clone())
+            .find(|(_, rule)| rule.name == identity)
+            .map(|(id, _)| id.clone())
+    }
+
+    fn provider(&self, id: &str) -> Result<Arc<dyn PlaybackProvider>, String> {
+        self.providers
+            .lock()
+            .unwrap()
+            .get(id)
+            .cloned()
+            .ok_or_else(|| format!("Playback provider not found: {id}"))
+    }
+
+    fn descriptor(&self, id: &str) -> Option<PlaybackProviderDescriptor> {
+        self.providers
+            .lock()
+            .unwrap()
+            .get(id)
+            .map(|provider| provider.descriptor().clone())
+    }
+
+    fn list_descriptors(&self) -> Vec<PlaybackProviderDescriptor> {
+        let providers = self.providers.lock().unwrap();
+        self.order
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|id| providers.get(id))
+            .map(|provider| provider.descriptor().clone())
             .collect()
     }
 
     /// Get a snapshot of all rules.
     pub fn list_rules(&self) -> Vec<Rule> {
-        self.rules.lock().unwrap().clone()
+        let rules = self.rules.lock().unwrap();
+        self.order
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|id| rules.get(id).cloned())
+            .collect()
+    }
+
+    fn get_rule(&self, identity: &str) -> Option<Rule> {
+        let id = self.resolve_rule_id(identity)?;
+        self.rules.lock().unwrap().get(&id).cloned()
     }
 }
 
@@ -73,474 +152,569 @@ impl Default for OnlineSourceState {
 
 // ── Commands ─────────────────────────────────────────────────────
 
-/// List all registered online-source rule names.
+/// List providers in user-facing priority order. The first entry is the
+/// default provider.
 #[command]
-pub(crate) async fn online_source_list(
+pub(crate) async fn playback_source_list(
     state: State<'_, OnlineSourceState>,
-) -> Result<Vec<String>, String> {
-    Ok(state.list_names())
+) -> Result<Vec<PlaybackProviderDescriptor>, String> {
+    Ok(state.list_descriptors())
 }
 
-/// Get all registered rules (for UI display / editing).
 #[command]
-pub(crate) async fn online_source_list_rules(
+pub(crate) async fn playback_source_list_rules(
     state: State<'_, OnlineSourceState>,
 ) -> Result<Vec<Rule>, String> {
     Ok(state.list_rules())
 }
 
-/// Add or update an online-source rule.
 #[command]
-pub(crate) async fn online_source_add_rule(
+pub(crate) async fn playback_source_add_rule(
+    app: AppHandle,
     state: State<'_, OnlineSourceState>,
-    rule: Rule,
+    store: State<'_, StoreState>,
+    mut rule: Rule,
+) -> Result<PlaybackProviderDescriptor, String> {
+    rule.ensure_identity();
+    validate_source_rule(&rule)?;
+    if rule.id.starts_with("builtin:")
+        || state
+            .descriptor(&rule.id)
+            .is_some_and(|descriptor| descriptor.built_in)
+    {
+        return Err("Built-in source rules cannot be replaced".into());
+    }
+    let rule_json = serde_json::to_string(&rule).map_err(|error| error.to_string())?;
+    let rule_id = rule.id.clone();
+    let legacy_name = rule.name.clone();
+    store.with_store(&app, |database| {
+        // Remove a pre-stable-ID row before writing the canonical ID key.
+        database
+            .source_rule_remove(&legacy_name)
+            .map_err(|error| error.to_string())?;
+        database
+            .source_rule_upsert(&rule_id, &rule_json)
+            .map_err(|error| error.to_string())
+    })?;
+    state.add_rule_checked(rule)
+}
+
+#[command]
+pub(crate) async fn playback_source_remove_rule(
+    app: AppHandle,
+    state: State<'_, OnlineSourceState>,
+    store: State<'_, StoreState>,
+    provider_id: &str,
 ) -> Result<(), String> {
-    // Remove old version if exists, then add new
-    state.remove_rule(&rule.name);
-    state.add_rule(rule);
+    let descriptor = state
+        .descriptor(provider_id)
+        .ok_or_else(|| format!("Playback provider not found: {provider_id}"))?;
+    if descriptor.built_in {
+        return Err("Built-in source rules cannot be removed".into());
+    }
+    let rule = state
+        .get_rule(provider_id)
+        .ok_or_else(|| "Imported source rule not found".to_string())?;
+    store.with_store(&app, |database| {
+        database
+            .source_rule_remove(provider_id)
+            .map_err(|error| error.to_string())?;
+        database
+            .source_rule_remove(&rule.name)
+            .map_err(|error| error.to_string())
+    })?;
+    state.remove_rule(provider_id);
     Ok(())
 }
 
-/// Remove an online-source rule by name.
 #[command]
-pub(crate) async fn online_source_remove_rule(
+pub(crate) async fn playback_source_search(
     state: State<'_, OnlineSourceState>,
-    name: &str,
-) -> Result<(), String> {
-    state.remove_rule(name);
-    Ok(())
-}
-
-/// Search for anime on a specific online source.
-#[command]
-pub(crate) async fn online_source_search(
-    state: State<'_, OnlineSourceState>,
-    source: &str,
-    keyword: &str,
-) -> Result<Vec<OnlineSearchResult>, String> {
-    let rule = {
-        let engines = state.engines.lock().unwrap();
-        let engine = engines
-            .get(source)
-            .ok_or_else(|| format!("Online source not found: {source}"))?;
-        engine.rule().clone()
-    };
-    let engine = RuleEngine::new(rule);
-    engine.search(keyword).await.map_err(|e| e.to_string())
-}
-
-/// Get episodes (roads) from an anime page on an online source.
-#[command]
-pub(crate) async fn online_source_episodes(
-    state: State<'_, OnlineSourceState>,
-    source: String,
-    page_url: String,
-) -> Result<Vec<OnlineRoad>, String> {
-    let rule = {
-        let engines = state.engines.lock().unwrap();
-        let engine = engines
-            .get(source.as_str())
-            .ok_or_else(|| format!("Online source not found: {source}"))?;
-        engine.rule().clone()
-    };
-    let engine = RuleEngine::new(rule);
-    engine
-        .get_episodes(&page_url)
+    provider_id: &str,
+    query: PlaybackSearch,
+) -> Result<Vec<PlaybackCandidate>, String> {
+    if query.query.trim().is_empty() || query.query.chars().count() > 200 {
+        return Err("Search keyword must contain 1–200 characters".into());
+    }
+    if query.alternative_titles.len() > 8
+        || query
+            .alternative_titles
+            .iter()
+            .any(|title| title.chars().count() > 200)
+    {
+        return Err("Alternative titles exceed V1 limits".into());
+    }
+    state
+        .provider(provider_id)?
+        .search(query)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|error| error.to_string())
+}
+
+#[command]
+pub(crate) async fn playback_source_episodes(
+    state: State<'_, OnlineSourceState>,
+    provider_id: &str,
+    candidate_id: &str,
+) -> Result<Vec<PlaybackRoad>, String> {
+    if candidate_id.is_empty() || candidate_id.len() > 16_384 {
+        return Err("Invalid candidate identifier".into());
+    }
+    state
+        .provider(provider_id)?
+        .episodes(candidate_id)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 // ── Video URL sniffer ────────────────────────────────────────────
 
-/// JavaScript injected into the sniffer WebView before page scripts.
-///
-/// Hooks network APIs and media element src to intercept video URLs.
-/// When found, signals Rust by setting `document.title` to a sentinel value.
-/// The `on_document_title_changed` callback in Rust detects this and extracts
-/// the URL.
-const SNIFFER_SCRIPT: &str = r#"
-(function() {
-    var __found = false;
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum PlayableAsset {
+    Direct {
+        url: String,
+        #[serde(rename = "mimeType")]
+        mime_type: Option<String>,
+        subtitles: Vec<PlaybackSubtitle>,
+    },
+}
 
-    function __isVideoUrl(url) {
-        if (!url || typeof url !== 'string') return false;
-        if (/\.m3u8|\.mp4|\.flv|\.ts\b/i.test(url)) return true;
-        if (/\/video\/|\/hls\/|\/m3u8|type=m3u8|mime=video/i.test(url)) return true;
-        return false;
-    }
+#[derive(Serialize)]
+pub struct PlayableSource {
+    name: String,
+    asset: PlayableAsset,
+}
 
-    function __report(url, force) {
-        if (__found) return;
-        if (!url || typeof url !== 'string') return;
-        if (url.indexOf('blob:') === 0 || url.indexOf('data:') === 0) return;
-        if (!force && !__isVideoUrl(url)) return;
-        __found = true;
-        console.log('[sniffer] found video URL:', url);
-        document.title = '__SNIFF_RESULT__:' + url;
-    }
+/// Background extraction only. The original episode page stays the top frame
+/// so player frames retain their expected context; nothing is shown to users.
+const SNIFFER_SCRIPT: &str = include_str!("media-sniffer.js");
 
-    // ── XHR hooks ────────────────────────────────────────────────
-    var __origOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url) {
-        this.__snUrl = typeof url === 'string' ? url : String(url);
-        __report(this.__snUrl);
-        return __origOpen.apply(this, arguments);
-    };
-    var __origSend = XMLHttpRequest.prototype.send;
-    XMLHttpRequest.prototype.send = function() {
-        var xhr = this;
-        xhr.addEventListener('load', function() {
-            var url = xhr.responseURL || xhr.__snUrl;
-            if (url) __report(url);
-            try {
-                var ct = xhr.getResponseHeader('content-type') || '';
-                if (/mpegurl|video\//i.test(ct) && url) __report(url, true);
-            } catch(e) {}
-        });
-        return __origSend.apply(this, arguments);
-    };
-
-    // ── fetch hook ───────────────────────────────────────────────
-    var __origFetch = window.fetch;
-    window.fetch = function(input, init) {
-        var url = typeof input === 'string' ? input : (input && input.url) || '';
-        __report(url);
-        var p = __origFetch.apply(this, arguments);
-        p.then(function(resp) {
-            if (resp && resp.url) __report(resp.url);
-            if (resp && resp.headers) {
-                var ct = resp.headers.get('content-type') || '';
-                if (/mpegurl|video\//i.test(ct) && resp.url) __report(resp.url, true);
-            }
-        }).catch(function(){});
-        return p;
-    };
-
-    // ── HLS.js hook — intercept loadSource() directly ────────────
-    function __hookHls(H) {
-        if (!H || !H.prototype || H.prototype.__snHooked) return;
-        H.prototype.__snHooked = true;
-        var orig = H.prototype.loadSource;
-        if (orig) {
-            H.prototype.loadSource = function(url) {
-                __report(url, true);
-                return orig.apply(this, arguments);
-            };
-        }
-    }
-    if (window.Hls) __hookHls(window.Hls);
-    try {
-        var __hlsVal = window.Hls;
-        Object.defineProperty(window, 'Hls', {
-            set: function(v) { __hlsVal = v; __hookHls(v); },
-            get: function() { return __hlsVal; },
-            configurable: true
-        });
-    } catch(e) {}
-
-    // ── flv.js hook — intercept createPlayer() ───────────────────
-    function __hookFlv(f) {
-        if (!f || f.__snHooked) return;
-        f.__snHooked = true;
-        var orig = f.createPlayer;
-        if (orig) {
-            f.createPlayer = function(conf) {
-                if (conf && conf.url) __report(conf.url, true);
-                return orig.apply(this, arguments);
-            };
-        }
-    }
-    if (window.flvjs) __hookFlv(window.flvjs);
-    try {
-        var __flvVal = window.flvjs;
-        Object.defineProperty(window, 'flvjs', {
-            set: function(v) { __flvVal = v; __hookFlv(v); },
-            get: function() { return __flvVal; },
-            configurable: true
-        });
-    } catch(e) {}
-
-    // ── Element creation hook ────────────────────────────────────
-    var __origCreate = document.createElement.bind(document);
-    document.createElement = function(tag) {
-        var el = __origCreate(tag);
-        var t = tag.toLowerCase();
-        if (t === 'video' || t === 'source') {
-            var origSet = el.setAttribute.bind(el);
-            el.setAttribute = function(n, v) {
-                if (n === 'src') __report(v);
-                return origSet(n, v);
-            };
-            Object.defineProperty(el, 'src', {
-                set: function(v) { __report(v); origSet('src', v); },
-                get: function() { return el.getAttribute('src'); }
-            });
-        }
-        return el;
-    };
-
-    // ── HTMLMediaElement.src hook ─────────────────────────────────
-    var __mp = HTMLMediaElement.prototype;
-    var __sd = Object.getOwnPropertyDescriptor(__mp, 'src');
-    if (__sd && __sd.set) {
-        Object.defineProperty(__mp, 'src', {
-            set: function(v) { __report(v); __sd.set.call(this, v); },
-            get: __sd.get, configurable: true
-        });
-    }
-
-    // ── MutationObserver — watch for <video> elements ────────────
-    function __watchVideo(v) {
-        if (v.__snWatched) return;
-        v.__snWatched = true;
-        ['playing', 'loadeddata'].forEach(function(ev) {
-            v.addEventListener(ev, function() {
-                if (this.currentSrc && this.currentSrc.indexOf('blob:') !== 0) {
-                    __report(this.currentSrc, true);
-                }
-            });
-        });
-    }
-    new MutationObserver(function(muts) {
-        for (var i = 0; i < muts.length; i++) {
-            var nodes = muts[i].addedNodes;
-            for (var j = 0; j < nodes.length; j++) {
-                var n = nodes[j];
-                if (n.nodeName === 'VIDEO') __watchVideo(n);
-                if (n.querySelectorAll) n.querySelectorAll('video').forEach(__watchVideo);
-            }
-        }
-    }).observe(document.documentElement, { childList: true, subtree: true });
-
-    // ── DOM scanning ─────────────────────────────────────────────
-    function __scanDOM() {
-        document.querySelectorAll('video').forEach(function(el) {
-            __watchVideo(el);
-            var s = el.getAttribute('src') || el.src;
-            if (s) __report(s);
-            if (el.currentSrc) __report(el.currentSrc, true);
-        });
-        document.querySelectorAll('source[src]').forEach(function(el) {
-            __report(el.getAttribute('src') || el.src);
-        });
-    }
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', __scanDOM);
-    } else {
-        setTimeout(__scanDOM, 500);
-    }
-    setTimeout(__scanDOM, 2000);
-    setTimeout(__scanDOM, 5000);
-    setTimeout(__scanDOM, 8000);
-    setTimeout(__scanDOM, 12000);
-})();
-"#;
-
-/// Create a hidden WebView window that loads `episode_url`, intercepts
-/// network requests for video URLs (.m3u8/.mp4/.flv), and returns the
-/// first one found.
-///
-/// Communication between JS and Rust uses `document.title` changes:
-/// the init-script sets `document.title = '__SNIFF_RESULT__:' + url`
-/// when a video URL is found, and `on_document_title_changed` on the
-/// Rust side detects the sentinel prefix and extracts the URL.
-///
-/// Many anime sites embed video in an `<iframe>` pointing to a third-party
-/// player. The init-script hooks only run in the top-level document, not inside
-/// cross-origin iframes. To handle this, we first fetch the episode page HTML
-/// server-side, extract the `<iframe>` src, and load *that* URL in the sniffer
-/// WebView so the hooks can capture the real video URL.
-///
-/// Returns the video URL or an error (timeout after 30s).
-#[command]
-pub(crate) async fn sniff_video_url(app: AppHandle, episode_url: String) -> Result<String, String> {
-    let sniff_target = resolve_sniff_target(&episode_url)
-        .await
-        .unwrap_or_else(|| episode_url.clone());
-    eprintln!("[sniffer] episode_url: {episode_url}");
-    eprintln!("[sniffer] sniff_target: {sniff_target}");
-
-    let (tx, rx) = oneshot::channel::<String>();
-    let tx = Arc::new(Mutex::new(Some(tx)));
-    let tx_title = tx.clone();
-
-    let url: tauri::Url = sniff_target
-        .parse()
-        .map_err(|_| format!("Invalid URL: {sniff_target}"))?;
-
-    // Close any leftover sniffer windows from previous attempts
-    #[cfg(desktop)]
-    for (label, win) in app.webview_windows() {
-        if label.starts_with("sniffer-") {
-            let _ = win.close();
-        }
-    }
-
+#[cfg(desktop)]
+async fn sniff_video_url_impl(
+    app: AppHandle,
+    episode_url: String,
+    allowed_hosts: Vec<String>,
+    user_agent: Option<String>,
+) -> Result<(String, &'static str), String> {
+    validate_provider_url(&episode_url, &allowed_hosts, "sniff")?;
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(16);
     let label = format!(
         "sniffer-{}",
         SNIFFER_COUNTER.fetch_add(1, Ordering::Relaxed)
     );
-
-    #[allow(unused_mut)]
-    let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(url));
-    #[cfg(desktop)]
-    {
-        builder = builder.title("Sniffer").visible(false);
+    let mut builder = WebviewWindowBuilder::new(
+        &app,
+        &label,
+        WebviewUrl::External(episode_url.parse().map_err(|_| "Invalid episode URL")?),
+    )
+    .title("Media resolver")
+    .visible(false)
+    .focused(false);
+    if let Some(user_agent) = user_agent {
+        builder = builder.user_agent(&user_agent);
     }
-    let _sniffer_webview = builder
-        .initialization_script(SNIFFER_SCRIPT)
-        .on_document_title_changed(move |_win, title| {
-            const PREFIX: &str = "__SNIFF_RESULT__:";
-            if let Some(video_url) = title.strip_prefix(PREFIX) {
-                eprintln!("[sniffer] title-change captured: {video_url}");
-                if let Some(tx) = tx_title.lock().unwrap().take() {
-                    let _ = tx.send(video_url.to_string());
+    let window = builder
+        .initialization_script_for_all_frames(SNIFFER_SCRIPT)
+        .on_navigation(move |url| {
+            let allowed = (url.scheme() == "about" && matches!(url.path(), "blank" | "srcdoc"))
+                || validate_provider_url(url.as_str(), &allowed_hosts, "sniff").is_ok();
+            if !allowed {
+                eprintln!(
+                    "[media-resolver] blocked undeclared navigation host: {}",
+                    url.host_str().unwrap_or("opaque")
+                );
+            }
+            allowed
+        })
+        .on_page_load(|_, payload| {
+            eprintln!(
+                "[media-resolver] {:?}: {}",
+                payload.event(),
+                payload.url().host_str().unwrap_or("opaque")
+            );
+        })
+        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+        .on_download(|_, _| false)
+        .on_document_title_changed(move |_, title| {
+            if let Some(url) = title.strip_prefix("__KURIUME_MEDIA__:") {
+                if url.len() <= 8_192 && validate_public_http_url(url).is_ok() {
+                    let _ = tx.try_send(url.to_string());
                 }
             }
         })
         .build()
-        .map_err(|e| format!("Failed to create sniffer window: {e}"))?;
+        .map_err(|error| format!("Cannot start media resolver: {error}"))?;
 
-    // On iOS, tao creates a new UIWindow for each WebviewWindow.
-    // This new UIWindow becomes the key window and covers the entire screen.
-    // We hide the sniffer UIWindow and restore the main UIWindow as key.
-    // The WKWebView stays in the sniffer window (hidden) so it can still load
-    // and fire the KVO title observer; we don't reparent it.
-    #[cfg(target_os = "ios")]
-    {
-        let _ = sniffer_webview.with_webview(|platform_webview| {
-            unsafe {
-                use objc2::msg_send;
-                use objc2::runtime::{AnyClass, AnyObject, NSObject};
-
-                let wkwv = platform_webview.inner() as *const AnyObject;
-
-                // Get the UIWindow that the sniffer WKWebView belongs to
-                let sniffer_window: *const AnyObject = msg_send![wkwv, window];
-
-                // Find the main UIWindow (the one that is NOT the sniffer window)
-                let ui_app_cls = AnyClass::get(c"UIApplication").unwrap();
-                let shared_app: *const AnyObject = msg_send![ui_app_cls, sharedApplication];
-                let windows: *const NSObject = msg_send![shared_app, windows];
-                let count: usize = msg_send![windows, count];
-                let mut main_window: *const AnyObject = std::ptr::null();
-                for i in 0..count {
-                    let win: *const AnyObject = msg_send![windows, objectAtIndex: i];
-                    if win != sniffer_window {
-                        main_window = win;
-                        break;
+    // A website reporting a URL is not proof of playable media. Ignore HTML,
+    // failed requests and single TS segments, and keep listening within a
+    // bounded session. The remote page has no application IPC capabilities.
+    let result = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let mut seen = std::collections::HashSet::new();
+        while let Some(url) = rx.recv().await {
+            if seen.len() >= 16 {
+                break;
+            }
+            if seen.insert(url.clone()) {
+                match probe_media_url(&url).await {
+                    Ok(mime) => return Ok((url, mime)),
+                    Err(_) => {
+                        eprintln!("[media-resolver] candidate did not return accessible MP4/HLS")
                     }
                 }
+            }
+        }
+        Err("No supported media found on this source".to_string())
+    })
+    .await;
+    let _ = window.close();
+    result.unwrap_or_else(|_| Err("Video URL sniffing timed out (30s)".into()))
+}
 
-                // Hide the sniffer UIWindow entirely and make it non-interactive
-                if !sniffer_window.is_null() {
-                    let _: () = msg_send![sniffer_window, setHidden: true];
-                    let _: () = msg_send![sniffer_window, setUserInteractionEnabled: false];
-                    // Resign key so it doesn't steal events
-                    let _: () = msg_send![sniffer_window, resignKeyWindow];
-                    eprintln!("[sniffer-ios] hidden sniffer UIWindow");
-                }
+#[cfg(not(desktop))]
+async fn sniff_video_url_impl(
+    _app: AppHandle,
+    _episode_url: String,
+    _allowed_hosts: Vec<String>,
+    _user_agent: Option<String>,
+) -> Result<(String, &'static str), String> {
+    Err("Background source resolution currently requires the desktop app".into())
+}
 
-                // Restore the main window as key window
-                if !main_window.is_null() {
-                    let _: () = msg_send![main_window, makeKeyAndVisible];
-                    eprintln!("[sniffer-ios] restored main UIWindow as key");
+async fn probe_media_url(raw: &str) -> Result<&'static str, String> {
+    let url = validate_public_http_url(raw)?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(6))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|error| error.to_string())?;
+    let mut response = client
+        .get(url)
+        .header("Range", "bytes=0-4095")
+        .send()
+        .await
+        .map_err(|error| error.to_string())?
+        .error_for_status()
+        .map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        return Err("Media redirected unexpectedly".into());
+    }
+    let mut bytes = Vec::new();
+    while bytes.len() < 4_096 {
+        let Some(chunk) = response.chunk().await.map_err(|error| error.to_string())? else {
+            break;
+        };
+        bytes.extend_from_slice(&chunk[..chunk.len().min(4_096 - bytes.len())]);
+    }
+    if bytes.starts_with(b"#EXTM3U") {
+        Ok("application/x-mpegURL")
+    } else if is_supported_media_prefix(&bytes) {
+        Ok("video/mp4")
+    } else {
+        Err("Source returned no MP4/HLS media".into())
+    }
+}
+
+fn is_supported_media_prefix(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"#EXTM3U") || bytes.get(4..8) == Some(b"ftyp")
+}
+
+/// Resolve opaque source identities into the least-privileged player asset.
+/// Provider URLs never arrive as command parameters from the renderer.
+#[command]
+pub(crate) async fn playback_source_resolve(
+    app: AppHandle,
+    state: State<'_, OnlineSourceState>,
+    media_proxy: State<'_, MediaProxyState>,
+    provider_id: &str,
+    request: PlaybackResolveRequest,
+) -> Result<Vec<PlayableSource>, String> {
+    validate_resolve_request(&request)?;
+    let sources = state
+        .provider(provider_id)?
+        .resolve(request)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let mut result = Vec::new();
+    let mut last_error = None;
+    for source in sources.into_iter().take(3) {
+        let sniff = matches!(source.plan, ResolvePlan::Sniff { .. });
+        // A resolved transport need not wait for slower background websites.
+        if sniff && !result.is_empty() {
+            continue;
+        }
+        match prepare_playback_asset(&app, &media_proxy, source.plan).await {
+            Ok(asset) => result.push(PlayableSource {
+                name: source.name,
+                asset,
+            }),
+            Err(error) => last_error = Some(error),
+        }
+    }
+    if result.is_empty() {
+        return Err(last_error.unwrap_or_else(|| "No playable sources for this episode".into()));
+    }
+    Ok(result)
+}
+
+async fn prepare_playback_asset(
+    app: &AppHandle,
+    media_proxy: &MediaProxyState,
+    plan: ResolvePlan,
+) -> Result<PlayableAsset, String> {
+    match plan {
+        ResolvePlan::Direct {
+            url,
+            mime_type,
+            mut subtitles,
+            headers,
+            allowed_hosts,
+        } => {
+            validate_provider_url(&url, &allowed_hosts, "media")?;
+            for subtitle in &subtitles {
+                validate_provider_url(&subtitle.url, &allowed_hosts, "subtitle")?;
+            }
+            if !headers.is_empty() {
+                for subtitle in &mut subtitles {
+                    subtitle.url = media_proxy.register(
+                        &subtitle.url,
+                        headers.clone(),
+                        &allowed_hosts,
+                        Some("text/vtt"),
+                    )?;
                 }
             }
-        });
-    }
-
-    // Wait for result with timeout (30s to allow for slow decryption/WASM)
-    let result = tokio::time::timeout(std::time::Duration::from_secs(30), rx).await;
-
-    // Clean up: close/remove the sniffer
-    #[cfg(desktop)]
-    if let Some(win) = app.get_webview_window(&label) {
-        let _ = win.close();
-    }
-    #[cfg(target_os = "ios")]
-    if let Some(win) = app.get_webview_window(&label) {
-        let _ = win.with_webview(|platform_webview| {
-            unsafe {
-                use objc2::msg_send;
-                use objc2::runtime::{AnyClass, AnyObject, NSObject};
-                let wkwv = platform_webview.inner() as *const AnyObject;
-                // Get the sniffer UIWindow before removing the webview
-                let sniffer_win: *const AnyObject = msg_send![wkwv, window];
-                let _: () = msg_send![wkwv, stopLoading];
-                let _: () = msg_send![wkwv, removeFromSuperview];
-                // Ensure the sniffer UIWindow is destroyed
-                if !sniffer_win.is_null() {
-                    let _: () = msg_send![sniffer_win, setHidden: true];
-                    let _: () = msg_send![sniffer_win, setUserInteractionEnabled: false];
-                    let _: () = msg_send![sniffer_win, resignKeyWindow];
-                }
-                // Always re-ensure main window is key
-                let ui_app_cls = AnyClass::get(c"UIApplication").unwrap();
-                let shared_app: *const AnyObject = msg_send![ui_app_cls, sharedApplication];
-                let windows: *const NSObject = msg_send![shared_app, windows];
-                let count: usize = msg_send![windows, count];
-                for i in 0..count {
-                    let w: *const AnyObject = msg_send![windows, objectAtIndex: i];
-                    if w != sniffer_win {
-                        let _: () = msg_send![w, makeKeyAndVisible];
-                        break;
-                    }
-                }
-                eprintln!("[sniffer-ios] cleaned up sniffer WKWebView + UIWindow");
-            }
-        });
-    }
-
-    match result {
-        Ok(Ok(url)) => {
-            eprintln!("[sniffer] success: {url}");
-            Ok(url)
+            let url = if headers.is_empty() {
+                url
+            } else {
+                media_proxy.register(&url, headers, &allowed_hosts, mime_type.as_deref())?
+            };
+            Ok(PlayableAsset::Direct {
+                url,
+                mime_type,
+                subtitles,
+            })
         }
-        Ok(Err(_)) => {
-            eprintln!("[sniffer] error: channel closed unexpectedly");
-            Err("Sniffer channel closed unexpectedly".into())
-        }
-        Err(_) => {
-            eprintln!("[sniffer] error: timed out after 30s");
-            Err("Video URL sniffing timed out (30s)".into())
+        ResolvePlan::Sniff {
+            page_url,
+            headers,
+            allowed_hosts,
+        } => {
+            validate_provider_url(&page_url, &allowed_hosts, "sniff")?;
+            let (url, mime) = sniff_video_url_impl(
+                app.clone(),
+                page_url,
+                allowed_hosts,
+                headers.get("User-Agent").cloned(),
+            )
+            .await?;
+            validate_public_http_url(&url)?;
+            Ok(PlayableAsset::Direct {
+                mime_type: Some(mime.into()),
+                url,
+                subtitles: Vec::new(),
+            })
         }
     }
 }
 
-/// Fetch the episode page HTML and try to extract an `<iframe>` src.
-/// If found, return the iframe URL; otherwise return the original URL.
-async fn resolve_sniff_target(episode_url: &str) -> Option<String> {
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
-        .build()
-        .ok()?;
-
-    let html = client
-        .get(episode_url)
-        .send()
-        .await
-        .ok()?
-        .text()
-        .await
-        .ok()?;
-
-    // Look for <iframe ... src="..."> that looks like a video player
-    let re = regex::Regex::new(r#"<iframe[^>]+src="([^"]+)"[^>]*>"#).ok()?;
-    for cap in re.captures_iter(&html) {
-        let src = &cap[1];
-        // Filter: skip iframes that are obviously not video players (ads, analytics, etc.)
-        if src.contains("google")
-            || src.contains("facebook")
-            || src.contains("twitter")
-            || src.contains("baidu.com/hm")
-            || src.contains("analytics")
-        {
-            continue;
+fn validate_resolve_request(request: &PlaybackResolveRequest) -> Result<(), String> {
+    for (name, value) in [
+        ("candidate", &request.candidate_id),
+        ("road", &request.road_id),
+        ("episode", &request.episode_id),
+    ] {
+        if value.is_empty() || value.len() > 16_384 {
+            return Err(format!("Invalid {name} identifier"));
         }
-        // Return the first plausible player iframe
-        return Some(src.to_string());
+    }
+    Ok(())
+}
+
+fn validate_provider_url(raw: &str, allowed_hosts: &[String], kind: &str) -> Result<(), String> {
+    if allowed_hosts.is_empty() || allowed_hosts.len() > 32 {
+        return Err(format!("Provider declared invalid {kind} hosts"));
+    }
+    let url = validate_public_http_url(raw)?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| format!("Provider {kind} URL has no host"))?
+        .to_ascii_lowercase();
+    if !host_is_declared(&host, allowed_hosts) {
+        return Err(format!("Provider {kind} URL host is not declared"));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_source_rule(rule: &Rule) -> Result<(), String> {
+    rule.validate_structure()
+        .map_err(|error| error.to_string())?;
+    if rule.id.chars().count() > 128
+        || rule.name.chars().count() > 80
+        || rule.version.chars().count() > 40
+        || rule.base_url.len() > 2_048
+        || rule.search_url.len() > 4_096
+        || rule.allowed_hosts.len() > 32
+    {
+        return Err("Source rule exceeds V1 size limits".into());
+    }
+    for field in [&rule.author, &rule.license] {
+        if field
+            .as_deref()
+            .is_some_and(|value| value.chars().count() > 200)
+        {
+            return Err("Source rule attribution exceeds V1 size limits".into());
+        }
+    }
+    if let Some(homepage) = &rule.homepage {
+        validate_public_http_url(homepage)?;
+    }
+    let base = validate_public_http_url(&rule.base_url)?;
+    let search = validate_public_http_url(&rule.search_url.replace("{keyword}", "kuriume"))?;
+    let base_host = base
+        .host_str()
+        .ok_or_else(|| "Source base URL has no host".to_string())?;
+    let search_host = search
+        .host_str()
+        .ok_or_else(|| "Search URL has no host".to_string())?;
+    if !host_is_declared(search_host, &[base_host.to_string()]) {
+        return Err("Search URL must belong to the source base host".into());
+    }
+    for host in &rule.allowed_hosts {
+        let host = host.trim().trim_start_matches('.');
+        if host.is_empty() || host.contains('/') || host.contains(':') {
+            return Err(format!("Invalid allowed host: {host}"));
+        }
+        validate_public_http_url(&format!("https://{host}"))?;
+    }
+    Ok(())
+}
+
+fn validate_public_http_url(raw: &str) -> Result<tauri::Url, String> {
+    let url = raw
+        .parse::<tauri::Url>()
+        .map_err(|_| "Invalid source URL".to_string())?;
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err("Only credential-free HTTP(S) source URLs are supported".into());
+    }
+    let host = url
+        .host_str()
+        .ok_or_else(|| "Source URL has no host".to_string())?;
+    if host.eq_ignore_ascii_case("localhost") || host.ends_with(".localhost") {
+        return Err("Local source URLs are not allowed".into());
+    }
+    if let Ok(ip) = host.trim_matches(['[', ']']).parse::<std::net::IpAddr>() {
+        let private = match ip {
+            std::net::IpAddr::V4(ip) => {
+                ip.is_private()
+                    || ip.is_loopback()
+                    || ip.is_link_local()
+                    || ip.is_broadcast()
+                    || ip.is_documentation()
+                    || ip.is_unspecified()
+            }
+            std::net::IpAddr::V6(ip) => {
+                ip.to_ipv4_mapped().is_some_and(|mapped| {
+                    mapped.is_private()
+                        || mapped.is_loopback()
+                        || mapped.is_link_local()
+                        || mapped.is_broadcast()
+                        || mapped.is_documentation()
+                        || mapped.is_unspecified()
+                }) || ip.is_loopback()
+                    || ip.is_unspecified()
+                    || ip.is_unique_local()
+                    || ip.is_unicast_link_local()
+            }
+        };
+        if private {
+            return Err("Private and local source URLs are not allowed".into());
+        }
+    }
+    Ok(url)
+}
+
+fn host_is_declared(host: &str, allowed_hosts: &[String]) -> bool {
+    allowed_hosts.iter().any(|allowed| {
+        let allowed = allowed.trim().trim_start_matches('.').to_ascii_lowercase();
+        !allowed.is_empty() && (host == allowed || host.ends_with(&format!(".{allowed}")))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sniffer_accepts_media_bytes_not_a_webpage_or_transport_segment() {
+        assert!(is_supported_media_prefix(b"#EXTM3U\n#EXT-X-VERSION:3"));
+        assert!(is_supported_media_prefix(b"\0\0\0\x18ftypisom"));
+        assert!(!is_supported_media_prefix(
+            b"<html>Verification required</html>"
+        ));
+        assert!(!is_supported_media_prefix(&[0x47; 188]));
     }
 
-    None
+    #[test]
+    fn built_in_providers_follow_product_order_and_exclude_retired_sources() {
+        let state = OnlineSourceState::new();
+        let ids: Vec<String> = state
+            .list_descriptors()
+            .into_iter()
+            .map(|descriptor| descriptor.id)
+            .collect();
+
+        assert_eq!(
+            ids,
+            [
+                "builtin:anime1",
+                "builtin:xifan",
+                "builtin:age",
+                "builtin:hianime"
+            ]
+        );
+        assert!(state.provider("builtin:allanime").is_err());
+        assert!(state.provider("builtin:mx").is_err());
+    }
+
+    #[test]
+    fn playable_asset_is_media_only_with_camel_case_fields() {
+        let direct = serde_json::to_value(PlayableAsset::Direct {
+            url: "kuriume-media://localhost/session".into(),
+            mime_type: Some("video/mp4".into()),
+            subtitles: Vec::new(),
+        })
+        .unwrap();
+
+        assert_eq!(direct["kind"], "direct");
+        assert_eq!(direct["mimeType"], "video/mp4");
+        assert!(direct.get("mime_type").is_none());
+        assert!(direct["subtitles"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn provider_urls_must_match_a_declared_public_host() {
+        assert!(validate_provider_url(
+            "https://media.example/episode.mp4",
+            &["media.example".into()],
+            "media"
+        )
+        .is_ok());
+        assert!(validate_provider_url(
+            "https://other.example/episode.mp4",
+            &["media.example".into()],
+            "media"
+        )
+        .is_err());
+        assert!(validate_provider_url(
+            "http://127.0.0.1/episode.mp4",
+            &["127.0.0.1".into()],
+            "media"
+        )
+        .is_err());
+    }
 }

@@ -1,140 +1,179 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { HeroBanner, type BannerItem } from "@/components/hero-banner";
 import { AnimeGrid } from "@/components/anime-grid";
-import { SearchPanel } from "@/components/search-panel";
-import { invoke } from "@tauri-apps/api/core";
-import { useQuery } from "@tanstack/react-query";
+import { HeroBanner } from "@/components/hero-banner";
+import { StoredMediaTitle } from "@/components/stored-media-title";
+import { Button } from "@/components/ui/button";
+import { useDisplayLanguage } from "@/hooks/use-display-language";
+import { displayAnimeTitle } from "@/lib/display-language";
+import {
+  currentDisplayLanguage,
+  CURRENT_YEAR,
+  fetchSeason,
+  SEASON_PAGE_SIZE,
+  spotlightQuery,
+} from "@/lib/catalog-queries";
+import { historyApi, historyListQueryKey } from "@/lib/store";
 import { queryClient } from "@/lib/query-client";
-import type { AnimeInfo, PagedResult } from "@/lib/types";
-import { Search } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Play } from "lucide-react";
 
-const PAGE_SIZE = 50;
-const START_YEAR = new Date().getFullYear();
-
-interface YearPageParam {
-  year: number;
-  offset: number;
-}
-
-async function fetchAnimeList(
-  param: YearPageParam,
-  signal?: AbortSignal,
-): Promise<PagedResult<AnimeInfo>> {
-  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-  const result = await invoke<PagedResult<AnimeInfo>>("get_list", {
-    provider: "Bangumi",
-    query: {
-      limit: PAGE_SIZE,
-      offset: param.offset,
-      soft: "Rank",
-      type: 2,
-      year: param.year,
-    },
-  });
-
-  // Seed each item into the detail cache so detail pages get O(1) hits
-  for (const item of result.data) {
-    queryClient.setQueryData(["anime-detail", item.id], item);
-  }
-
-  return result;
-}
-
-function getNextAnimePageParam(
-  lastPage: PagedResult<AnimeInfo>,
-  _allPages: PagedResult<AnimeInfo>[],
-  lastParam: YearPageParam,
-): YearPageParam | undefined {
-  const nextOffset = lastPage.offset + lastPage.limit;
-  if (nextOffset < lastPage.total) {
-    return { year: lastParam.year, offset: nextOffset };
-  }
-  const nextYear = lastParam.year - 1;
-  return { year: nextYear, offset: 0 };
-}
-
-const bannerQueryOptions = {
-  queryKey: ["banner", "Bangumi", START_YEAR],
-  queryFn: async ({ signal }: { signal?: AbortSignal }) => {
-    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    const result = await invoke<PagedResult<AnimeInfo>>("get_list", {
-      provider: "Bangumi",
-      query: { limit: 5, offset: 0, soft: "Rank", type: 2, year: START_YEAR },
-    });
-    return result.data.map(toBannerItem);
-  },
-};
-
-const animeListInfiniteQueryOptions = {
-  queryKey: ["anime-list", "Bangumi"],
-  queryFn: ({ pageParam, signal }: { pageParam: YearPageParam; signal?: AbortSignal }) =>
-    fetchAnimeList(pageParam, signal),
-  initialPageParam: { year: START_YEAR, offset: 0 } as YearPageParam,
-  getNextPageParam: getNextAnimePageParam,
-};
-
-export const Route = createFileRoute("/")(
-  {
+export const Route = createFileRoute("/")({
   loader: async () => {
-    // Background refetch if data already cached; block otherwise
-    const hasBanner = queryClient.getQueryData(bannerQueryOptions.queryKey);
-    const hasList = queryClient.getQueryData(["anime-list", "Bangumi"]);
-    if (hasBanner && hasList) {
-      queryClient.prefetchQuery(bannerQueryOptions);
-      queryClient.prefetchInfiniteQuery(animeListInfiniteQueryOptions);
-      return;
-    }
-    await Promise.all([
-      queryClient.prefetchQuery(bannerQueryOptions),
-      queryClient.prefetchInfiniteQuery(animeListInfiniteQueryOptions),
-    ]);
+    const language = await currentDisplayLanguage();
+    await queryClient.ensureQueryData(spotlightQuery(language)).catch(() => undefined);
   },
-  component: IndexComponent,
+  component: HomePage,
 });
 
-function toBannerItem(info: AnimeInfo): BannerItem {
-  return {
-    id: Number(info.id),
-    title: info.title_cn || info.title,
-    cover: info.cover ?? "",
-    score: info.score ?? 0,
-    year: info.year ?? 0,
-    episodes: info.total_episodes,
-    genre: [...new Set(info.genres)],
-    description: info.description ?? "",
-  };
-}
-
-function IndexComponent() {
-  const { data: bannerItems = [] } = useQuery(bannerQueryOptions);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const openSearch = useCallback(() => setSearchOpen(true), []);
-  const closeSearch = useCallback(() => setSearchOpen(false), []);
+function HomePage() {
+  const language = useDisplayLanguage();
+  const { data: firstPage, isError, isLoading, refetch } = useQuery(spotlightQuery(language));
+  const spotlight = firstPage?.data?.slice(0, 12) ?? [];
+  const { data: history = [] } = useQuery({
+    queryKey: historyListQueryKey(12, 0),
+    queryFn: () => historyApi.list(12, 0),
+  });
 
   return (
-    <div className="md:-mt-8">
-      {/* Mobile search bar */}
-      <button
-        type="button"
-        onClick={openSearch}
-        className="mx-4 mt-3 mb-2 flex items-center gap-2.5 rounded-xl bg-white/5 px-4 py-2.5 text-sm text-muted-foreground active:bg-white/8 md:hidden"
-      >
-        <Search size={16} strokeWidth={2} />
-        搜索番剧...
-      </button>
-      <SearchPanel open={searchOpen} onClose={closeSearch} />
+    <div className="min-h-full pb-16">
+      <div className="mx-auto max-w-7xl px-6 pt-12 lg:px-10">
+        {!isLoading && spotlight.length === 0 ? (
+          <section className="flex min-h-72 flex-col items-center justify-center gap-4 rounded-2xl bg-card px-6 text-center">
+            <h1 className="text-lg font-semibold">{isError ? "动漫列表暂时无法载入" : "暂无推荐作品"}</h1>
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>重新载入</Button>
+          </section>
+        ) : <HeroBanner items={spotlight.slice(0, 5)} />}
 
-      <HeroBanner items={bannerItems} />
-      {/* Content area — overlaps banner fade zone */}
+        {history.length > 0 && (
+          <section className="mt-11" aria-labelledby="continue-watching-title">
+            <h2 id="continue-watching-title" className="text-lg font-semibold tracking-tight">
+              继续观看
+            </h2>
+            <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-3">
+              {history.slice(0, 6).map((entry) => {
+                const percent =
+                  entry.duration > 0
+                    ? Math.min(100, (entry.position / entry.duration) * 100)
+                    : 0;
+                return (
+                  <Link
+                    key={`${entry.media_id}-${entry.episode}`}
+                    to="/anime/$id/episode/$ep"
+                    params={{
+                      id: `${entry.provider}:${entry.external_id}`,
+                      ep: String(entry.episode),
+                    }}
+                    search={{ t: entry.position }}
+                    className="group relative flex min-w-0 gap-4 overflow-hidden rounded-xl border border-border/75 bg-card p-3 outline-none transition-colors hover:border-primary/45 focus-visible:border-primary-readable focus-visible:ring-[3px] focus-visible:ring-primary-readable motion-reduce:transition-none"
+                  >
+                    <div className="h-24 w-17 shrink-0 overflow-hidden rounded-lg bg-white/5">
+                      {entry.cover && (
+                        <img
+                          src={entry.cover}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="h-full w-full object-cover"
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1 py-1">
+                      <p className="truncate text-sm font-medium">
+                        <StoredMediaTitle provider={entry.provider} externalId={entry.external_id} fallback={entry.media_title} />
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        第 {entry.episode} 话
+                      </p>
+                      <div className="mt-5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <Play size={11} fill="currentColor" aria-hidden="true" />
+                        {formatTime(entry.position)} / {formatTime(entry.duration)}
+                      </div>
+                    </div>
+                    <span className="absolute inset-x-0 bottom-0 h-0.5 bg-muted">
+                      <span
+                        className="block h-full bg-primary"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        <section className="mt-11" aria-labelledby="season-focus-title">
+          <h2 id="season-focus-title" className="text-lg font-semibold tracking-tight">
+            本季焦点
+          </h2>
+          <div className="mt-5 grid grid-cols-4 gap-4 xl:grid-cols-7">
+            {spotlight.slice(5, 12).map((media) => (
+              <Link
+                key={media.id}
+                to="/anime/$id"
+                params={{ id: media.id }}
+                className="group min-w-0 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-primary-readable"
+              >
+                <div className="aspect-2/3 overflow-hidden rounded-xl bg-card">
+                  {media.cover && (
+                    <img
+                      src={media.cover}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.025] motion-reduce:transition-none"
+                    />
+                  )}
+                </div>
+                <p className="mt-2 truncate text-xs font-medium text-foreground/82 transition-colors group-hover:text-primary-readable motion-reduce:transition-none">
+                  {displayAnimeTitle(media, language)}
+                </p>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  {media.format
+                    ? formatMediaFormat(media.format)
+                    : (media.year ?? 0) > 0
+                      ? media.year
+                      : null}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      </div>
+
       <AnimeGrid
-        title="全部番剧"
-        queryKey={["anime-list", "Bangumi"]}
-        queryFn={fetchAnimeList}
-        initialPageParam={{ year: START_YEAR, offset: 0 }}
-        getNextPageParam={getNextAnimePageParam}
-        pageSize={PAGE_SIZE}
+        key={language}
+        title="今年的动画"
+        queryKey={["anime-list", "AniList", CURRENT_YEAR, language]}
+        queryFn={(offset: number) => fetchSeason(offset, language)}
+        initialPageParam={0}
+        getNextPageParam={(lastPage) => {
+          const next = lastPage.offset + lastPage.limit;
+          return next < lastPage.total ? next : undefined;
+        }}
+        pageSize={SEASON_PAGE_SIZE}
+        initialPage={firstPage}
       />
     </div>
+  );
+}
+
+function formatTime(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.floor(seconds % 60);
+  return `${minutes}:${rest.toString().padStart(2, "0")}`;
+}
+
+function formatMediaFormat(format: string) {
+  return (
+    {
+      TV: "TV",
+      TV_SHORT: "短篇",
+      MOVIE: "电影",
+      OVA: "OVA",
+      ONA: "ONA",
+      SPECIAL: "特别篇",
+    }[format] ?? format
   );
 }

@@ -1,12 +1,28 @@
-import { TorrentPlayer } from "@/components/torrent-player";
-import type { HistoryContext } from "@/components/torrent-player";
+import { PlaybackSurface } from "@/components/playback-surface";
+import { PlaybackSubtitles } from "@/components/playback-subtitles";
 import { Button } from "@/components/ui/button";
-import { historyApi } from "@/lib/store";
-import { useTorrentSource } from "@/hooks/use-torrent-source";
+import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { playbackErrorMessage } from "@/lib/playback-error";
+import { catalogPlaybackTitles, preferredSubtitle, subtitleKey } from "@/lib/playback-selection";
+import {
+  settingsQueryOptions,
+  useDisplayLanguage,
+} from "@/hooks/use-display-language";
 import { useOnlineSource } from "@/hooks/use-online-source";
-import { useVideoSniffer } from "@/hooks/use-video-sniffer";
-import type { CacheContext } from "@/hooks/use-torrent-stream";
-import { KNOWN_PROVIDERS, type ProviderName } from "@/lib/torrent-source";
+import { usePlayerFullscreen } from "@/hooks/use-player-fullscreen";
+import { playbackRequestKey, usePlaybackResolver } from "@/hooks/use-playback-resolver";
+import {
+  displayAnimeTitle,
+  displayEpisodeTitle,
+} from "@/lib/display-language";
+import type { PlaybackCandidate } from "@/lib/online-source";
+import { queryClient } from "@/lib/query-client";
+import {
+  historyApi,
+  mediaApi,
+  sourceBindingApi,
+} from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { detailQueryOptions, episodesQueryOptions } from "@/routes/anime/$id";
 import { useQuery } from "@tanstack/react-query";
@@ -14,636 +30,602 @@ import { createFileRoute, useRouter } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Check,
-  Globe,
-  Languages,
   Loader2,
-  Monitor,
   Play,
-  Subtitles,
+  Radio,
+  RefreshCw,
+  Search,
   TriangleAlert,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-
-type SourceTab = ProviderName | "online";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export const Route = createFileRoute("/anime/$id/episode/$ep")({
   validateSearch: (search: Record<string, unknown>) => ({
     t: Number(search.t) || undefined,
-    onlineUrl: (search.onlineUrl as string) || undefined,
   }),
-  component: EpisodePage,
+  component: EpisodeRoute,
 });
+
+function EpisodeRoute() {
+  const { id } = Route.useParams();
+  return <EpisodePage key={id} />;
+}
 
 function EpisodePage() {
   const { id, ep } = Route.useParams();
-  const { t: startTime, onlineUrl } = Route.useSearch();
+  const { t: explicitStartTime } = Route.useSearch();
   const router = useRouter();
-  const epNum = Number(ep);
+  const episodeNumber = Number(ep);
+  const language = useDisplayLanguage();
+  const [subtitlePreference, setSubtitlePreference] = useState("auto");
+  const [subtitleFailed, setSubtitleFailed] = useState(false);
+  const fullscreen = usePlayerFullscreen();
+  const isFullscreen = fullscreen.mode !== "normal";
+  const progressRef = useRef<Parameters<typeof historyApi.upsert>[0] | null>(null);
 
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  // ── Source tab state ─────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<SourceTab>(
-    onlineUrl ? "online" : "Mikan",
-  );
-
-  const isMobile = typeof navigator !== "undefined" && /iPhone|iPad|Android/i.test(navigator.userAgent);
-
-  useEffect(() => {
-    if (isMobile) return;
-    import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
-      getCurrentWindow().isFullscreen().then(setIsFullscreen)
-    ).catch(() => {});
-  }, [isMobile]);
-
-  const { data: animeInfo } = useQuery(detailQueryOptions(id));
-  const { data: episodes = [] } = useQuery(
-    episodesQueryOptions(id, animeInfo?.total_episodes ?? 100),
-  );
-
-  const currentEp = useMemo(
-    () => episodes.find((e) => e.ep === epNum),
-    [episodes, epNum],
-  );
-
-  // ── Auto-resume: query saved position if no explicit `t` param ─
-
-  const { data: historyEntries } = useQuery({
-    queryKey: ["history-entry", id, epNum],
-    queryFn: () => historyApi.list(200, 0),
-    select: (entries) => entries.find((e) => e.bgm_id === id && e.episode === epNum),
+  const { data: media } = useQuery(detailQueryOptions(id, language));
+  const { data: storedMedia, isError: storedMediaError } = useQuery({
+    queryKey: ["stored-media", id, language],
+    queryFn: () => mediaApi.ensure(media!, language),
+    enabled: !!media,
     staleTime: Infinity,
   });
+  const { data: episodes = [] } = useQuery({
+    ...episodesQueryOptions(id, media?.total_episodes ?? 0),
+    enabled: !!media,
+  });
+  const { data: history = [], isFetched: historyFetched } = useQuery({
+    queryKey: ["history-entry", id, episodeNumber],
+    queryFn: () => historyApi.list(500, 0),
+    staleTime: 30_000,
+  });
+  const { data: settings } = useQuery(settingsQueryOptions);
+  const {
+    data: sourceBindings = [],
+    isFetched: sourceBindingsFetched,
+    refetch: refetchSourceBindings,
+  } = useQuery({
+    queryKey: ["source-bindings", storedMedia?.id],
+    queryFn: () => sourceBindingApi.list(storedMedia!.id),
+    enabled: !!storedMedia,
+    staleTime: 30_000,
+  });
 
-  const effectiveStartTime = useMemo(() => {
-    if (startTime !== undefined) return startTime;
-    if (!historyEntries) return undefined;
-    const { position, duration } = historyEntries;
-    if (position <= 5 || (duration > 0 && position / duration > 0.95)) return undefined;
-    return position;
-  }, [startTime, historyEntries]);
+  const savedEntry = history.find(
+    (entry) =>
+      entry.provider === "anilist" &&
+      entry.external_id === String(media?.anilist_id) &&
+      entry.episode === episodeNumber,
+  );
+  const startTime =
+    explicitStartTime ??
+    (savedEntry &&
+    savedEntry.position > 5 &&
+    savedEntry.duration > 0 &&
+    savedEntry.position / savedEntry.duration < 0.95
+      ? savedEntry.position
+      : undefined);
 
-  const hasPrev = epNum > 1;
-  const hasNext = episodes.some((e) => e.ep === epNum + 1);
+  const currentEpisode = episodes.find(
+    (episode) => episode.ep === episodeNumber,
+  );
+  const title = displayEpisodeTitle(currentEpisode, episodeNumber, language);
+  const mediaTitle = media ? displayAnimeTitle(media, language) : "Kuriume";
+  const alternativeTitles = useMemo(
+    () => catalogPlaybackTitles(media),
+    [media?.title, media?.title_cn, media?.title_en, media?.search_titles],
+  );
 
-  const title = currentEp?.title_cn || currentEp?.title || `第 ${epNum} 话`;
-  const animeTitle = animeInfo?.title_cn || animeInfo?.title;
-  const subtitle = animeTitle
-    ? `${animeTitle} · 第 ${epNum} 话`
-    : `第 ${epNum} 话`;
+  const onlineSource = useOnlineSource(media?.title, alternativeTitles, {
+    anilistId: media?.anilist_id,
+    year: media?.year,
+    episodeCount: media?.total_episodes,
+    episodeNumber,
+    preferencesReady: historyFetched && (sourceBindingsFetched || storedMediaError),
+    preferredProviderId: savedEntry?.source_id ?? sourceBindings[0]?.source_id,
+    bindings: sourceBindings,
+  });
+  const availableEpisodes = onlineSource.roads[onlineSource.selectedRoadIndex]?.episodes;
+  const hasNext = availableEpisodes
+    ? availableEpisodes.some((episode) => episode.episodeNumber === episodeNumber + 1)
+    : episodes.some((episode) => episode.ep === episodeNumber + 1);
+  const resolver = usePlaybackResolver();
+  const resolveRequest = useMemo(
+    () => onlineSource.getResolveRequest(episodeNumber),
+    [episodeNumber, onlineSource.getResolveRequest],
+  );
+  const requestKey = onlineSource.selectedSource && resolveRequest
+    ? playbackRequestKey(onlineSource.selectedSource, resolveRequest)
+    : null;
+  const assetIsCurrent = requestKey !== null && requestKey === resolver.requestKey;
+  const subtitles = assetIsCurrent ? resolver.asset?.subtitles : undefined;
+  const subtitle = subtitlePreference === "auto"
+    ? preferredSubtitle(subtitles)
+    : subtitles?.find((track) => subtitleKey(track) === subtitlePreference);
+  const confirmedSelectionRef = useRef<string | null>(null);
 
-  // ── Determine mode ──────────────────────────────────────────────
+  const rememberPlayingSelection = useCallback(() => {
+    const candidate = onlineSource.selectedAnime;
+    const providerId = onlineSource.selectedSource;
+    if (!storedMedia || !candidate || !providerId) return;
+    const key = `${storedMedia.id}:${providerId}:${candidate.id}:${onlineSource.selectedRoadIndex}`;
+    if (confirmedSelectionRef.current === key) return;
+    confirmedSelectionRef.current = key;
+    void sourceBindingApi.upsert({
+      mediaId: storedMedia.id,
+      sourceId: providerId,
+      remoteMediaUrl: candidate.id,
+      remoteTitle: candidate.title,
+      roadIndex: onlineSource.selectedRoadIndex,
+    }).then(() => refetchSourceBindings()).catch(() => {
+      confirmedSelectionRef.current = null;
+    });
+  }, [
+    storedMedia, onlineSource.selectedAnime, onlineSource.selectedSource,
+    onlineSource.selectedRoadIndex, refetchSourceBindings,
+  ]);
 
-  const isOnline = activeTab === "online";
-
-  // ── Video sniffer (online mode) ────────────────────────────────
-
-  const sniffer = useVideoSniffer();
-  const onlineSrc = useOnlineSource(animeTitle);
-
-  const resolvedOnlineUrl = onlineUrl
-    || (isOnline ? onlineSrc.getEpisodeUrl(epNum) : undefined);
+  const retryPlayback = useCallback(() => {
+    if (onlineSource.selectedSource && resolveRequest) {
+      void resolver.resolve(onlineSource.selectedSource, resolveRequest);
+    } else {
+      onlineSource.retry();
+    }
+  }, [onlineSource.selectedSource, onlineSource.retry, resolveRequest, resolver.resolve]);
 
   useEffect(() => {
-    if (isOnline && resolvedOnlineUrl) {
-      sniffer.sniff(resolvedOnlineUrl);
+    if (onlineSource.selectedSource && resolveRequest) {
+      void resolver.resolve(onlineSource.selectedSource, resolveRequest);
+    } else {
+      resolver.reset();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedOnlineUrl, isOnline]);
+  }, [
+    onlineSource.selectedSource,
+    resolveRequest,
+    resolver.resolve,
+    resolver.reset,
+  ]);
 
-  // ── Resolve torrent source (only when a torrent provider is active) ──
+  useEffect(() => {
+    if (resolver.phase === "error") {
+      fullscreen.close();
+    }
+  }, [resolver.phase, fullscreen.close]);
 
-  const torrentProvider = isOnline ? "Mikan" : (activeTab as ProviderName);
-
-  const source = useTorrentSource(
-    id,
-    animeTitle,
-    historyEntries?.group_id ?? undefined,
-    historyEntries?.resolution ?? undefined,
-    animeInfo?.total_episodes,
-    historyEntries?.subtitle ?? undefined,
-    torrentProvider,
-  );
-  const torrentSource = source.getTorrentSource(epNum);
-
-  const navBack = () => router.navigate({ to: "/anime/$id", params: { id } });
-
-  const navigateToEp = useCallback(
-    (targetEp: number) => {
+  const navigateToEpisode = useCallback(
+    (nextEpisode: number) => {
       router.navigate({
         to: "/anime/$id/episode/$ep",
-        params: { id, ep: String(targetEp) },
-        search: { t: undefined, onlineUrl: undefined },
+        params: { id, ep: String(nextEpisode) },
+        search: { t: undefined },
+        replace: true,
       });
     },
-    [router, id],
+    [id, router],
   );
 
-  const navPrev = hasPrev ? () => navigateToEp(epNum - 1) : undefined;
-  const navNext = hasNext ? () => navigateToEp(epNum + 1) : undefined;
+  const goBack = () => router.navigate({ to: "/anime/$id", params: { id }, replace: true });
 
-  const toggleFullscreen = useCallback(async () => {
-    // Always toggle CSS-based fullscreen (works everywhere)
-    const newFs = !isFullscreen;
-    setIsFullscreen(newFs);
-    // On desktop, also toggle native window fullscreen
-    try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      await getCurrentWindow().setFullscreen(newFs);
-    } catch {
-      // Tauri window API unavailable (e.g. iOS) — CSS fullscreen is enough
-    }
-  }, [isFullscreen]);
+  const lastSavedRef = useRef(0);
+  const saveProgress = useCallback(() => {
+    const snapshot = progressRef.current;
+    if (!snapshot || snapshot.duration <= 0) return;
+    historyApi
+      .upsert(snapshot)
+      .then(() => queryClient.invalidateQueries({ queryKey: ["history-list"] }))
+      .catch(() => {});
+  }, []);
 
-  // ── Contexts ──────────────────────────────────────────────────
+  useEffect(() => () => {
+    saveProgress();
+    progressRef.current = null;
+    lastSavedRef.current = 0;
+  }, [episodeNumber, saveProgress]);
 
-  const cacheContext: CacheContext = {
-    bgmId: id,
-    episode: epNum,
-    animeTitle: animeTitle ?? `Unknown-${id}`,
-    groupName: source.selectedGroupName ?? "",
-    resolution: source.preferredResolution ?? "",
-    torrentSource: torrentSource ?? "",
-  };
-
-  const historyContext = useMemo<HistoryContext>(
-    () => ({
-      bgmId: id,
-      episode: epNum,
-      animeTitle: animeTitle ?? "",
-      episodeTitle: title,
-      cover: animeInfo?.cover ?? null,
-      groupId: source.selectedGroupId ?? null,
-      resolution: source.preferredResolution ?? null,
-      subtitle: source.preferredSubtitle ?? null,
-    }),
-    [id, epNum, animeTitle, title, animeInfo?.cover, source.selectedGroupId, source.preferredResolution, source.preferredSubtitle],
+  const onProgress = useCallback(
+    (position: number, duration: number) => {
+      if (!storedMedia || !Number.isFinite(duration) || duration <= 0) return;
+      progressRef.current = {
+        mediaId: storedMedia.id,
+        episode: episodeNumber,
+        episodeTitle: title,
+        sourceId: onlineSource.selectedSource,
+        position,
+        duration,
+      };
+      const now = Date.now();
+      if (now - lastSavedRef.current >= 10_000) {
+        lastSavedRef.current = now;
+        saveProgress();
+      }
+    },
+    [saveProgress, storedMedia, episodeNumber, title, onlineSource.selectedSource],
   );
 
-  // ── Derived ────────────────────────────────────────────────────
-
-  const activeGroup = source.selectedGroupId
-    ? source.getGroupData(source.selectedGroupId)
-    : undefined;
-  const hasSource = !!torrentSource;
-  const hasError = !!source.error && source.groups.length === 0;
-
-  // ── Render ────────────────────────────────────────────────────
+  const status = useMemo(() => {
+    if (resolver.phase === "resolving") return "正在准备播放…";
+    if (onlineSource.loadingEpisodes) return "正在读取选集…";
+    if (onlineSource.searching) return "正在匹配作品…";
+    if (onlineSource.sourcesLoading) return "正在载入播放源…";
+    return null;
+  }, [
+    onlineSource.loadingEpisodes,
+    onlineSource.searching,
+    onlineSource.sourcesLoading,
+    resolver.phase,
+  ]);
 
   return (
-    <div className={cn("flex h-full w-full flex-col", isFullscreen && "fixed inset-0 z-50")}>
-      {/* ── Header (hidden in fullscreen) ─────────────────────── */}
-      {!isFullscreen && (
-        <div
-          className="flex items-center gap-3 border-b border-white/5 bg-background px-4 pt-2 pb-2 md:px-5 md:pt-10 md:pb-2.5"
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background">
+      <header inert={isFullscreen} aria-hidden={isFullscreen} className={cn("flex h-17 shrink-0 items-center gap-3 border-b border-white/6 px-5 pt-5", isFullscreen && "invisible")}>
+        <button
+          type="button"
+          onClick={goBack}
+          className="grid h-9 w-9 place-items-center rounded-full text-foreground/65 outline-none transition-colors hover:bg-white/6 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-primary-readable"
+          aria-label="返回详情"
         >
-          <button
-            type="button"
-            onClick={navBack}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/6 text-white/60 transition-colors hover:bg-white/12 hover:text-white/90"
-          >
-            <ArrowLeft size={16} />
-          </button>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-sm font-semibold text-foreground">
-              {animeTitle}
-            </h1>
-            <p className="truncate text-xs text-muted-foreground">
-              第 {epNum} 话 · {title}
-            </p>
-          </div>
+          <ArrowLeft size={18} />
+        </button>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-sm font-semibold">{mediaTitle}</h1>
+          <p className="truncate text-xs text-muted-foreground">
+            {title}
+            {onlineSource.selectedProvider
+              ? ` · ${onlineSource.selectedProvider.displayName}`
+              : ""}
+          </p>
         </div>
-      )}
+      </header>
 
-      {/* ── Content ────────────────────────────────────────────── */}
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        {/* Player area — on mobile: fixed aspect ratio (fullscreen: fill); on desktop: fill remaining */}
-        <div className={cn(
-          "relative w-full shrink-0",
-          isFullscreen ? "h-full flex-1" : "aspect-video md:aspect-auto md:min-w-0 md:flex-1",
-        )}>
-          {isOnline ? (
-            sniffer.phase === "sniffing" ? (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <div className="flex items-center gap-2 text-sm text-white/60">
-                  <Globe className="h-4 w-4" />
-                  <span>正在解析视频地址…</span>
-                </div>
-              </div>
-            ) : sniffer.phase === "idle" ? (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
-                <Globe className="h-10 w-10 text-white/15" />
-                <p className="text-sm text-white/50">
-                  {onlineSrc.loadingEpisodes
-                    ? `加载中… ${onlineSrc.error || "waiting"} (${onlineSrc.searchResults.length}结果)`
-                    : onlineSrc.searching ? "搜索中…"
-                    : onlineSrc.roads.length > 0 ? `${onlineSrc.roads.length}条线路`
-                    : onlineSrc.error ? `错误: ${onlineSrc.error}`
-                    : `src=${onlineSrc.selectedSource} res=${onlineSrc.searchResults.length}`}
-                </p>
-              </div>
-            ) : sniffer.phase === "error" ? (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-black">
-                <TriangleAlert className="h-10 w-10 text-destructive" />
-                <p className="max-w-sm text-center text-sm text-white/60">
-                  {sniffer.error || "视频解析失败"}
-                </p>
-                <Button
-                  variant="secondary"
-                  onClick={() => resolvedOnlineUrl && sniffer.sniff(resolvedOnlineUrl)}
-                  className="gap-2"
-                >
-                  重试
-                </Button>
-              </div>
-            ) : (
-              <TorrentPlayer
-                key={`online-${id}-${ep}-${sniffer.videoUrl}`}
-                videoUrl={sniffer.videoUrl!}
-                title={title}
-                subtitle={subtitle}
-                historyContext={historyContext}
-                startTime={effectiveStartTime}
-                onBack={navBack}
-                onPrev={navPrev}
-                onNext={navNext}
-                onToggleFullscreen={toggleFullscreen}
-                isFullscreen={isFullscreen}
-              />
-            )
-          ) : source.isLoading ? (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm text-white/50">正在搜索字幕组...</p>
-            </div>
-          ) : hasError ? (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-black">
-              <TriangleAlert className="h-10 w-10 text-destructive" />
-              <p className="max-w-sm text-center text-sm text-white/60">
-                搜索种子资源失败：{source.error}
-              </p>
-              <Button variant="secondary" onClick={navBack} className="gap-2">
-                <ArrowLeft size={16} />
-                返回
-              </Button>
-            </div>
-          ) : !hasSource ? (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
-              <Subtitles className="h-10 w-10 text-white/15" />
-              <p className="text-sm text-white/50">
-                {source.groups.length === 0
-                  ? "未找到可用的字幕组"
-                  : `当前字幕组暂无第 ${epNum} 话资源`}
-              </p>
-              {source.groups.length > 0 && (
-                <p className="text-xs text-white/30">请在侧边栏切换字幕组</p>
-              )}
-            </div>
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_clamp(19rem,25vw,23rem)]">
+        <main className={cn("min-h-0 min-w-0 bg-black", isFullscreen ? "fixed inset-0 z-50" : "relative")}>
+          {fullscreen.error && <p role="alert" className="absolute left-1/2 top-16 z-50 -translate-x-1/2 rounded-lg bg-secondary px-4 py-2 text-sm text-foreground">{fullscreen.error}</p>}
+          {resolver.asset && assetIsCurrent ? (
+            <PlaybackSurface
+              key={`${id}:${episodeNumber}:${resolver.selectedSource?.name}`}
+              asset={resolver.asset}
+              subtitle={subtitle}
+              onSubtitleError={setSubtitleFailed}
+              fullscreen={fullscreen}
+              poster={media?.cover}
+              startTime={progressRef.current?.episode === episodeNumber ? progressRef.current.position : startTime}
+              defaultVolume={settings?.default_volume}
+              defaultSpeed={settings?.default_speed}
+              onProgress={onProgress}
+              onPlaying={rememberPlayingSelection}
+              onEnded={
+                hasNext && settings?.auto_next !== false
+                  ? () => navigateToEpisode(episodeNumber + 1)
+                  : undefined
+              }
+              onError={(message) => {
+                if (resolver.asset) resolver.reportError(resolver.asset, message);
+              }}
+            />
           ) : (
-            <TorrentPlayer
-              key={`${id}-${ep}-${torrentSource}`}
-              source={torrentSource}
-              title={title}
-              subtitle={`${subtitle} · ${source.selectedGroupName ?? ""}`}
-              cacheContext={cacheContext}
-              historyContext={historyContext}
-              startTime={effectiveStartTime}
-              onBack={navBack}
-              onPrev={navPrev}
-              onNext={navNext}
-              onToggleFullscreen={toggleFullscreen}
-              isFullscreen={isFullscreen}
+            <PlaybackEmptyState
+              status={status}
+              error={resolver.error || onlineSource.error}
+              hasSelection={!!onlineSource.selectedAnime}
+              onRetry={retryPlayback}
             />
           )}
-        </div>
+        </main>
 
-        {/* ── Inline source panel (mobile: below player, desktop: sidebar) ── */}
-        {!isFullscreen && (
-          <aside className="flex min-h-0 flex-1 flex-col border-t border-white/5 bg-background md:max-h-none md:w-80 md:flex-none md:border-t-0 md:border-l">
-            <SourcePanel
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-              source={source}
-              activeGroup={activeGroup}
-              onlineSrc={onlineSrc}
-              episodes={episodes}
-              epNum={epNum}
-              navigateToEp={navigateToEp}
-            />
-          </aside>
+        <aside inert={isFullscreen} aria-hidden={isFullscreen} aria-label="播放与选集" className={cn("col-start-2 min-h-0 min-w-0 overflow-hidden border-l border-white/6 bg-card/35", isFullscreen && "invisible")}>
+          <SourcePanel
+            source={onlineSource}
+            resolver={resolver}
+            assetIsCurrent={assetIsCurrent}
+            episodeNumber={episodeNumber}
+            onSelectAnime={onlineSource.selectAnime}
+            onSelectRoad={onlineSource.selectRoad}
+            onSelectEpisode={navigateToEpisode}
+            subtitleControl={assetIsCurrent && !!subtitles?.length ? (
+              <PlaybackSubtitles tracks={subtitles} value={subtitlePreference} onChange={setSubtitlePreference} failed={subtitleFailed} />
+            ) : null}
+          />
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function PlaybackEmptyState({
+  status,
+  error,
+  hasSelection,
+  onRetry,
+}: {
+  status: string | null;
+  error: string | null;
+  hasSelection: boolean;
+  onRetry: () => void;
+}) {
+  if (status) {
+    return (
+      <div
+        role="status"
+        className="flex h-full flex-col items-center justify-center gap-3 text-white/55"
+      >
+        <Loader2 className="h-6 w-6 animate-spin text-primary-readable" />
+        <p className="text-sm">{status}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
+      {error ? (
+        <TriangleAlert className="h-9 w-9 text-destructive-readable" />
+      ) : (
+        <Radio className="h-9 w-9 text-white/20" />
+      )}
+      <div className="max-w-md">
+        <p className="text-sm font-medium text-white/78">
+          {error
+            ? "当前来源无法播放"
+            : hasSelection
+              ? "当前线路没有这一话"
+              : "请选择匹配作品"}
+        </p>
+        {error && (
+          <>
+            <p role="alert" className="mt-2 text-sm leading-6 text-muted-foreground">{playbackErrorMessage(error)}</p>
+            <details className="mt-3 text-left text-xs text-muted-foreground">
+              <summary className="mx-auto w-fit cursor-pointer rounded px-2 py-1 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary-readable">错误详情</summary>
+              <p className="mt-2 max-h-32 overflow-auto break-all rounded-lg bg-white/5 p-3 leading-5">{error}</p>
+            </details>
+          </>
+        )}
+      </div>
+      {error && (
+        <Button variant="secondary" size="sm" onClick={onRetry}>
+          <RefreshCw size={14} />
+          重试
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function SourcePanel({
+  source,
+  resolver,
+  assetIsCurrent,
+  episodeNumber,
+  onSelectAnime,
+  onSelectRoad,
+  onSelectEpisode,
+  subtitleControl,
+}: {
+  source: ReturnType<typeof useOnlineSource>;
+  resolver: ReturnType<typeof usePlaybackResolver>;
+  assetIsCurrent: boolean;
+  episodeNumber: number;
+  onSelectAnime: (candidate: PlaybackCandidate) => Promise<boolean>;
+  onSelectRoad: (roadIndex: number) => void;
+  onSelectEpisode: (episodeNumber: number) => void;
+  subtitleControl?: React.ReactNode;
+}) {
+  const language = useDisplayLanguage();
+  const isHiAnime = source.selectedSource === "builtin:hianime";
+  const [matchingOpen, setMatchingOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const episodes = source.roads[source.selectedRoadIndex]?.episodes ?? [];
+  const showCandidates = matchingOpen || !source.selectedAnime;
+  const selectCandidate = async (candidate: PlaybackCandidate) => {
+    if (await onSelectAnime(candidate)) setMatchingOpen(false);
+  };
+
+  return (
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      <div className="flex h-14 shrink-0 items-center border-b border-border/60 px-5">
+        <h2 className="text-sm font-semibold">播放与选集</h2>
+      </div>
+
+      <div className="hide-scrollbar min-h-0 min-w-0 flex-1 space-y-7 overflow-x-hidden overflow-y-auto p-5">
+        <section>
+          <PanelLabel>播放源</PanelLabel>
+          {source.sourcesLoading ? (
+            <LoadingLine>正在加载播放源…</LoadingLine>
+          ) : (
+            <ToggleGroup
+              type="single"
+              spacing={2}
+              aria-label="播放源"
+              value={source.selectedSource ?? ""}
+              onValueChange={(value) => {
+                if (value) {
+                  source.selectSource(value);
+                  setMatchingOpen(false);
+                  setSearchTerm("");
+                }
+              }}
+              className="mt-3 grid w-full grid-cols-2 gap-2"
+            >
+              {source.providers.map((provider) => (
+                <ToggleGroupItem key={provider.id} value={provider.id}
+                  className="h-auto min-h-10 min-w-0 rounded-lg border border-border/70 px-3 py-2 text-xs whitespace-normal [overflow-wrap:anywhere] data-[state=on]:border-primary/50 data-[state=on]:bg-primary/16 data-[state=on]:text-primary-readable">
+                  {provider.displayName}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          )}
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between gap-3">
+            <PanelLabel>作品</PanelLabel>
+            {source.selectedAnime && (
+              <Button variant="ghost" size="xs" onClick={() => setMatchingOpen((open) => !open)} aria-expanded={showCandidates}>
+                {matchingOpen ? "收起" : "重新匹配"}
+              </Button>
+            )}
+          </div>
+          {source.selectedAnime && !matchingOpen && (
+            <div className="mt-3 flex items-start gap-2.5">
+              <Check size={15} className="mt-0.5 shrink-0 text-primary-readable" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium leading-6">{source.selectedAnime.title}</p>
+                <CandidateMetadata candidate={source.selectedAnime} />
+              </div>
+            </div>
+          )}
+          {showCandidates && (
+            <div className="mt-3">
+              <form className="flex gap-2" onSubmit={(event) => {
+                event.preventDefault();
+                source.search(searchTerm);
+              }}>
+                <Input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)}
+                  aria-label="在当前播放源搜索作品" placeholder="输入作品名称" className="min-w-0 text-xs" />
+                <Button type="submit" variant="secondary" size="icon" disabled={!searchTerm.trim() || source.searching} aria-label="搜索作品">
+                  <Search size={15} aria-hidden="true" />
+                </Button>
+              </form>
+              {source.searching ? (
+                <LoadingLine>正在匹配作品…</LoadingLine>
+              ) : source.searchResults.length === 0 ? (
+                <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                  {source.error ? "搜索未完成，请重试或切换播放源。" : "未找到匹配作品，可换个名称搜索。"}
+                </p>
+              ) : (
+                <div className="mt-3 space-y-1">
+                  {source.searchResults.map((candidate) => {
+                    const selected = source.selectedAnime?.id === candidate.id;
+                    return (
+                      <button
+                        key={candidate.id}
+                        type="button"
+                        onClick={() => void selectCandidate(candidate)}
+                        aria-pressed={selected}
+                        className={cn(
+                          "flex w-full min-w-0 items-start gap-2.5 rounded-xl px-3 py-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-readable",
+                          selected ? "bg-primary/14 text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                        )}
+                      >
+                        <span className="mt-1 shrink-0 text-primary-readable">
+                          {selected ? <Check size={14} /> : <Play size={14} />}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-xs font-medium leading-5">{candidate.title}</span>
+                          <CandidateMetadata candidate={candidate} />
+                        </span>
+                        {candidate.exactMatch && <span className="mt-1 shrink-0 text-[10px] text-primary-readable">匹配</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {assetIsCurrent && resolver.sources.length > 1 && (
+          <section>
+            <PanelLabel>播放线路</PanelLabel>
+            <ToggleGroup type="single" spacing={2} aria-label="播放线路"
+              value={resolver.selectedSource?.name ?? ""}
+              onValueChange={(name) => { if (name) resolver.selectSource(name); }}
+              className="mt-3 flex w-full flex-wrap justify-start gap-2">
+              {resolver.sources.map((item) => (
+                <ToggleGroupItem key={item.name} value={item.name}
+                  className="h-auto min-h-9 max-w-full rounded-lg border border-border/70 px-3 py-1.5 text-xs whitespace-normal [overflow-wrap:anywhere] data-[state=on]:border-primary/50 data-[state=on]:bg-primary/16 data-[state=on]:text-primary-readable">
+                  {item.name}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </section>
+        )}
+
+        {source.roads.length > 0 && !source.loadingEpisodes && (
+          <section>
+            <PanelLabel>{isHiAnime ? (language === "zh" ? "音频" : "Audio") : (language === "zh" ? "线路" : "Server")}</PanelLabel>
+            <ToggleGroup type="single" spacing={2} value={String(source.selectedRoadIndex)}
+              aria-label={isHiAnime ? (language === "zh" ? "音频版本" : "Audio version") : (language === "zh" ? "线路" : "Server")}
+              onValueChange={(value) => { if (value) onSelectRoad(Number(value)); }}
+              className="mt-3 w-full flex-wrap justify-start gap-2">
+              {source.roads.map((road, index) => (
+                <ToggleGroupItem key={road.id} value={String(index)} size="sm" className="h-auto min-h-9 max-w-full rounded-lg px-3 py-1.5 text-xs whitespace-normal [overflow-wrap:anywhere]">
+                  {isHiAnime && road.id === "sub" ? (language === "zh" ? "原声 · Sub" : "Original · Sub")
+                    : isHiAnime && road.id === "dub" ? (language === "zh" ? "配音 · Dub" : "Dubbed · Dub") : road.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </section>
+        )}
+
+        {subtitleControl}
+
+        {source.selectedAnime && (
+          <section>
+            <div className="flex items-center justify-between">
+              <PanelLabel>剧集</PanelLabel>
+              {episodes.length > 0 && <span className="text-xs tabular-nums text-muted-foreground">{episodes.length} 话</span>}
+            </div>
+            {source.loadingEpisodes ? (
+              <LoadingLine>正在读取剧集…</LoadingLine>
+            ) : source.roads.length === 0 ? (
+              <p className="mt-3 text-xs text-muted-foreground">暂无可用剧集</p>
+            ) : (
+              <>
+                <div className="mt-4 grid grid-cols-5 gap-2">
+                  {episodes.map((episode) => {
+                    const number = episode.episodeNumber;
+                    const navigable = number !== null && Number.isInteger(number) && number > 0;
+                    return (
+                      <button key={episode.id} type="button" disabled={!navigable}
+                        onClick={() => { if (navigable) onSelectEpisode(number); }}
+                        aria-current={number === episodeNumber ? "true" : undefined}
+                        aria-label={episode.label}
+                        title={episode.label}
+                        className={cn(
+                          "min-h-10 rounded-lg px-1 text-xs tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-readable disabled:opacity-40",
+                          number === episodeNumber
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-secondary/65 text-muted-foreground hover:bg-accent hover:text-foreground",
+                        )}>
+                        {number ?? episode.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </section>
+        )}
+
+        {source.error && (
+          <div role="alert" className="text-xs leading-5 text-destructive-readable">
+            <p>{playbackErrorMessage(source.error)}</p>
+            <Button variant="ghost" size="xs" className="mt-2 -ml-2" onClick={source.retry}>
+              <RefreshCw size={12} />重试
+            </Button>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-/* ── Inline source panel (replaces old SidebarContent + Drawer) ── */
-
-function SourcePanel({
-  activeTab,
-  onTabChange,
-  source,
-  activeGroup,
-  onlineSrc,
-  episodes,
-  epNum,
-  navigateToEp,
-}: {
-  activeTab: SourceTab;
-  onTabChange: (tab: SourceTab) => void;
-  source: ReturnType<typeof useTorrentSource>;
-  activeGroup: ReturnType<ReturnType<typeof useTorrentSource>["getGroupData"]>;
-  onlineSrc: ReturnType<typeof useOnlineSource>;
-  episodes: { id: string; ep: number; title?: string; title_cn?: string; airdate?: string; duration?: string; progress?: number }[];
-  epNum: number;
-  navigateToEp: (ep: number) => void;
-}) {
-  const isOnline = activeTab === "online";
-
+function CandidateMetadata({ candidate }: { candidate: PlaybackCandidate }) {
+  if (!candidate.year && !candidate.episodeCount) return null;
   return (
-    <>
-      {/* ── Provider tabs ── */}
-      <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-white/5 px-3 py-2">
-        {KNOWN_PROVIDERS.map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => onTabChange(p)}
-            className={cn(
-              "shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all",
-              activeTab === p
-                ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                : "text-white/50 hover:bg-white/6 hover:text-white/70",
-            )}
-          >
-            {p}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => onTabChange("online")}
-          className={cn(
-            "inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all",
-            activeTab === "online"
-              ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-              : "text-white/50 hover:bg-white/6 hover:text-white/70",
-          )}
-        >
-          <Globe size={11} />
-          在线
-        </button>
-      </div>
+    <span className="mt-1 block text-xs tabular-nums text-muted-foreground">
+      {[candidate.year, candidate.episodeCount && `${candidate.episodeCount} 话已上线`].filter(Boolean).join(" · ")}
+    </span>
+  );
+}
 
-      {/* ── Source selector (torrent mode) ── */}
-      {!isOnline && (
-        <div className="max-h-[40%] shrink-0 overflow-y-auto border-b border-white/5 px-4 py-3 md:max-h-[50%]">
-          {source.isLoading ? (
-            <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground/50">
-              <Loader2 size={12} className="animate-spin" />
-              正在搜索字幕组...
-            </div>
-          ) : source.groups.length === 0 ? (
-            <p className="py-1 text-xs text-muted-foreground/40">
-              {source.error ? "搜索失败" : "暂无可用资源"}
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {/* Group pills */}
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40">
-                  <Subtitles size={11} />
-                  字幕组
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {source.groups.map((g) => (
-                    <button
-                      key={g.id}
-                      type="button"
-                      onClick={() => source.selectGroup(g.id)}
-                      className={cn(
-                        "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-all",
-                        source.selectedGroupId === g.id
-                          ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                          : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
-                      )}
-                    >
-                      {g.name}
-                      <span
-                        className={cn(
-                          "tabular-nums",
-                          source.selectedGroupId === g.id
-                            ? "text-primary/60"
-                            : "text-white/25",
-                        )}
-                      >
-                        {g.episodeCount}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+function PanelLabel({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-xs font-medium text-muted-foreground">{children}</h2>;
+}
 
-              {/* Resolution pills */}
-              {activeGroup && activeGroup.resolutions.length > 0 && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40">
-                    <Monitor size={11} />
-                    分辨率
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {activeGroup.resolutions.map((res) => (
-                      <button
-                        key={res}
-                        type="button"
-                        onClick={() => source.setPreferredResolution(res)}
-                        className={cn(
-                          "rounded-md px-2 py-1 text-[11px] font-medium transition-all",
-                          source.preferredResolution === res
-                            ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                            : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
-                        )}
-                      >
-                        {res}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Subtitle language pills */}
-              {activeGroup && activeGroup.subtitles.length > 0 && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40">
-                    <Languages size={11} />
-                    字幕
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {activeGroup.subtitles.map((sub) => (
-                      <button
-                        key={sub}
-                        type="button"
-                        onClick={() => source.setPreferredSubtitle(sub)}
-                        className={cn(
-                          "rounded-md px-2 py-1 text-[11px] font-medium transition-all",
-                          source.preferredSubtitle === sub
-                            ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                            : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
-                        )}
-                      >
-                        {sub}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Online source info ── */}
-      {isOnline && (
-        <div className="shrink-0 border-b border-white/5 px-4 py-3">
-          {onlineSrc.sourcesLoading ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground/50">
-              <Loader2 size={12} className="animate-spin" />
-              正在加载在线源...
-            </div>
-          ) : onlineSrc.sources.length === 0 ? (
-            <p className="text-xs text-muted-foreground/40">暂无可用在线源</p>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-[11px] text-muted-foreground/40">
-                <Globe size={11} />
-                在线源
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {onlineSrc.sources.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => onlineSrc.selectSource(s)}
-                    className={cn(
-                      "rounded-md px-2 py-1 text-[11px] font-medium transition-all",
-                      onlineSrc.selectedSource === s
-                        ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                        : "bg-white/5 text-white/50 hover:bg-white/8 hover:text-white/70",
-                    )}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-              {onlineSrc.searching && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground/50">
-                  <Loader2 size={12} className="animate-spin" />
-                  正在搜索...
-                </div>
-              )}
-              {onlineSrc.searchResults.length > 0 && (
-                <div className="space-y-1">
-                  <p className="text-[11px] text-muted-foreground/40">搜索结果</p>
-                  <div className="max-h-24 overflow-y-auto">
-                    {onlineSrc.searchResults.map((r) => (
-                      <button
-                        key={r.url}
-                        type="button"
-                        onClick={() => onlineSrc.selectAnime(r)}
-                        className="w-full truncate rounded px-2 py-1 text-left text-[11px] text-white/60 hover:bg-white/6 hover:text-white/80"
-                      >
-                        {r.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Episode list ── */}
-      <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <p className="text-xs font-medium text-muted-foreground">
-          选集
-          <span className="ml-1.5 text-muted-foreground/50">
-            共 {episodes.length} 话
-          </span>
-        </p>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-2 pb-3">
-        {episodes.map((e) => {
-          const isCurrent = e.ep === epNum;
-          const hasAired = e.airdate
-            ? new Date(e.airdate) <= new Date()
-            : true;
-          const watched =
-            e.progress !== undefined && e.progress >= 100;
-
-          return (
-            <button
-              key={e.id}
-              type="button"
-              disabled={!hasAired}
-              onClick={() => {
-                if (e.ep !== epNum) navigateToEp(e.ep);
-              }}
-              className={cn(
-                "group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
-                isCurrent
-                  ? "bg-primary/10 text-primary"
-                  : hasAired
-                    ? "text-foreground/70 hover:bg-white/4 hover:text-foreground"
-                    : "cursor-default text-muted-foreground/30",
-              )}
-            >
-              <span
-                className={cn(
-                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold tabular-nums",
-                  isCurrent
-                    ? "bg-primary text-primary-foreground"
-                    : watched
-                      ? "bg-white/4 text-muted-foreground/50"
-                      : "bg-white/4 text-foreground/60",
-                )}
-              >
-                {isCurrent ? (
-                  <Play size={12} fill="currentColor" />
-                ) : (
-                  e.ep
-                )}
-              </span>
-
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium leading-tight">
-                  {e.title_cn || e.title || `第 ${e.ep} 话`}
-                </p>
-                {!hasAired && e.airdate && (
-                  <p className="text-[10px] text-muted-foreground/40">
-                    {(() => {
-                      const d = new Date(e.airdate);
-                      return `${d.getMonth() + 1}月${d.getDate()}日`;
-                    })()}
-                  </p>
-                )}
-                {hasAired && e.duration && (
-                  <p className="text-[10px] text-muted-foreground/40">
-                    {e.duration}
-                  </p>
-                )}
-              </div>
-
-              {watched && (
-                <Check
-                  size={12}
-                  className="shrink-0 text-muted-foreground/30"
-                />
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </>
+function LoadingLine({ children }: { children: React.ReactNode }) {
+  return (
+    <div role="status" className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary-readable" />
+      {children}
+    </div>
   );
 }

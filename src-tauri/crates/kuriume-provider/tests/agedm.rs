@@ -10,9 +10,13 @@ fn engine() -> RuleEngine {
 }
 
 #[tokio::test]
+#[ignore = "requires the live third-party AGE site"]
 async fn search_returns_results() {
     let results = engine().search("孤独摇滚").await.unwrap();
-    assert!(!results.is_empty(), "search should return at least one result");
+    assert!(
+        !results.is_empty(),
+        "search should return at least one result"
+    );
 
     let first = &results[0];
     assert!(
@@ -33,6 +37,7 @@ async fn search_returns_results() {
 }
 
 #[tokio::test]
+#[ignore = "requires the live third-party AGE site"]
 async fn get_episodes_returns_roads() {
     let roads = engine()
         .get_episodes("https://www.agedm.io/detail/20220121")
@@ -46,7 +51,10 @@ async fn get_episodes_returns_roads() {
         assert!(!road.episodes.is_empty());
         for ep in &road.episodes {
             println!("  {} -> {}", ep.name, ep.url);
-            assert!(ep.url.contains("/play/"), "episode URL should contain /play/");
+            assert!(
+                ep.url.contains("/play/"),
+                "episode URL should contain /play/"
+            );
         }
     }
 

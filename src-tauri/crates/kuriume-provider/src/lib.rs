@@ -1,47 +1,53 @@
 //! # kuriume-provider
 //!
 //! Anime data-source abstraction layer. Defines a unified `AnimeProvider` trait;
-//! each data source (Bangumi, AniList, etc.) implements it with its own HTTP client.
+//! AniList is the V1 animation catalog. Playback sources are a separate concern.
 //!
 //! ## Usage
 //!
 //! ```rust,no_run
-//! use kuriume_provider::{AnimeProvider, BangumiProvider, SearchQuery};
+//! use kuriume_provider::{AniList, AnimeProvider, SearchQuery};
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     let provider = BangumiProvider::new();
+//!     let provider = AniList::new();
 //!     let result = provider.search(SearchQuery {
 //!         keyword: "Frieren".into(),
 //!         offset: 0,
 //!         limit: 10,
-//!     }).await.unwrap();
+//!     }, None).await.unwrap();
 //!     println!("{:?}", result.data);
 //! }
 //! ```
 
-mod bangumi;
-mod dmhy;
-mod error;
-mod mikan;
-mod models;
-mod nyaa;
-mod provider;
+mod anilist;
+mod anime1;
 pub mod builtin_rules;
+mod error;
+mod hianime;
+mod models;
+mod playback;
+mod playback_matching;
+mod provider;
 pub mod rule;
-mod torrent_provider;
+mod source_http;
+mod xifan;
 
-pub use bangumi::Bangumi;
-pub use dmhy::Dmhy;
+pub use anilist::AniList;
+pub use anime1::Anime1;
 pub use error::{ProviderError, Result};
-pub use mikan::Mikan;
-pub use nyaa::Nyaa;
+pub use hianime::HiAnime;
 pub use models::{
     AnimeInfo, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery,
     PagedResult, SearchQuery, SortBy, Weekday,
 };
-pub use provider::AnimeProvider;
-pub use rule::{OnlineEpisode, OnlineRoad, OnlineSearchResult, Rule, RuleEngine, RuleSelectors};
-pub use torrent_provider::{
-    GroupTorrents, SubtitleGroup, TorrentEntry, TorrentProvider, TorrentSourceEntry,
+pub use playback::{
+    PlaybackCandidate, PlaybackEpisode, PlaybackHeaders, PlaybackProvider,
+    PlaybackProviderCapabilities, PlaybackProviderDescriptor, PlaybackResolveRequest, PlaybackRoad,
+    PlaybackSearch, PlaybackSource, PlaybackSubtitle, ResolvePlan, RulePlaybackProvider,
 };
+pub use provider::AnimeProvider;
+pub use rule::{
+    OnlineEpisode, OnlineRoad, OnlineSearchResult, Rule, RuleEngine, RuleResolver, RuleSelectors,
+};
+pub use xifan::Xifan;

@@ -36,12 +36,6 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Install mpv (Homebrew)
-        run: brew install mpv
-
-      - name: Bundle native libraries
-        run: ./scripts/bundle-libs-macos.sh
-
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -76,16 +70,10 @@ jobs:
 
       - run: npm ci
 
-      - name: Bundle libmpv
-        run: python scripts/bundle-libs-windows.py
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MPV_LIB_DIR: ${{ github.workspace }}/src-tauri/libs/windows
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
@@ -108,8 +96,7 @@ jobs:
   #       run: |
   #         sudo apt-get update
   #         sudo apt-get install -y \
-  #           libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
-  #           libmpv-dev
+      #           libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
   #     - uses: tauri-apps/tauri-action@v0
   #       env:
   #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

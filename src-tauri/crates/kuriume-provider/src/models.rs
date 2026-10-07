@@ -3,14 +3,27 @@ use serde::{Deserialize, Serialize};
 /// Anime information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnimeInfo {
-    /// Internal ID from the data source.
+    /// Stable Kuriume catalog ID. V1 uses the `anilist:{id}` namespace.
     pub id: String,
-    /// Anime title.
+    /// AniList media ID.
+    pub anilist_id: u64,
+    /// MyAnimeList ID exposed by AniList when available.
+    pub mal_id: Option<u64>,
+    /// Stable catalog/search title, normally AniList romaji.
     pub title: String,
-    /// Anime title with cn
-    pub title_cn: String,
+    /// Preferred English display title.
+    pub title_en: String,
+    /// Original catalog aliases for playback matching, independent of display language.
+    #[serde(default)]
+    pub search_titles: Vec<String>,
+    /// Preferred Chinese display title when the catalog exposes one.
+    pub title_cn: Option<String>,
+    /// Original-script title from AniList (Japanese for Japanese works).
+    pub title_native: Option<String>,
     /// Cover image URL.
     pub cover: Option<String>,
+    /// Wide artwork for hero/detail surfaces.
+    pub banner: Option<String>,
     /// Score (0–10).
     pub score: Option<f64>,
     /// Premiere year.
@@ -23,6 +36,16 @@ pub struct AnimeInfo {
     pub genres: Vec<String>,
     /// Synopsis / description.
     pub description: Option<String>,
+    /// Chinese synopsis when localized metadata is available.
+    pub description_cn: Option<String>,
+    /// Japanese synopsis only when the source actually provides Japanese text.
+    pub description_ja: Option<String>,
+    /// AniList media status.
+    pub status: Option<String>,
+    /// AniList media format.
+    pub format: Option<String>,
+    /// Animation studios.
+    pub studios: Vec<String>,
 }
 
 /// Search request parameters.
