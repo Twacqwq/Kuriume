@@ -1,13 +1,64 @@
 /**
- * Online source bridge — Tauri command wrappers for rule-based streaming sites.
+ * Provider-neutral playback-source bridge.
  *
- * Manages rules (add/remove/list) and provides search + episode-list for
- * online anime video sites. The actual video URL extraction (m3u8/mp4) is
- * handled by the WebView sniffer hook (`useVideoSniffer`).
+ * Catalog metadata and playback sources are deliberately separate: callers
+ * search a provider, select its opaque candidate/road/episode identities, and
+ * ask the desktop security boundary to resolve the final playable asset.
  */
+import type { PlayableSource } from "@/lib/playback";
 import { invoke } from "@tauri-apps/api/core";
 
-// ── Types matching Rust rule module ─────────────────────────────
+export type PlaybackProviderId = string;
+
+export interface PlaybackProviderCapabilities {
+  search: boolean;
+  episodes: boolean;
+  direct: boolean;
+  sniff: boolean;
+}
+
+export interface PlaybackProviderDescriptor {
+  id: PlaybackProviderId;
+  displayName: string;
+  builtIn: boolean;
+  capabilities: PlaybackProviderCapabilities;
+}
+
+export interface PlaybackSearch {
+  query: string;
+  anilistId?: number | null;
+  alternativeTitles?: string[];
+  year?: number | null;
+  episodeCount?: number | null;
+  episodeNumber?: number | null;
+  limit?: number | null;
+}
+
+export interface PlaybackCandidate {
+  id: string;
+  title: string;
+  exactMatch: boolean;
+  episodeCount: number | null;
+  year: number | null;
+}
+
+export interface PlaybackEpisode {
+  id: string;
+  label: string;
+  episodeNumber: number | null;
+}
+
+export interface PlaybackRoad {
+  id: string;
+  label: string;
+  episodes: PlaybackEpisode[];
+}
+
+export interface PlaybackResolveRequest {
+  candidateId: string;
+  roadId: string;
+  episodeId: string;
+}
 
 export interface RuleSelectors {
   searchList: string;
@@ -19,57 +70,54 @@ export interface RuleSelectors {
 }
 
 export interface Rule {
+  id: PlaybackProviderId;
+  schemaVersion: number;
   name: string;
+  version?: string;
+  author?: string | null;
+  license?: string | null;
+  homepage?: string | null;
   baseUrl: string;
   searchUrl: string;
   userAgent: string;
+  resolver: "direct" | "embed";
+  allowedHosts: string[];
   selectors: RuleSelectors;
 }
 
-export interface OnlineSearchResult {
-  name: string;
-  url: string;
-}
+export const playbackSourceApi = {
+  list: () => invoke<PlaybackProviderDescriptor[]>("playback_source_list"),
 
-export interface OnlineRoad {
-  name: string;
-  episodes: OnlineEpisode[];
-}
+  listRules: () => invoke<Rule[]>("playback_source_list_rules"),
 
-export interface OnlineEpisode {
-  name: string;
-  url: string;
-}
+  addRule: (rule: Rule) =>
+    invoke<PlaybackProviderDescriptor>("playback_source_add_rule", { rule }),
 
-// ── Invoke wrappers ─────────────────────────────────────────────
+  removeRule: (providerId: PlaybackProviderId) =>
+    invoke<void>("playback_source_remove_rule", { providerId }),
 
-export const onlineSourceApi = {
-  /** List all registered online source names. */
-  list: () => invoke<string[]>("online_source_list"),
+  search: (providerId: PlaybackProviderId, query: PlaybackSearch) =>
+    invoke<PlaybackCandidate[]>("playback_source_search", {
+      providerId,
+      query,
+    }),
 
-  /** Get all registered rules. */
-  listRules: () => invoke<Rule[]>("online_source_list_rules"),
+  episodes: (providerId: PlaybackProviderId, candidateId: string) =>
+    invoke<PlaybackRoad[]>("playback_source_episodes", {
+      providerId,
+      candidateId,
+    }),
 
-  /** Add or update a rule. */
-  addRule: (rule: Rule) => invoke<void>("online_source_add_rule", { rule }),
+  resolve: (
+    providerId: PlaybackProviderId,
+    request: PlaybackResolveRequest,
+  ) =>
+    invoke<PlayableSource[]>("playback_source_resolve", {
+      providerId,
+      request,
+    }),
 
-  /** Remove a rule by name. */
-  removeRule: (name: string) => invoke<void>("online_source_remove_rule", { name }),
-
-  /** Search for anime on a specific online source. */
-  search: (source: string, keyword: string) =>
-    invoke<OnlineSearchResult[]>("online_source_search", { source, keyword }),
-
-  /** Get episode list (roads) for an anime on a specific online source. */
-  getEpisodes: (source: string, pageUrl: string) =>
-    invoke<OnlineRoad[]>("online_source_episodes", { source, pageUrl }),
-
-  /**
-   * Sniff a video URL from an episode page.
-   *
-   * Creates a hidden WebView that loads the page, hooks XHR/fetch, and
-   * returns the first m3u8/mp4/flv URL found. Times out after 15 seconds.
-   */
-  sniffVideoUrl: (episodeUrl: string) =>
-    invoke<string>("sniff_video_url", { episodeUrl }),
 };
+
+/** Existing imports can migrate independently from the old module name. */
+export const onlineSourceApi = playbackSourceApi;

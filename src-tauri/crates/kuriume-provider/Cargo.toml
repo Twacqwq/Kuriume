@@ -1,6 +1,6 @@
 [package]
 name = "kuriume-provider"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "Anime data provider trait and implementations"
 
@@ -12,3 +12,5 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 scraper = "0.22"
+base64 = "0.22"
+zhconv = { version = "0.4.2", default-features = false, features = ["opencc-hans"] }

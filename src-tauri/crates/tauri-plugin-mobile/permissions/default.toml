@@ -1,0 +1,3 @@
+[default]
+description = "Player device controls, restricted to the main mobile WebView."
+permissions = ["allow-control"]

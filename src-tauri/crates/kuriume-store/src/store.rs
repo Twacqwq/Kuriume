@@ -1,790 +1,1178 @@
-use std::path::{Path, PathBuf};
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
+use std::path::Path;
+use thiserror::Error;
+use uuid::Uuid;
 
-use rusqlite::{Connection, params};
-use serde::Serialize;
-use tracing::info;
+const CURRENT_SCHEMA_VERSION: i64 = 3;
+const DEFAULT_DISPLAY_LANGUAGE: &str = "en";
 
-// ---------------------------------------------------------------------------
-// Error
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub enum StoreError {
-    #[error("sqlite: {0}")]
-    Sqlite(#[from] rusqlite::Error),
-    #[error("io: {0}")]
-    Io(#[from] std::io::Error),
+    #[error("database error: {0}")]
+    Database(#[from] rusqlite::Error),
+    #[error("invalid value: {0}")]
+    Invalid(String),
 }
 
-type Result<T> = std::result::Result<T, StoreError>;
+pub type Result<T> = std::result::Result<T, StoreError>;
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
-    pub cache_dir: String,
-    pub cache_enabled: bool,
-    pub hwdec: String,
-    pub default_volume: i64,
+    pub default_volume: f64,
     pub default_speed: f64,
-    pub buffer_size: i64,
     pub auto_next: bool,
-    /// User-configured tracker list. Empty means "use built-in defaults".
-    pub tracker_list: Vec<String>,
-    /// Anime4K shader mode: "off", "A", "B", or "C".
-    pub anime4k_mode: String,
+    pub display_language: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub enum WatchStatus {
-    Unwatched,
-    Watching,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CatalogMediaInput {
+    pub provider: String,
+    pub external_id: String,
+    pub title: String,
+    pub cover: Option<String>,
+    pub banner: Option<String>,
+    pub total_episodes: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredMedia {
+    pub id: String,
+    pub provider: String,
+    pub external_id: String,
+    pub title: String,
+    pub cover: Option<String>,
+    pub banner: Option<String>,
+    pub total_episodes: i32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LibraryStatus {
+    Following,
     Completed,
 }
 
-impl WatchStatus {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Unwatched => "unwatched",
-            Self::Watching => "watching",
-            Self::Completed => "completed",
+impl LibraryStatus {
+    pub fn parse(value: &str) -> Result<Self> {
+        match value {
+            "following" => Ok(Self::Following),
+            "completed" => Ok(Self::Completed),
+            _ => Err(StoreError::Invalid(format!(
+                "unknown library status: {value}"
+            ))),
         }
     }
 
-    pub fn parse(s: &str) -> Self {
-        match s {
-            "unwatched" => Self::Unwatched,
-            "completed" => Self::Completed,
-            _ => Self::Watching,
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Following => "following",
+            Self::Completed => "completed",
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct WatchlistEntry {
-    pub id: i64,
-    pub bgm_id: String,
-    pub anime_title: String,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LibraryEntry {
+    pub media_id: String,
+    pub provider: String,
+    pub external_id: String,
+    pub title: String,
     pub cover: Option<String>,
+    pub banner: Option<String>,
     pub total_episodes: i32,
     pub status: String,
     pub added_at: String,
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchHistoryEntry {
-    pub id: i64,
-    pub bgm_id: String,
+    pub media_id: String,
+    pub provider: String,
+    pub external_id: String,
     pub episode: i32,
-    pub anime_title: String,
+    pub media_title: String,
     pub episode_title: String,
     pub cover: Option<String>,
     pub position: f64,
     pub duration: f64,
-    pub group_id: Option<String>,
-    pub resolution: Option<String>,
-    pub subtitle: Option<String>,
+    pub source_id: Option<String>,
     pub watched_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct MediaEntry {
-    pub id: i64,
-    pub bgm_id: String,
-    pub episode: i32,
-    pub anime_title: String,
-    pub group_name: String,
-    pub resolution: String,
-    pub file_path: String,
-    pub file_size: i64,
-    pub torrent_source: String,
-    pub cached_at: String,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceBinding {
+    pub media_id: String,
+    pub source_id: String,
+    pub remote_media_url: String,
+    pub remote_title: String,
+    pub road_index: i32,
+    pub verified_at: String,
 }
 
-// ---------------------------------------------------------------------------
-// Store
-// ---------------------------------------------------------------------------
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternalIdentity {
+    pub media_id: String,
+    pub provider: String,
+    pub external_id: String,
+    pub scope: String,
+    pub confidence: f64,
+    pub verified_at: String,
+}
 
-/// SQLite-backed store for settings and media cache metadata.
-///
-/// The database lives at `{app_data}/kuriume.db`.
-/// Thread-safety: `Store` is `Send + Sync` — `rusqlite::Connection` is used
-/// behind a `std::sync::Mutex` internally; callers should wrap in `Arc` and
-/// use `tokio::task::spawn_blocking` for async contexts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceRuleRecord {
+    pub name: String,
+    pub rule_json: String,
+    pub installed_at: String,
+}
+
 pub struct Store {
-    conn: Connection,
+    connection: Connection,
 }
 
 impl Store {
-    pub fn open(db_path: &Path) -> Result<Self> {
-        if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent)?;
+    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        if path.as_ref() != Path::new(":memory:") {
+            if let Some(parent) = path.as_ref().parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|error| StoreError::Invalid(error.to_string()))?;
+            }
         }
-        let conn = Connection::open(db_path)?;
-        let store = Self { conn };
-        store.migrate()?;
-        info!(?db_path, "store opened");
-        Ok(store)
-    }
+        let mut connection = Connection::open(path)?;
+        connection.execute_batch(
+            r#"
+            PRAGMA foreign_keys = ON;
+            PRAGMA journal_mode = WAL;
 
-    // ── Migrations ───────────────────────────────────────────────
-
-    fn migrate(&self) -> Result<()> {
-        self.conn.execute_batch(
-            "
             CREATE TABLE IF NOT EXISTS settings (
-                key   TEXT PRIMARY KEY,
-                value TEXT NOT NULL
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              default_volume REAL NOT NULL DEFAULT 0.8,
+              default_speed REAL NOT NULL DEFAULT 1.0,
+              auto_next INTEGER NOT NULL DEFAULT 1,
+              display_language TEXT NOT NULL DEFAULT 'en'
+            );
+            INSERT OR IGNORE INTO settings (id) VALUES (1);
+
+            CREATE TABLE IF NOT EXISTS media (
+              id TEXT PRIMARY KEY,
+              title TEXT NOT NULL,
+              cover TEXT,
+              banner TEXT,
+              total_episodes INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
-            CREATE TABLE IF NOT EXISTS media_cache (
-                id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                bgm_id         TEXT    NOT NULL,
-                episode        INTEGER NOT NULL,
-                anime_title    TEXT    NOT NULL,
-                group_name     TEXT    NOT NULL DEFAULT '',
-                resolution     TEXT    NOT NULL DEFAULT '',
-                file_path      TEXT    NOT NULL,
-                file_size      INTEGER NOT NULL DEFAULT 0,
-                torrent_source TEXT    NOT NULL DEFAULT '',
-                cached_at      TEXT    NOT NULL DEFAULT (datetime('now')),
-
-                UNIQUE(bgm_id, episode, group_name, resolution)
+            CREATE TABLE IF NOT EXISTS external_identity (
+              media_id TEXT NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+              provider TEXT NOT NULL,
+              external_id TEXT NOT NULL,
+              scope TEXT NOT NULL DEFAULT 'title',
+              confidence REAL NOT NULL DEFAULT 1.0,
+              verified_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (provider, external_id, scope)
             );
+            CREATE INDEX IF NOT EXISTS idx_external_identity_media
+              ON external_identity(media_id);
 
-            CREATE INDEX IF NOT EXISTS idx_media_bgm_ep
-                ON media_cache(bgm_id, episode);
-
-            CREATE TABLE IF NOT EXISTS watchlist (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                bgm_id          TEXT    NOT NULL UNIQUE,
-                anime_title     TEXT    NOT NULL,
-                cover           TEXT,
-                total_episodes  INTEGER NOT NULL DEFAULT 0,
-                status          TEXT    NOT NULL DEFAULT 'watching',
-                added_at        TEXT    NOT NULL DEFAULT (datetime('now')),
-                updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+            CREATE TABLE IF NOT EXISTS library_entry (
+              media_id TEXT PRIMARY KEY REFERENCES media(id) ON DELETE CASCADE,
+              status TEXT NOT NULL CHECK (status IN ('following', 'completed')),
+              added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
             CREATE TABLE IF NOT EXISTS watch_history (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                bgm_id          TEXT    NOT NULL,
-                episode         INTEGER NOT NULL,
-                anime_title     TEXT    NOT NULL,
-                episode_title   TEXT    NOT NULL DEFAULT '',
-                cover           TEXT,
-                position        REAL    NOT NULL DEFAULT 0,
-                duration        REAL    NOT NULL DEFAULT 0,
-                group_id        TEXT,
-                resolution      TEXT,
-                subtitle        TEXT,
-                watched_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+              media_id TEXT NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+              episode INTEGER NOT NULL,
+              episode_title TEXT NOT NULL,
+              position REAL NOT NULL,
+              duration REAL NOT NULL,
+              source_id TEXT,
+              watched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (media_id, episode)
+            );
+            CREATE INDEX IF NOT EXISTS idx_watch_history_recent
+              ON watch_history(watched_at DESC);
 
-                UNIQUE(bgm_id, episode)
+            CREATE TABLE IF NOT EXISTS source_binding (
+              media_id TEXT NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+              source_id TEXT NOT NULL,
+              remote_media_url TEXT NOT NULL,
+              remote_title TEXT NOT NULL,
+              road_index INTEGER NOT NULL DEFAULT 0,
+              verified_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (media_id, source_id)
             );
 
-            CREATE INDEX IF NOT EXISTS idx_history_watched
-                ON watch_history(watched_at DESC);
-            ",
+            CREATE TABLE IF NOT EXISTS source_rule (
+              name TEXT PRIMARY KEY,
+              rule_json TEXT NOT NULL,
+              installed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            "#,
         )?;
+        migrate(&mut connection)?;
+        Ok(Self { connection })
+    }
 
-        // Migration: add resolution column if missing (existing DBs)
-        let has_resolution: bool = self
-            .conn
-            .prepare("SELECT COUNT(*) FROM pragma_table_info('media_cache') WHERE name='resolution'")
-            .and_then(|mut s| s.query_row([], |r| r.get::<_, i64>(0)))
-            .map(|n| n > 0)
-            .unwrap_or(false);
-
-        if !has_resolution {
-            self.conn.execute_batch(
-                "
-                ALTER TABLE media_cache ADD COLUMN resolution TEXT NOT NULL DEFAULT '';
-
-                -- Recreate unique index to include resolution
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_media_unique_v2
-                    ON media_cache(bgm_id, episode, group_name, resolution);
-                ",
-            )?;
-        }
-
-        // Old schema: UNIQUE(bgm_id, episode) -> new: UNIQUE(bgm_id)
-        let has_old_history_schema: bool = self
-            .conn
-            .prepare(
-                "SELECT COUNT(*) FROM pragma_index_info(
-                    (SELECT name FROM pragma_index_list('watch_history') WHERE \"unique\" = 1 LIMIT 1)
-                )",
+    pub fn get_settings(&self) -> Result<Settings> {
+        self.connection
+            .query_row(
+                r#"
+                SELECT default_volume, default_speed, auto_next, display_language
+                FROM settings WHERE id = 1
+                "#,
+                [],
+                |row| {
+                    Ok(Settings {
+                        default_volume: row.get(0)?,
+                        default_speed: row.get(1)?,
+                        auto_next: row.get::<_, i64>(2)? != 0,
+                        display_language: row.get(3)?,
+                    })
+                },
             )
-            .and_then(|mut s| s.query_row([], |r| r.get::<_, i64>(0)))
-            .map(|n| n > 1) // old index has 2 columns (bgm_id, episode)
-            .unwrap_or(false);
+            .map_err(Into::into)
+    }
 
-        if has_old_history_schema {
-            self.conn.execute_batch(
-                "
-                -- Keep only the most recently watched episode per anime
-                DELETE FROM watch_history
-                WHERE id NOT IN (
-                    SELECT id FROM watch_history w1
-                    WHERE watched_at = (
-                        SELECT MAX(watched_at) FROM watch_history w2
-                        WHERE w2.bgm_id = w1.bgm_id
-                    )
-                );
-
-                -- Recreate table with new unique constraint
-                CREATE TABLE watch_history_new (
-                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                    bgm_id          TEXT    NOT NULL UNIQUE,
-                    episode         INTEGER NOT NULL,
-                    anime_title     TEXT    NOT NULL,
-                    episode_title   TEXT    NOT NULL DEFAULT '',
-                    cover           TEXT,
-                    position        REAL    NOT NULL DEFAULT 0,
-                    duration        REAL    NOT NULL DEFAULT 0,
-                    group_id        TEXT,
-                    resolution      TEXT,
-                    subtitle        TEXT,
-                    watched_at      TEXT    NOT NULL DEFAULT (datetime('now'))
-                );
-
-                INSERT INTO watch_history_new
-                    SELECT id, bgm_id, episode, anime_title, episode_title, cover,
-                           position, duration, group_id, resolution, subtitle, watched_at
-                    FROM watch_history;
-
-                DROP TABLE watch_history;
-                ALTER TABLE watch_history_new RENAME TO watch_history;
-
-                CREATE INDEX IF NOT EXISTS idx_history_watched
-                    ON watch_history(watched_at DESC);
-                ",
-            )?;
+    pub fn set_default_volume(&self, value: f64) -> Result<()> {
+        if !(0.0..=1.0).contains(&value) {
+            return Err(StoreError::Invalid("volume must be between 0 and 1".into()));
         }
-
-        Ok(())
-    }
-
-    // ── Settings ─────────────────────────────────────────────────
-
-    fn get_setting(&self, key: &str) -> Result<Option<String>> {
-        let mut stmt = self
-            .conn
-            .prepare_cached("SELECT value FROM settings WHERE key = ?1")?;
-        let result = stmt
-            .query_row(params![key], |row| row.get::<_, String>(0))
-            .ok();
-        Ok(result)
-    }
-
-    fn set_setting(&self, key: &str, value: &str) -> Result<()> {
-        self.conn.execute(
-            "INSERT INTO settings(key, value) VALUES(?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![key, value],
+        self.connection.execute(
+            "UPDATE settings SET default_volume = ?1 WHERE id = 1",
+            [value],
         )?;
         Ok(())
     }
 
-    /// Load settings with defaults for missing keys.
-    pub fn get_settings(&self, default_cache_dir: &str) -> Result<Settings> {
-        let cache_dir = self
-            .get_setting("cache_dir")?
-            .unwrap_or_else(|| default_cache_dir.to_string());
-        let cache_enabled = self
-            .get_setting("cache_enabled")?
-            .map(|v| v == "true")
-            .unwrap_or(true);
-        let hwdec = self
-            .get_setting("hwdec")?
-            .unwrap_or_else(|| "auto".to_string());
-        let default_volume = self
-            .get_setting("default_volume")?
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(100);
-        let default_speed = self
-            .get_setting("default_speed")?
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(1.0);
-        let buffer_size = self
-            .get_setting("buffer_size")?
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(150);
-        let auto_next = self
-            .get_setting("auto_next")?
-            .map(|v| v == "true")
-            .unwrap_or(true);
-
-        let tracker_list: Vec<String> = self
-            .get_setting("tracker_list")?
-            .and_then(|v| serde_json::from_str(&v).ok())
-            .unwrap_or_default();
-
-        let anime4k_mode = self
-            .get_setting("anime4k_mode")?
-            .unwrap_or_else(|| "off".to_string());
-
-        Ok(Settings {
-            cache_dir,
-            cache_enabled,
-            hwdec,
-            default_volume,
-            default_speed,
-            buffer_size,
-            auto_next,
-            tracker_list,
-            anime4k_mode,
-        })
+    pub fn set_default_speed(&self, value: f64) -> Result<()> {
+        if !(0.25..=4.0).contains(&value) {
+            return Err(StoreError::Invalid(
+                "playback speed must be between 0.25 and 4".into(),
+            ));
+        }
+        self.connection.execute(
+            "UPDATE settings SET default_speed = ?1 WHERE id = 1",
+            [value],
+        )?;
+        Ok(())
     }
 
-    pub fn set_cache_dir(&self, dir: &str) -> Result<()> {
-        self.set_setting("cache_dir", dir)
+    pub fn set_auto_next(&self, value: bool) -> Result<()> {
+        self.connection.execute(
+            "UPDATE settings SET auto_next = ?1 WHERE id = 1",
+            [i64::from(value)],
+        )?;
+        Ok(())
     }
 
-    pub fn set_cache_enabled(&self, enabled: bool) -> Result<()> {
-        self.set_setting("cache_enabled", if enabled { "true" } else { "false" })
+    pub fn set_display_language(&self, value: &str) -> Result<()> {
+        if !matches!(value, "en" | "zh") {
+            return Err(StoreError::Invalid(
+                "display language must be 'en' or 'zh'".into(),
+            ));
+        }
+        self.connection.execute(
+            "UPDATE settings SET display_language = ?1 WHERE id = 1",
+            [value],
+        )?;
+        Ok(())
     }
 
-    pub fn set_hwdec(&self, mode: &str) -> Result<()> {
-        self.set_setting("hwdec", mode)
+    pub fn ensure_media(&self, input: &CatalogMediaInput) -> Result<StoredMedia> {
+        if input.provider.trim().is_empty() || input.external_id.trim().is_empty() {
+            return Err(StoreError::Invalid(
+                "provider and external ID are required".into(),
+            ));
+        }
+        let existing = self
+            .connection
+            .query_row(
+                r#"
+                SELECT media_id FROM external_identity
+                WHERE provider = ?1 AND external_id = ?2 AND scope = 'title'
+                "#,
+                params![input.provider, input.external_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let media_id = existing.unwrap_or_else(|| Uuid::new_v4().to_string());
+
+        self.connection.execute(
+            r#"
+            INSERT INTO media (id, title, cover, banner, total_episodes)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(id) DO UPDATE SET
+              title = excluded.title,
+              cover = COALESCE(excluded.cover, media.cover),
+              banner = COALESCE(excluded.banner, media.banner),
+              total_episodes = excluded.total_episodes,
+              updated_at = CURRENT_TIMESTAMP
+            "#,
+            params![
+                media_id,
+                input.title,
+                input.cover,
+                input.banner,
+                input.total_episodes
+            ],
+        )?;
+        self.connection.execute(
+            r#"
+            INSERT OR IGNORE INTO external_identity
+              (media_id, provider, external_id, scope, confidence)
+            VALUES (?1, ?2, ?3, 'title', 1.0)
+            "#,
+            params![media_id, input.provider, input.external_id],
+        )?;
+        self.get_media(&media_id)?
+            .ok_or_else(|| StoreError::Invalid("failed to persist media".into()))
     }
 
-    pub fn set_default_volume(&self, volume: i64) -> Result<()> {
-        self.set_setting("default_volume", &volume.to_string())
+    pub fn get_media(&self, media_id: &str) -> Result<Option<StoredMedia>> {
+        self.connection
+            .query_row(
+                r#"
+                SELECT m.id, e.provider, e.external_id, m.title, m.cover,
+                       m.banner, m.total_episodes
+                FROM media m
+                JOIN external_identity e ON e.media_id = m.id AND e.scope = 'title'
+                WHERE m.id = ?1
+                ORDER BY CASE e.provider WHEN 'anilist' THEN 0 ELSE 1 END
+                LIMIT 1
+                "#,
+                [media_id],
+                map_stored_media,
+            )
+            .optional()
+            .map_err(Into::into)
     }
 
-    pub fn set_default_speed(&self, speed: f64) -> Result<()> {
-        self.set_setting("default_speed", &speed.to_string())
+    pub fn external_identity_list(&self, media_id: &str) -> Result<Vec<ExternalIdentity>> {
+        let mut statement = self.connection.prepare(
+            r#"
+            SELECT media_id, provider, external_id, scope, confidence, verified_at
+            FROM external_identity
+            WHERE media_id = ?1
+            ORDER BY verified_at DESC
+            "#,
+        )?;
+        let rows = statement.query_map([media_id], |row| {
+            Ok(ExternalIdentity {
+                media_id: row.get(0)?,
+                provider: row.get(1)?,
+                external_id: row.get(2)?,
+                scope: row.get(3)?,
+                confidence: row.get(4)?,
+                verified_at: row.get(5)?,
+            })
+        })?;
+        let mut identities = Vec::new();
+        for row in rows {
+            identities.push(row?);
+        }
+        Ok(identities)
     }
 
-    pub fn set_buffer_size(&self, size: i64) -> Result<()> {
-        self.set_setting("buffer_size", &size.to_string())
-    }
-
-    pub fn set_auto_next(&self, enabled: bool) -> Result<()> {
-        self.set_setting("auto_next", if enabled { "true" } else { "false" })
-    }
-
-    pub fn set_tracker_list(&self, trackers: &[String]) -> Result<()> {
-        let json = serde_json::to_string(trackers)
-            .map_err(|e| StoreError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
-        self.set_setting("tracker_list", &json)
-    }
-
-    pub fn set_anime4k_mode(&self, mode: &str) -> Result<()> {
-        self.set_setting("anime4k_mode", mode)
-    }
-
-    // ── Media cache ──────────────────────────────────────────────
-
-    pub fn lookup(
+    pub fn external_identity_upsert(
         &self,
-        bgm_id: &str,
-        episode: i32,
-        group_name: Option<&str>,
-        resolution: Option<&str>,
-    ) -> Result<Option<MediaEntry>> {
-        let entry = match (group_name, resolution) {
-            (Some(group), Some(res)) => {
-                let mut stmt = self.conn.prepare_cached(
-                    "SELECT id, bgm_id, episode, anime_title, group_name, resolution,
-                            file_path, file_size, torrent_source, cached_at
-                     FROM media_cache
-                     WHERE bgm_id = ?1 AND episode = ?2 AND group_name = ?3 AND resolution = ?4
-                     LIMIT 1",
-                )?;
-                stmt.query_row(params![bgm_id, episode, group, res], Self::row_to_entry)
-                    .ok()
-            }
-            (Some(group), None) => {
-                let mut stmt = self.conn.prepare_cached(
-                    "SELECT id, bgm_id, episode, anime_title, group_name, resolution,
-                            file_path, file_size, torrent_source, cached_at
-                     FROM media_cache
-                     WHERE bgm_id = ?1 AND episode = ?2 AND group_name = ?3
-                     LIMIT 1",
-                )?;
-                stmt.query_row(params![bgm_id, episode, group], Self::row_to_entry)
-                    .ok()
-            }
-            _ => {
-                let mut stmt = self.conn.prepare_cached(
-                    "SELECT id, bgm_id, episode, anime_title, group_name, resolution,
-                            file_path, file_size, torrent_source, cached_at
-                     FROM media_cache
-                     WHERE bgm_id = ?1 AND episode = ?2
-                     ORDER BY cached_at DESC
-                     LIMIT 1",
-                )?;
-                stmt.query_row(params![bgm_id, episode], Self::row_to_entry)
-                    .ok()
-            }
-        };
-        Ok(entry)
-    }
-
-    /// Insert or update a cache entry. Returns the row ID.
-    #[allow(clippy::too_many_arguments)]
-    pub fn upsert_entry(
-        &self,
-        bgm_id: &str,
-        episode: i32,
-        anime_title: &str,
-        group_name: &str,
-        resolution: &str,
-        file_path: &str,
-        file_size: i64,
-        torrent_source: &str,
-    ) -> Result<i64> {
-        self.conn.execute(
-            "INSERT INTO media_cache(bgm_id, episode, anime_title, group_name, resolution,
-                                     file_path, file_size, torrent_source)
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-             ON CONFLICT(bgm_id, episode, group_name, resolution)
-             DO UPDATE SET
-                anime_title    = excluded.anime_title,
-                file_path      = excluded.file_path,
-                file_size      = excluded.file_size,
-                torrent_source = excluded.torrent_source,
-                cached_at      = datetime('now')",
-            params![bgm_id, episode, anime_title, group_name, resolution, file_path, file_size, torrent_source],
+        media_id: &str,
+        provider: &str,
+        external_id: &str,
+        scope: &str,
+        confidence: f64,
+    ) -> Result<ExternalIdentity> {
+        if provider.trim().is_empty() || external_id.trim().is_empty() || scope.trim().is_empty() {
+            return Err(StoreError::Invalid(
+                "provider, external ID, and scope are required".into(),
+            ));
+        }
+        if !(0.0..=1.0).contains(&confidence) {
+            return Err(StoreError::Invalid(
+                "identity confidence must be between 0 and 1".into(),
+            ));
+        }
+        self.connection.execute(
+            r#"
+            INSERT INTO external_identity
+              (media_id, provider, external_id, scope, confidence)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(provider, external_id, scope) DO UPDATE SET
+              media_id = excluded.media_id,
+              confidence = excluded.confidence,
+              verified_at = CURRENT_TIMESTAMP
+            "#,
+            params![media_id, provider, external_id, scope, confidence],
         )?;
-        Ok(self.conn.last_insert_rowid())
+        self.connection
+            .query_row(
+                r#"
+                SELECT media_id, provider, external_id, scope, confidence, verified_at
+                FROM external_identity
+                WHERE media_id = ?1 AND provider = ?2 AND external_id = ?3 AND scope = ?4
+                "#,
+                params![media_id, provider, external_id, scope],
+                |row| {
+                    Ok(ExternalIdentity {
+                        media_id: row.get(0)?,
+                        provider: row.get(1)?,
+                        external_id: row.get(2)?,
+                        scope: row.get(3)?,
+                        confidence: row.get(4)?,
+                        verified_at: row.get(5)?,
+                    })
+                },
+            )
+            .map_err(Into::into)
     }
 
-    /// Remove a cache entry and return the file path (so caller can delete file).
-    pub fn remove_entry(&self, id: i64) -> Result<Option<String>> {
-        let path: Option<String> = self
-            .conn
-            .prepare_cached("SELECT file_path FROM media_cache WHERE id = ?1")?
-            .query_row(params![id], |row| row.get(0))
-            .ok();
-        self.conn
-            .execute("DELETE FROM media_cache WHERE id = ?1", params![id])?;
-        Ok(path)
-    }
-
-    /// List all cached entries for an anime.
-    pub fn list_anime_entries(&self, bgm_id: &str) -> Result<Vec<MediaEntry>> {
-        let mut stmt = self.conn.prepare_cached(
-            "SELECT id, bgm_id, episode, anime_title, group_name, resolution,
-                    file_path, file_size, torrent_source, cached_at
-             FROM media_cache
-             WHERE bgm_id = ?1
-             ORDER BY episode ASC",
-        )?;
-        let entries = stmt
-            .query_map(params![bgm_id], Self::row_to_entry)?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        Ok(entries)
-    }
-
-    /// List ALL cached entries across all anime.
-    pub fn list_all_entries(&self) -> Result<Vec<MediaEntry>> {
-        let mut stmt = self.conn.prepare_cached(
-            "SELECT id, bgm_id, episode, anime_title, group_name, resolution,
-                    file_path, file_size, torrent_source, cached_at
-             FROM media_cache
-             ORDER BY anime_title ASC, episode ASC",
-        )?;
-        let entries = stmt
-            .query_map([], Self::row_to_entry)?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        Ok(entries)
-    }
-
-    /// Update the file_path for a specific cache entry.
-    pub fn update_file_path(&self, id: i64, new_path: &str) -> Result<()> {
-        self.conn.execute(
-            "UPDATE media_cache SET file_path = ?1 WHERE id = ?2",
-            params![new_path, id],
+    pub fn external_identity_remove(&self, media_id: &str, provider: &str) -> Result<()> {
+        if provider == "anilist" {
+            return Err(StoreError::Invalid(
+                "the primary AniList identity cannot be removed".into(),
+            ));
+        }
+        self.connection.execute(
+            "DELETE FROM external_identity WHERE media_id = ?1 AND provider = ?2",
+            params![media_id, provider],
         )?;
         Ok(())
     }
 
-    /// Total cache size in bytes.
-    pub fn total_cache_size(&self) -> Result<i64> {
-        let size: i64 = self.conn.query_row(
-            "SELECT COALESCE(SUM(file_size), 0) FROM media_cache",
-            [],
-            |row| row.get(0),
+    pub fn library_add(&self, media_id: &str, status: LibraryStatus) -> Result<LibraryEntry> {
+        self.connection.execute(
+            r#"
+            INSERT INTO library_entry (media_id, status)
+            VALUES (?1, ?2)
+            ON CONFLICT(media_id) DO UPDATE SET
+              status = excluded.status,
+              updated_at = CURRENT_TIMESTAMP
+            "#,
+            params![media_id, status.as_str()],
         )?;
-        Ok(size)
+        self.library_get(media_id)?
+            .ok_or_else(|| StoreError::Invalid("failed to persist library entry".into()))
     }
 
-    /// Remove all cache entries. Returns file paths for deletion.
-    pub fn clear_all(&self) -> Result<Vec<String>> {
-        let mut stmt = self
-            .conn
-            .prepare_cached("SELECT file_path FROM media_cache")?;
-        let paths: Vec<String> = stmt
-            .query_map([], |row| row.get(0))?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        self.conn.execute("DELETE FROM media_cache", [])?;
-        Ok(paths)
+    pub fn library_remove(&self, media_id: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM library_entry WHERE media_id = ?1", [media_id])?;
+        Ok(())
     }
 
-    // ── Watchlist ─────────────────────────────────────────────────
-
-    /// Add an anime to the watchlist (default status: watching).
-    /// If already exists, returns the existing entry.
-    pub fn watchlist_add(
-        &self,
-        bgm_id: &str,
-        anime_title: &str,
-        cover: Option<&str>,
-        total_episodes: i32,
-    ) -> Result<WatchlistEntry> {
-        self.conn.execute(
-            "INSERT INTO watchlist(bgm_id, anime_title, cover, total_episodes)
-             VALUES(?1, ?2, ?3, ?4)
-             ON CONFLICT(bgm_id) DO UPDATE SET
-                anime_title    = excluded.anime_title,
-                cover          = excluded.cover,
-                total_episodes = excluded.total_episodes,
-                updated_at     = datetime('now')",
-            params![bgm_id, anime_title, cover, total_episodes],
-        )?;
-        self.watchlist_get(bgm_id)?
-            .ok_or_else(|| StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows))
+    pub fn library_get(&self, media_id: &str) -> Result<Option<LibraryEntry>> {
+        self.connection
+            .query_row(
+                &library_select("WHERE l.media_id = ?1"),
+                [media_id],
+                map_library_entry,
+            )
+            .optional()
+            .map_err(Into::into)
     }
 
-    /// Remove an anime from the watchlist.
-    pub fn watchlist_remove(&self, bgm_id: &str) -> Result<()> {
-        self.conn.execute(
-            "DELETE FROM watchlist WHERE bgm_id = ?1",
-            params![bgm_id],
+    pub fn library_set_status(&self, media_id: &str, status: LibraryStatus) -> Result<()> {
+        self.connection.execute(
+            r#"
+            UPDATE library_entry
+            SET status = ?2, updated_at = CURRENT_TIMESTAMP
+            WHERE media_id = ?1
+            "#,
+            params![media_id, status.as_str()],
         )?;
         Ok(())
     }
 
-    /// Get a single watchlist entry by bgm_id.
-    pub fn watchlist_get(&self, bgm_id: &str) -> Result<Option<WatchlistEntry>> {
-        let mut stmt = self.conn.prepare_cached(
-            "SELECT id, bgm_id, anime_title, cover, total_episodes, status, added_at, updated_at
-             FROM watchlist WHERE bgm_id = ?1",
-        )?;
-        let entry = stmt
-            .query_row(params![bgm_id], Self::row_to_watchlist)
-            .ok();
-        Ok(entry)
-    }
-
-    /// Update the watch status of an anime.
-    pub fn watchlist_set_status(&self, bgm_id: &str, status: WatchStatus) -> Result<()> {
-        self.conn.execute(
-            "UPDATE watchlist SET status = ?1, updated_at = datetime('now') WHERE bgm_id = ?2",
-            params![status.as_str(), bgm_id],
-        )?;
-        Ok(())
-    }
-
-    /// List all watchlist entries, optionally filtered by status.
-    pub fn watchlist_list(&self, status: Option<&str>) -> Result<Vec<WatchlistEntry>> {
-        if let Some(s) = status {
-            let mut stmt = self.conn.prepare_cached(
-                "SELECT id, bgm_id, anime_title, cover, total_episodes, status, added_at, updated_at
-                 FROM watchlist WHERE status = ?1 ORDER BY updated_at DESC",
-            )?;
-            let entries = stmt
-                .query_map(params![s], Self::row_to_watchlist)?
-                .collect::<std::result::Result<Vec<_>, _>>()?;
-            Ok(entries)
+    pub fn library_list(&self, status: Option<&str>) -> Result<Vec<LibraryEntry>> {
+        let mut entries = Vec::new();
+        if let Some(status) = status {
+            let status = LibraryStatus::parse(status)?.as_str();
+            let mut statement = self.connection.prepare(&library_select(
+                "WHERE l.status = ?1 ORDER BY l.updated_at DESC",
+            ))?;
+            let rows = statement.query_map([status], map_library_entry)?;
+            for row in rows {
+                entries.push(row?);
+            }
         } else {
-            let mut stmt = self.conn.prepare_cached(
-                "SELECT id, bgm_id, anime_title, cover, total_episodes, status, added_at, updated_at
-                 FROM watchlist ORDER BY updated_at DESC",
-            )?;
-            let entries = stmt
-                .query_map([], Self::row_to_watchlist)?
-                .collect::<std::result::Result<Vec<_>, _>>()?;
-            Ok(entries)
+            let mut statement = self
+                .connection
+                .prepare(&library_select("ORDER BY l.updated_at DESC"))?;
+            let rows = statement.query_map([], map_library_entry)?;
+            for row in rows {
+                entries.push(row?);
+            }
         }
+        Ok(entries)
     }
 
-    fn row_to_watchlist(row: &rusqlite::Row) -> rusqlite::Result<WatchlistEntry> {
-        Ok(WatchlistEntry {
-            id: row.get(0)?,
-            bgm_id: row.get(1)?,
-            anime_title: row.get(2)?,
-            cover: row.get(3)?,
-            total_episodes: row.get(4)?,
-            status: row.get(5)?,
-            added_at: row.get(6)?,
-            updated_at: row.get(7)?,
-        })
-    }
-
-    // ── Watch History ─────────────────────────────────────────────
-
-    /// Upsert a watch history entry (one entry per anime, updates to latest episode).
     #[allow(clippy::too_many_arguments)]
     pub fn history_upsert(
         &self,
-        bgm_id: &str,
+        media_id: &str,
         episode: i32,
-        anime_title: &str,
         episode_title: &str,
-        cover: Option<&str>,
         position: f64,
         duration: f64,
-        group_id: Option<&str>,
-        resolution: Option<&str>,
-        subtitle: Option<&str>,
+        source_id: Option<&str>,
     ) -> Result<()> {
-        self.conn.execute(
-            "INSERT INTO watch_history(bgm_id, episode, anime_title, episode_title, cover,
-                                       position, duration, group_id, resolution, subtitle)
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-             ON CONFLICT(bgm_id) DO UPDATE SET
-                episode       = excluded.episode,
-                anime_title   = excluded.anime_title,
-                episode_title = excluded.episode_title,
-                cover         = excluded.cover,
-                position      = excluded.position,
-                duration      = excluded.duration,
-                group_id      = excluded.group_id,
-                resolution    = excluded.resolution,
-                subtitle      = excluded.subtitle,
-                watched_at    = datetime('now')",
-            params![bgm_id, episode, anime_title, episode_title, cover,
-                    position, duration, group_id, resolution, subtitle],
+        self.connection.execute(
+            r#"
+            INSERT INTO watch_history
+              (media_id, episode, episode_title, position, duration, source_id)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            ON CONFLICT(media_id, episode) DO UPDATE SET
+              episode_title = excluded.episode_title,
+              position = excluded.position,
+              duration = excluded.duration,
+              source_id = excluded.source_id,
+              watched_at = CURRENT_TIMESTAMP
+            "#,
+            params![
+                media_id,
+                episode,
+                episode_title,
+                position,
+                duration,
+                source_id
+            ],
         )?;
         Ok(())
     }
 
-    /// List watch history entries, most recent first.
     pub fn history_list(&self, limit: i32, offset: i32) -> Result<Vec<WatchHistoryEntry>> {
-        let mut stmt = self.conn.prepare_cached(
-            "SELECT id, bgm_id, episode, anime_title, episode_title, cover,
-                    position, duration, group_id, resolution, subtitle, watched_at
-             FROM watch_history
-             ORDER BY watched_at DESC
-             LIMIT ?1 OFFSET ?2",
+        let mut statement = self.connection.prepare(
+            r#"
+            SELECT h.media_id, e.provider, e.external_id, h.episode, m.title,
+                   h.episode_title, m.cover, h.position, h.duration, h.source_id,
+                   h.watched_at
+            FROM watch_history h
+            JOIN media m ON m.id = h.media_id
+            JOIN external_identity e
+              ON e.media_id = h.media_id AND e.scope = 'title' AND e.provider = 'anilist'
+            ORDER BY h.watched_at DESC
+            LIMIT ?1 OFFSET ?2
+            "#,
         )?;
-        let entries = stmt
-            .query_map(params![limit, offset], Self::row_to_history)?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let rows = statement.query_map(params![limit.max(1), offset.max(0)], |row| {
+            Ok(WatchHistoryEntry {
+                media_id: row.get(0)?,
+                provider: row.get(1)?,
+                external_id: row.get(2)?,
+                episode: row.get(3)?,
+                media_title: row.get(4)?,
+                episode_title: row.get(5)?,
+                cover: row.get(6)?,
+                position: row.get(7)?,
+                duration: row.get(8)?,
+                source_id: row.get(9)?,
+                watched_at: row.get(10)?,
+            })
+        })?;
+        let mut entries = Vec::new();
+        for row in rows {
+            entries.push(row?);
+        }
         Ok(entries)
     }
 
-    /// Remove a single history entry by anime.
-    pub fn history_remove(&self, bgm_id: &str) -> Result<()> {
-        self.conn.execute(
-            "DELETE FROM watch_history WHERE bgm_id = ?1",
-            params![bgm_id],
+    pub fn history_remove(&self, media_id: &str, episode: Option<i32>) -> Result<()> {
+        if let Some(episode) = episode {
+            self.connection.execute(
+                "DELETE FROM watch_history WHERE media_id = ?1 AND episode = ?2",
+                params![media_id, episode],
+            )?;
+        } else {
+            self.connection
+                .execute("DELETE FROM watch_history WHERE media_id = ?1", [media_id])?;
+        }
+        Ok(())
+    }
+
+    pub fn history_clear(&self) -> Result<()> {
+        self.connection.execute("DELETE FROM watch_history", [])?;
+        Ok(())
+    }
+
+    pub fn source_binding_get(
+        &self,
+        media_id: &str,
+        source_id: &str,
+    ) -> Result<Option<SourceBinding>> {
+        self.connection
+            .query_row(
+                r#"
+                SELECT media_id, source_id, remote_media_url, remote_title,
+                       road_index, verified_at
+                FROM source_binding
+                WHERE media_id = ?1 AND source_id = ?2
+                "#,
+                params![media_id, source_id],
+                map_source_binding,
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub fn source_binding_list(&self, media_id: &str) -> Result<Vec<SourceBinding>> {
+        let mut statement = self.connection.prepare(
+            r#"
+            SELECT media_id, source_id, remote_media_url, remote_title,
+                   road_index, verified_at
+            FROM source_binding
+            WHERE media_id = ?1
+            ORDER BY verified_at DESC
+            "#,
+        )?;
+        let rows = statement.query_map([media_id], map_source_binding)?;
+        let mut bindings = Vec::new();
+        for row in rows {
+            bindings.push(row?);
+        }
+        Ok(bindings)
+    }
+
+    pub fn source_binding_upsert(
+        &self,
+        media_id: &str,
+        source_id: &str,
+        remote_media_url: &str,
+        remote_title: &str,
+        road_index: i32,
+    ) -> Result<SourceBinding> {
+        self.connection.execute(
+            r#"
+            INSERT INTO source_binding
+              (media_id, source_id, remote_media_url, remote_title, road_index)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(media_id, source_id) DO UPDATE SET
+              remote_media_url = excluded.remote_media_url,
+              remote_title = excluded.remote_title,
+              road_index = excluded.road_index,
+              verified_at = CURRENT_TIMESTAMP
+            "#,
+            params![
+                media_id,
+                source_id,
+                remote_media_url,
+                remote_title,
+                road_index
+            ],
+        )?;
+        self.source_binding_get(media_id, source_id)?
+            .ok_or_else(|| StoreError::Invalid("failed to persist source binding".into()))
+    }
+
+    pub fn source_binding_remove(&self, media_id: &str, source_id: &str) -> Result<()> {
+        self.connection.execute(
+            "DELETE FROM source_binding WHERE media_id = ?1 AND source_id = ?2",
+            params![media_id, source_id],
         )?;
         Ok(())
     }
 
-    /// Clear all history.
-    pub fn history_clear(&self) -> Result<()> {
-        self.conn.execute("DELETE FROM watch_history", [])?;
+    pub fn source_rule_upsert(&self, name: &str, rule_json: &str) -> Result<()> {
+        self.connection.execute(
+            r#"
+            INSERT INTO source_rule (name, rule_json)
+            VALUES (?1, ?2)
+            ON CONFLICT(name) DO UPDATE SET
+              rule_json = excluded.rule_json,
+              installed_at = CURRENT_TIMESTAMP
+            "#,
+            params![name, rule_json],
+        )?;
         Ok(())
     }
 
-    fn row_to_history(row: &rusqlite::Row) -> rusqlite::Result<WatchHistoryEntry> {
-        Ok(WatchHistoryEntry {
-            id: row.get(0)?,
-            bgm_id: row.get(1)?,
-            episode: row.get(2)?,
-            anime_title: row.get(3)?,
-            episode_title: row.get(4)?,
-            cover: row.get(5)?,
-            position: row.get(6)?,
-            duration: row.get(7)?,
-            group_id: row.get(8)?,
-            resolution: row.get(9)?,
-            subtitle: row.get(10)?,
-            watched_at: row.get(11)?,
-        })
+    pub fn source_rule_remove(&self, name: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM source_rule WHERE name = ?1", [name])?;
+        Ok(())
     }
 
-    // ── Helpers ──────────────────────────────────────────────────
-
-    fn row_to_entry(row: &rusqlite::Row) -> rusqlite::Result<MediaEntry> {
-        Ok(MediaEntry {
-            id: row.get(0)?,
-            bgm_id: row.get(1)?,
-            episode: row.get(2)?,
-            anime_title: row.get(3)?,
-            group_name: row.get(4)?,
-            resolution: row.get(5)?,
-            file_path: row.get(6)?,
-            file_size: row.get(7)?,
-            torrent_source: row.get(8)?,
-            cached_at: row.get(9)?,
-        })
+    pub fn source_rule_list(&self) -> Result<Vec<SourceRuleRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT name, rule_json, installed_at FROM source_rule ORDER BY installed_at",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(SourceRuleRecord {
+                name: row.get(0)?,
+                rule_json: row.get(1)?,
+                installed_at: row.get(2)?,
+            })
+        })?;
+        let mut records = Vec::new();
+        for row in rows {
+            records.push(row?);
+        }
+        Ok(records)
     }
 }
 
-// ---------------------------------------------------------------------------
-// Path helpers — Jellyfin-style naming
-// ---------------------------------------------------------------------------
+fn migrate(connection: &mut Connection) -> Result<()> {
+    let transaction = connection.transaction()?;
 
-/// Sanitize a string for filesystem use (remove illegal chars).
-fn sanitize_filename(s: &str) -> String {
-    s.chars()
-        .map(|c| match c {
-            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
-            _ => c,
-        })
-        .collect::<String>()
-        .trim()
-        .to_string()
-}
-
-/// Build the Jellyfin-style directory for an anime:
-/// `{cache_dir}/{anime_title}/`
-pub fn anime_dir(cache_dir: &Path, anime_title: &str) -> PathBuf {
-    cache_dir.join(sanitize_filename(anime_title))
-}
-
-/// Build the Jellyfin-style filename for an episode:
-/// `{anime_title} - S01E{ep:02} [{group}] [{resolution}].{ext}`
-///
-/// Groups and resolution are kept in the filename (not as subdirectories)
-/// so the structure stays flat per anime — easier to browse in file managers
-/// and compatible with media server scrapers that match by S01E pattern.
-pub fn episode_filename(
-    anime_title: &str,
-    episode: i32,
-    group_name: &str,
-    resolution: &str,
-    original_filename: &str,
-) -> String {
-    let ext = Path::new(original_filename)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("mkv");
-
-    let title = sanitize_filename(anime_title);
-    let group = sanitize_filename(group_name);
-    let res = sanitize_filename(resolution);
-
-    let mut name = format!("{title} - S01E{episode:02}");
-    if !group.is_empty() {
-        name.push_str(&format!(" [{group}]"));
+    if !table_has_column(&transaction, "settings", "display_language")? {
+        transaction.execute_batch(
+            "ALTER TABLE settings ADD COLUMN display_language \
+             TEXT NOT NULL DEFAULT 'en';",
+        )?;
     }
-    if !res.is_empty() {
-        name.push_str(&format!(" [{res}]"));
+
+    transaction.execute(
+        r#"
+        UPDATE settings
+        SET display_language = ?1
+        WHERE display_language NOT IN ('en', 'zh')
+        "#,
+        [DEFAULT_DISPLAY_LANGUAGE],
+    )?;
+
+    transaction.execute_batch(
+        r#"
+        INSERT OR IGNORE INTO source_binding
+          (media_id, source_id, remote_media_url, remote_title, road_index, verified_at)
+        SELECT media_id, 'builtin:age', remote_media_url, remote_title, road_index, verified_at
+        FROM source_binding
+        WHERE source_id = 'AGE动漫';
+
+        DELETE FROM source_binding WHERE source_id = 'AGE动漫';
+
+        UPDATE watch_history
+        SET source_id = 'builtin:age'
+        WHERE source_id = 'AGE动漫';
+        "#,
+    )?;
+
+    let schema_version: i64 = transaction.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if schema_version < 3 {
+        // Rebuild the CHECK constraint and merge legacy categories atomically.
+        // Keep identities, timestamps and the independent watch history intact.
+        transaction.execute_batch(
+            r#"
+            CREATE TABLE library_entry_v3 (
+              media_id TEXT PRIMARY KEY REFERENCES media(id) ON DELETE CASCADE,
+              status TEXT NOT NULL CHECK (status IN ('following', 'completed')),
+              added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            INSERT INTO library_entry_v3 (media_id, status, added_at, updated_at)
+            SELECT media_id, CASE WHEN status = 'completed' THEN 'completed' ELSE 'following' END,
+                   added_at, updated_at
+            FROM library_entry;
+            DROP TABLE library_entry;
+            ALTER TABLE library_entry_v3 RENAME TO library_entry;
+            "#,
+        )?;
     }
-    format!("{name}.{ext}")
+    if schema_version < CURRENT_SCHEMA_VERSION {
+        transaction.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION)?;
+    }
+
+    transaction.commit()?;
+    Ok(())
 }
 
-/// Full path for a cached episode file.
-pub fn episode_path(
-    cache_dir: &Path,
-    anime_title: &str,
-    episode: i32,
-    group_name: &str,
-    resolution: &str,
-    original_filename: &str,
-) -> PathBuf {
-    anime_dir(cache_dir, anime_title)
-        .join(episode_filename(anime_title, episode, group_name, resolution, original_filename))
+fn table_has_column(connection: &Connection, table: &str, column: &str) -> Result<bool> {
+    let mut statement = connection.prepare(&format!("PRAGMA table_info({table})"))?;
+    let rows = statement.query_map([], |row| row.get::<_, String>(1))?;
+    for row in rows {
+        if row? == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn map_stored_media(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMedia> {
+    Ok(StoredMedia {
+        id: row.get(0)?,
+        provider: row.get(1)?,
+        external_id: row.get(2)?,
+        title: row.get(3)?,
+        cover: row.get(4)?,
+        banner: row.get(5)?,
+        total_episodes: row.get(6)?,
+    })
+}
+
+fn library_select(suffix: &str) -> String {
+    format!(
+        r#"
+        SELECT l.media_id, e.provider, e.external_id, m.title, m.cover,
+               m.banner, m.total_episodes, l.status, l.added_at, l.updated_at
+        FROM library_entry l
+        JOIN media m ON m.id = l.media_id
+        JOIN external_identity e
+          ON e.media_id = l.media_id AND e.scope = 'title' AND e.provider = 'anilist'
+        {suffix}
+        "#
+    )
+}
+
+fn map_library_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<LibraryEntry> {
+    Ok(LibraryEntry {
+        media_id: row.get(0)?,
+        provider: row.get(1)?,
+        external_id: row.get(2)?,
+        title: row.get(3)?,
+        cover: row.get(4)?,
+        banner: row.get(5)?,
+        total_episodes: row.get(6)?,
+        status: row.get(7)?,
+        added_at: row.get(8)?,
+        updated_at: row.get(9)?,
+    })
+}
+
+fn map_source_binding(row: &rusqlite::Row<'_>) -> rusqlite::Result<SourceBinding> {
+    Ok(SourceBinding {
+        media_id: row.get(0)?,
+        source_id: row.get(1)?,
+        remote_media_url: row.get(2)?,
+        remote_title: row.get(3)?,
+        road_index: row.get(4)?,
+        verified_at: row.get(5)?,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn store() -> Store {
+        Store::open(":memory:").expect("open in-memory V1 store")
+    }
+
+    fn media() -> CatalogMediaInput {
+        CatalogMediaInput {
+            provider: "anilist".into(),
+            external_id: "21".into(),
+            title: "One Piece".into(),
+            cover: Some("https://example.com/cover.jpg".into()),
+            banner: None,
+            total_episodes: 1000,
+        }
+    }
+
+    fn legacy_database_path() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("kuriume-store-migration-{}.db", Uuid::new_v4()))
+    }
+
+    #[test]
+    fn new_database_uses_english_as_the_default_display_language() {
+        let store = store();
+        let settings = store.get_settings().unwrap();
+        assert_eq!(settings.display_language, DEFAULT_DISPLAY_LANGUAGE);
+        assert_eq!(
+            store
+                .connection
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            CURRENT_SCHEMA_VERSION
+        );
+    }
+
+    #[test]
+    fn media_identity_keeps_a_stable_internal_uuid() {
+        let store = store();
+        let first = store.ensure_media(&media()).unwrap();
+        let mut updated = media();
+        updated.title = "ONE PIECE".into();
+        let second = store.ensure_media(&updated).unwrap();
+        assert_eq!(first.id, second.id);
+        assert_eq!(second.title, "ONE PIECE");
+        assert_ne!(second.id, second.external_id);
+    }
+
+    #[test]
+    fn library_history_binding_and_rules_round_trip() {
+        let store = store();
+        let media = store.ensure_media(&media()).unwrap();
+        let entry = store
+            .library_add(&media.id, LibraryStatus::Following)
+            .unwrap();
+        assert_eq!(entry.status, "following");
+
+        store
+            .history_upsert(&media.id, 3, "第 3 话", 120.0, 1440.0, Some("builtin:age"))
+            .unwrap();
+        let history = store.history_list(20, 0).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].episode, 3);
+
+        store
+            .source_binding_upsert(
+                &media.id,
+                "builtin:age",
+                "https://www.agedm.io/detail/1",
+                "One Piece",
+                2,
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .source_binding_get(&media.id, "builtin:age")
+                .unwrap()
+                .unwrap()
+                .road_index,
+            2
+        );
+
+        store
+            .source_rule_upsert("test", "{\"name\":\"test\"}")
+            .unwrap();
+        assert_eq!(store.source_rule_list().unwrap().len(), 1);
+        store.source_rule_remove("test").unwrap();
+        assert!(store.source_rule_list().unwrap().is_empty());
+    }
+
+    #[test]
+    fn tmdb_identity_requires_explicit_scope_and_preserves_anilist() {
+        let store = store();
+        let media = store.ensure_media(&media()).unwrap();
+        let identity = store
+            .external_identity_upsert(&media.id, "tmdb_tv", "37854", "s1", 1.0)
+            .unwrap();
+        assert_eq!(identity.scope, "s1");
+        assert_eq!(store.external_identity_list(&media.id).unwrap().len(), 2);
+
+        store
+            .external_identity_remove(&media.id, "tmdb_tv")
+            .unwrap();
+        let identities = store.external_identity_list(&media.id).unwrap();
+        assert_eq!(identities.len(), 1);
+        assert_eq!(identities[0].provider, "anilist");
+        assert!(store
+            .external_identity_remove(&media.id, "anilist")
+            .is_err());
+    }
+
+    #[test]
+    fn settings_reject_out_of_range_playback_values() {
+        let store = store();
+        assert!(store.set_default_volume(1.1).is_err());
+        assert!(store.set_default_speed(0.1).is_err());
+        store.set_default_volume(0.45).unwrap();
+        store.set_default_speed(1.25).unwrap();
+        store.set_display_language("zh").unwrap();
+        let settings = store.get_settings().unwrap();
+        assert_eq!(settings.default_volume, 0.45);
+        assert_eq!(settings.default_speed, 1.25);
+        assert_eq!(settings.display_language, "zh");
+        assert!(store.set_display_language("zh-CN").is_err());
+    }
+
+    #[test]
+    fn library_categories_merge_without_losing_history_or_identity() {
+        let mut store = store();
+        // Recreate the shipped v2 constraint, including every former category.
+        store
+            .connection
+            .execute_batch(
+                r#"
+            DROP TABLE library_entry;
+            CREATE TABLE library_entry (
+              media_id TEXT PRIMARY KEY REFERENCES media(id) ON DELETE CASCADE,
+              status TEXT NOT NULL CHECK (status IN ('watching', 'planned', 'completed', 'paused')),
+              added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            PRAGMA user_version = 2;
+            "#,
+            )
+            .unwrap();
+        let mut ids = Vec::new();
+        for (index, status) in ["watching", "planned", "paused", "completed"]
+            .iter()
+            .enumerate()
+        {
+            let mut input = media();
+            input.external_id = index.to_string();
+            let media = store.ensure_media(&input).unwrap();
+            store.connection.execute(
+                "INSERT INTO library_entry VALUES (?1, ?2, '2026-01-01 00:00:00', '2026-02-01 00:00:00')",
+                params![media.id, status],
+            ).unwrap();
+            store
+                .history_upsert(
+                    &media.id,
+                    3,
+                    "Episode 3",
+                    120.0,
+                    1440.0,
+                    Some("builtin:age"),
+                )
+                .unwrap();
+            store
+                .source_binding_upsert(
+                    &media.id,
+                    "builtin:age",
+                    "https://age.example/1",
+                    "One Piece",
+                    2,
+                )
+                .unwrap();
+            ids.push(media.id);
+        }
+
+        migrate(&mut store.connection).unwrap();
+        migrate(&mut store.connection).unwrap(); // Opening again must be harmless.
+        assert_eq!(store.library_list(Some("following")).unwrap().len(), 3);
+        assert_eq!(store.library_list(Some("completed")).unwrap().len(), 1);
+        assert_eq!(store.history_list(20, 0).unwrap().len(), 4);
+        for (index, id) in ids.iter().enumerate() {
+            let entry = store.library_get(id).unwrap().unwrap();
+            assert_eq!(entry.media_id, *id);
+            assert_eq!(entry.external_id, index.to_string());
+            assert_eq!(
+                entry.status,
+                if index == 3 { "completed" } else { "following" }
+            );
+            assert_eq!(entry.added_at, "2026-01-01 00:00:00");
+            assert_eq!(entry.updated_at, "2026-02-01 00:00:00");
+            let history = store.history_list(20, 0).unwrap();
+            let progress = history.iter().find(|entry| entry.media_id == *id).unwrap();
+            assert_eq!((progress.episode, progress.position), (3, 120.0));
+            assert_eq!(
+                store
+                    .source_binding_get(id, "builtin:age")
+                    .unwrap()
+                    .unwrap()
+                    .road_index,
+                2
+            );
+        }
+        for retired in ["watching", "planned", "paused"] {
+            assert!(LibraryStatus::parse(retired).is_err());
+            assert!(store
+                .connection
+                .execute("UPDATE library_entry SET status = ?1", [retired])
+                .is_err());
+        }
+        store
+            .library_set_status(&ids[0], LibraryStatus::Completed)
+            .unwrap();
+        assert_eq!(store.library_list(Some("completed")).unwrap().len(), 2);
+        store
+            .library_set_status(&ids[0], LibraryStatus::Following)
+            .unwrap();
+        store.library_remove(&ids[0]).unwrap();
+        assert!(store.library_get(&ids[0]).unwrap().is_none());
+        assert_eq!(store.history_list(20, 0).unwrap().len(), 4);
+    }
+
+    #[test]
+    fn old_schema_adds_language_setting_and_migrates_age_aliases() {
+        let path = legacy_database_path();
+        {
+            let connection = Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    r#"
+                    CREATE TABLE settings (
+                      id INTEGER PRIMARY KEY CHECK (id = 1),
+                      default_volume REAL NOT NULL DEFAULT 0.8,
+                      default_speed REAL NOT NULL DEFAULT 1.0,
+                      auto_next INTEGER NOT NULL DEFAULT 1,
+                      tmdb_api_token TEXT
+                    );
+                    INSERT INTO settings (id, tmdb_api_token)
+                    VALUES (1, 'legacy-secret');
+
+                    CREATE TABLE watch_history (
+                      media_id TEXT NOT NULL,
+                      episode INTEGER NOT NULL,
+                      episode_title TEXT NOT NULL,
+                      position REAL NOT NULL,
+                      duration REAL NOT NULL,
+                      source_id TEXT,
+                      watched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      PRIMARY KEY (media_id, episode)
+                    );
+                    INSERT INTO watch_history
+                      (media_id, episode, episode_title, position, duration, source_id)
+                    VALUES ('media-1', 1, '第 1 话', 0, 1200, 'AGE动漫');
+
+                    CREATE TABLE source_binding (
+                      media_id TEXT NOT NULL,
+                      source_id TEXT NOT NULL,
+                      remote_media_url TEXT NOT NULL,
+                      remote_title TEXT NOT NULL,
+                      road_index INTEGER NOT NULL DEFAULT 0,
+                      verified_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      PRIMARY KEY (media_id, source_id)
+                    );
+                    INSERT INTO source_binding
+                      (media_id, source_id, remote_media_url, remote_title, road_index)
+                    VALUES
+                      ('media-1', 'AGE动漫', 'https://age.example/legacy', 'Legacy', 1),
+                      ('media-2', 'AGE动漫', 'https://age.example/duplicate', 'Old', 2),
+                      ('media-2', 'builtin:age', 'https://age.example/canonical', 'Canonical', 3);
+
+                    PRAGMA user_version = 0;
+                    "#,
+                )
+                .unwrap();
+        }
+
+        let store = Store::open(&path).unwrap();
+        assert_eq!(
+            store.get_settings().unwrap().display_language,
+            DEFAULT_DISPLAY_LANGUAGE
+        );
+        assert_eq!(
+            store
+                .source_binding_get("media-1", "builtin:age")
+                .unwrap()
+                .unwrap()
+                .remote_media_url,
+            "https://age.example/legacy"
+        );
+        assert_eq!(
+            store
+                .source_binding_get("media-2", "builtin:age")
+                .unwrap()
+                .unwrap()
+                .remote_media_url,
+            "https://age.example/canonical"
+        );
+        assert_eq!(
+            store
+                .connection
+                .query_row(
+                    "SELECT COUNT(*) FROM source_binding WHERE source_id = 'AGE动漫'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            store
+                .connection
+                .query_row(
+                    "SELECT source_id FROM watch_history WHERE media_id = 'media-1'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap(),
+            "builtin:age"
+        );
+        assert_eq!(
+            store
+                .connection
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            CURRENT_SCHEMA_VERSION
+        );
+
+        drop(store);
+        std::fs::remove_file(path).unwrap();
+    }
 }

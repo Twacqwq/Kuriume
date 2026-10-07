@@ -1,9 +1,11 @@
 [workspace]
-members = ["crates/kuriume-provider", "crates/kuriume-mpv", "crates/kuriume-torrent", "crates/kuriume-store", "plugins/tauri-plugin-mpv"]
+members = ["crates/kuriume-provider", "crates/kuriume-store", "crates/tauri-plugin-mobile"]
+
+[workspace.package]
+version = "0.1.0"
 
 [workspace.dependencies]
-tauri = { version = "2", features = ["macos-private-api"] }
-tauri-plugin-opener = "2"
+tauri = { version = "2", features = ["unstable"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-build = { version = "2", features = [] }
@@ -14,14 +16,11 @@ tokio = { version = "1", features = ["full"] }
 
 # Internal crates
 kuriume-provider = { path = "crates/kuriume-provider" }
-kuriume-mpv = { path = "crates/kuriume-mpv" }
-kuriume-torrent = { path = "crates/kuriume-torrent" }
 kuriume-store = { path = "crates/kuriume-store" }
-tauri-plugin-mpv = { path = "plugins/tauri-plugin-mpv" }
 
 [package]
 name = "kuriume"
-version = "0.1.0"
+version.workspace = true
 description = "An anime aggregation, parsing, and playback app"
 authors = ["Twacqwq"]
 license = "GPL-3.0"
@@ -41,18 +40,24 @@ tauri-build = { workspace = true }
 
 [dependencies]
 tauri = { workspace = true }
-tauri-plugin-opener = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 regex = "1"
+ring = "0.17"
 kuriume-provider = { workspace = true }
-kuriume-torrent = { workspace = true }
 kuriume-store = { workspace = true }
-tauri-plugin-mpv = { workspace = true }
-tauri-plugin-dialog = "2.6.0"
 
-[target.'cfg(target_os = "ios")'.dependencies]
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
 objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSNotification", "NSOperation", "NSString", "block2"] }
 
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+
+[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+tauri-plugin-mobile = { path = "crates/tauri-plugin-mobile" }

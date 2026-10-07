@@ -1,29 +1,23 @@
 import { Link } from '@tanstack/react-router'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { Star, Film } from 'lucide-react'
+import { AlertCircle, Film, RotateCcw, Star } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 
+import { Button } from '@/components/ui/button'
+import { useDisplayLanguage } from '@/hooks/use-display-language'
+import { displayAnimeTitle } from '@/lib/display-language'
 import type { AnimeInfo, PagedResult } from '@/lib/types'
 
 /* ── Responsive column count (matches Tailwind grid breakpoints) ── */
 
 function calcColumns(width: number): number {
-  if (width >= 1536) return 7  // 2xl
-  if (width >= 1280) return 6  // xl
-  if (width >= 1024) return 5  // lg
-  if (width >= 768) return 4   // md
+  if (width >= 1160) return 7
+  if (width >= 980) return 6
+  if (width >= 820) return 5
+  if (width >= 640) return 4
+  if (width >= 440) return 3
   return 2
-}
-
-function useColumnCount(): number {
-  const [cols, setCols] = useState(() => calcColumns(window.innerWidth))
-  useEffect(() => {
-    const handler = () => setCols(calcColumns(window.innerWidth))
-    window.addEventListener('resize', handler)
-    return () => window.removeEventListener('resize', handler)
-  }, [])
-  return cols
 }
 
 /* ── AnimeGrid ── */
@@ -46,6 +40,8 @@ interface AnimeGridProps<TPageParam = any> {
   title?: string
   /** Items per page (for skeleton count) */
   pageSize?: number
+  /** Reuse an already-fetched first page instead of requesting it twice. */
+  initialPage?: PagedResult<AnimeInfo>
 }
 
 export function AnimeGrid<TPageParam>({
@@ -55,39 +51,60 @@ export function AnimeGrid<TPageParam>({
   getNextPageParam,
   title,
   pageSize = 30,
+  initialPage,
 }: AnimeGridProps<TPageParam>) {
+  const language = useDisplayLanguage()
+  const containerRef = useRef<HTMLDivElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
-  const cols = useColumnCount()
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
+  const layoutObserverRef = useRef<ResizeObserver | null>(null)
+  const initialDataUpdatedAtRef = useRef(initialPage ? Date.now() : undefined)
+  const [cols, setCols] = useState(5)
 
   const {
     data,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    isFetchNextPageError,
+    isError,
     isLoading,
+    error,
+    refetch,
   } = useInfiniteQuery({
     queryKey,
     queryFn: ({ pageParam }) => queryFn(pageParam as TPageParam),
     initialPageParam,
     getNextPageParam: (lastPage, allPages, lastPageParam) =>
       getNextPageParam(lastPage, allPages, lastPageParam),
+    initialData: initialPage
+      ? { pages: [initialPage], pageParams: [initialPageParam] }
+      : undefined,
+    initialDataUpdatedAt: initialDataUpdatedAtRef.current,
+    staleTime: initialPage ? 60_000 : undefined,
   })
 
   // Flatten all pages into a single list (memoized to avoid re-creating objects)
   const items: AnimeCardItem[] = useMemo(
-    () =>
-      data?.pages.flatMap((page) =>
-        page.data.map((item) => ({
-          id: Number(item.id),
-          title: item.title_cn || item.title,
+    () => {
+      const seen = new Set<string>()
+      return data?.pages.flatMap((page) =>
+        page.data.filter((item) => {
+          if (seen.has(item.id)) return false
+          seen.add(item.id)
+          return true
+        }).map((item) => ({
+          id: item.id,
+          title: displayAnimeTitle(item, language),
           cover: item.cover ?? '',
           score: item.score ?? 0,
           year: item.year ?? 0,
           episodes: item.total_episodes,
           genre: [...new Set(item.genres)],
         })),
-      ) ?? [],
-    [data?.pages],
+      ) ?? []
+    },
+    [data?.pages, language],
   )
 
   /* ── Scroll container & margin ── */
@@ -95,34 +112,62 @@ export function AnimeGrid<TPageParam>({
   const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null)
   const [scrollMargin, setScrollMargin] = useState(0)
 
-  // Callback ref: find scroll container and measure offset when grid mounts
-  const gridCallbackRef = useCallback((node: HTMLDivElement | null) => {
-    gridRef.current = node
+  const measureLayout = useCallback(() => {
+    const container = containerRef.current
+    if (container) {
+      const next = calcColumns(container.clientWidth)
+      setCols((current) => (current === next ? current : next))
+    }
+
+    const grid = gridRef.current
+    const main = grid?.closest('main') as HTMLElement | null
+    if (!grid || !main) return
+    const gridRect = grid.getBoundingClientRect()
+    const mainRect = main.getBoundingClientRect()
+    const nextMargin = Math.round(gridRect.top - mainRect.top + main.scrollTop)
+    setScrollMargin((current) => current === nextMargin ? current : nextMargin)
+  }, [])
+
+  const containerCallbackRef = useCallback((node: HTMLDivElement | null) => {
+    resizeObserverRef.current?.disconnect()
+    containerRef.current = node
     if (!node) return
     const main = node.closest('main') as HTMLElement | null
-    if (!main) return
-    setScrollEl(main)
-    const gridRect = node.getBoundingClientRect()
-    const mainRect = main.getBoundingClientRect()
-    setScrollMargin(Math.round(gridRect.top - mainRect.top + main.scrollTop))
+    if (main) setScrollEl(main)
+    measureLayout()
+    resizeObserverRef.current = new ResizeObserver(measureLayout)
+    resizeObserverRef.current.observe(node)
+  }, [measureLayout])
+
+  // Callback ref: track upstream layout changes so the virtualizer stays aligned
+  // when sections above the grid mount asynchronously.
+  const gridCallbackRef = useCallback((node: HTMLDivElement | null) => {
+    layoutObserverRef.current?.disconnect()
+    gridRef.current = node
+    if (!node) return
+    measureLayout()
+    const main = node.closest('main') as HTMLElement | null
+    const routeRoot = main?.firstElementChild
+    if (routeRoot) {
+      layoutObserverRef.current = new ResizeObserver(measureLayout)
+      layoutObserverRef.current.observe(routeRoot)
+    }
+  }, [measureLayout])
+
+  useEffect(() => () => {
+    resizeObserverRef.current?.disconnect()
+    layoutObserverRef.current?.disconnect()
   }, [])
 
   // Re-measure margin on resize
   useEffect(() => {
     if (!scrollEl) return
     const handler = () => {
-      const grid = gridRef.current
-      if (!grid) return
-      const gridRect = grid.getBoundingClientRect()
-      const mainRect = scrollEl.getBoundingClientRect()
-      setScrollMargin((prev) => {
-        const next = Math.round(gridRect.top - mainRect.top + scrollEl.scrollTop)
-        return prev === next ? prev : next
-      })
+      measureLayout()
     }
     window.addEventListener('resize', handler)
     return () => window.removeEventListener('resize', handler)
-  }, [scrollEl])
+  }, [measureLayout, scrollEl])
 
   /* ── Virtualizer ── */
 
@@ -142,23 +187,52 @@ export function AnimeGrid<TPageParam>({
   useEffect(() => {
     const last = virtualItems[virtualItems.length - 1]
     if (!last) return
-    if (last.index >= rowCount - 2 && hasNextPage && !isFetchingNextPage) {
-      fetchNextPage()
+    if (
+      last.index >= rowCount - 2 &&
+      hasNextPage &&
+      !isFetchingNextPage &&
+      !isFetchNextPageError
+    ) {
+      void fetchNextPage()
     }
-  }, [virtualItems, rowCount, hasNextPage, isFetchingNextPage, fetchNextPage])
+  }, [
+    virtualItems,
+    rowCount,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    fetchNextPage,
+  ])
 
   return (
-    <section className="px-4 py-6 md:px-10 md:py-8 lg:px-12 xl:px-16">
+    <section className="mx-auto w-full max-w-7xl px-4 py-8 md:px-6 lg:px-10">
       {title && (
         <h2 className="text-xl font-bold text-foreground mb-6">{title}</h2>
       )}
 
+      <div ref={containerCallbackRef}>
       {isLoading ? (
-        /* Skeleton while initial data loads */
-        <div className="grid grid-cols-3 gap-x-3 gap-y-6 md:grid-cols-4 md:gap-x-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+        <div
+          className="grid gap-x-3 gap-y-6 md:gap-x-4"
+          style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+        >
           {Array.from({ length: pageSize }).map((_, i) => (
             <SkeletonCard key={i} />
           ))}
+        </div>
+      ) : isError && items.length === 0 ? (
+        <GridError
+          message={toErrorMessage(error)}
+          onRetry={() => void refetch()}
+        />
+      ) : items.length === 0 ? (
+        <div role="status" className="flex min-h-56 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+          <p>{isFetchingNextPage ? (language === 'zh' ? '正在搜索…' : 'Searching…') : (language === 'zh' ? '没有找到相关动画' : 'No anime found')}</p>
+          {hasNextPage && (
+            <Button variant="outline" size="sm" disabled={isFetchingNextPage} onClick={() => void fetchNextPage()}>
+              {language === 'zh' ? '继续搜索' : 'Search more'}
+            </Button>
+          )}
         </div>
       ) : (
         <>
@@ -202,28 +276,34 @@ export function AnimeGrid<TPageParam>({
 
           {/* Loading more indicator */}
           {isFetchingNextPage && (
-            <div className="grid grid-cols-3 gap-x-3 gap-y-6 md:grid-cols-4 md:gap-x-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+            <div
+              className="grid gap-x-3 gap-y-6 md:gap-x-4"
+              style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+            >
               {Array.from({ length: Math.min(pageSize, 14) }).map((_, i) => (
                 <SkeletonCard key={i} />
               ))}
             </div>
           )}
 
-          {/* End message */}
-          {!hasNextPage && items.length > 0 && (
-            <p className="text-center text-sm text-muted-foreground py-8">
-              已经到底了 ~
-            </p>
+          {isFetchNextPageError && (
+            <div className="flex justify-center py-7">
+              <Button type="button" variant="outline" size="sm" onClick={() => void fetchNextPage()}>
+                <RotateCcw aria-hidden="true" />
+                加载失败，重试
+              </Button>
+            </div>
           )}
         </>
       )}
+      </div>
     </section>
   )
 }
 
 function SkeletonCard() {
   return (
-    <div className="animate-pulse">
+    <div className="animate-pulse motion-reduce:animate-none">
       <div className="aspect-2/3 rounded-lg bg-card" />
       <div className="mt-2 space-y-1.5">
         <div className="h-4 w-3/4 rounded bg-card" />
@@ -233,8 +313,21 @@ function SkeletonCard() {
   )
 }
 
+function GridError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex min-h-56 flex-col items-center justify-center gap-3 text-center">
+      <AlertCircle className="text-destructive-readable" aria-hidden="true" />
+      <p role="alert" className="text-sm text-muted-foreground">{message}</p>
+      <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+        <RotateCcw aria-hidden="true" />
+        重试
+      </Button>
+    </div>
+  )
+}
+
 interface AnimeCardItem {
-  id: number
+  id: string
   title: string
   cover: string
   score: number
@@ -252,40 +345,50 @@ const AnimeCard = memo(function AnimeCard({ item }: AnimeCardProps) {
   const hasCover = item.cover && !imgFailed;
 
   return (
-    <Link to="/anime/$id" params={{ id: String(item.id) }} className="group cursor-pointer">
+    <Link
+      to="/anime/$id"
+      params={{ id: String(item.id) }}
+      className="group block cursor-pointer rounded-lg outline-none focus-visible:ring-[3px] focus-visible:ring-primary-readable"
+    >
       {/* Cover */}
       <div className="relative aspect-2/3 overflow-hidden rounded-lg bg-card">
         {hasCover ? (
           <img
             src={item.cover}
-            alt={item.title}
+            alt=""
             loading="lazy"
+            decoding="async"
             onError={() => setImgFailed(true)}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.025] motion-reduce:transition-none"
           />
         ) : (
           <CoverFallback title={item.title} />
         )}
         {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/30" />
+        <div className="absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/30 motion-reduce:transition-none" />
         {/* Score badge */}
         {item.score > 0 && (
-          <div className="absolute top-2 right-2 flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-xs text-yellow-400 backdrop-blur-sm">
-            <Star size={10} fill="currentColor" />
+          <div
+            className="absolute top-2 right-2 flex items-center gap-1 rounded-md bg-black/68 px-1.5 py-0.5 text-xs text-white/88"
+            aria-label={`评分 ${item.score}`}
+          >
+            <Star size={10} fill="currentColor" aria-hidden="true" />
             {item.score}
           </div>
         )}
       </div>
       {/* Info */}
       <div className="mt-2 space-y-1">
-        <h3 className="text-sm font-medium text-foreground line-clamp-1 group-hover:text-primary transition-colors">
+        <h3 className="text-sm font-medium text-foreground line-clamp-1 group-hover:text-primary-readable transition-colors motion-reduce:transition-none">
           {item.title}
         </h3>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>{item.year}</span>
-          <span>·</span>
-          <span>{item.episodes}话</span>
-        </div>
+        {(item.year > 0 || item.episodes > 0) && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {item.year > 0 && <span>{item.year}</span>}
+            {item.year > 0 && item.episodes > 0 && <span>·</span>}
+            {item.episodes > 0 && <span>{item.episodes}话</span>}
+          </div>
+        )}
         <div className="hidden gap-1.5 sm:flex">
           {item.genre.slice(0, 2).map((g, i) => (
             <span key={`${g}-${i}`} className="text-xs text-muted-foreground/70">
@@ -322,4 +425,10 @@ function hashStringToHue(str: string): number {
     hash = str.charCodeAt(i) + ((hash << 5) - hash);
   }
   return ((hash % 360) + 360) % 360;
+}
+
+function toErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === 'string' && error.trim()) return error
+  return '无法加载动画列表'
 }

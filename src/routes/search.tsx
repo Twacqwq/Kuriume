@@ -1,7 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { AnimeGrid } from "@/components/anime-grid";
+import { useDisplayLanguage } from "@/hooks/use-display-language";
+import type { DisplayLanguage } from "@/lib/store";
 import { invoke } from "@tauri-apps/api/core";
-import { Search } from "lucide-react";
 import type { AnimeInfo, PagedResult } from "@/lib/types";
 
 const PAGE_SIZE = 25;
@@ -13,9 +14,11 @@ interface SearchParams {
 async function fetchSearchResults(
   keyword: string,
   offset: number,
+  language: DisplayLanguage,
 ): Promise<PagedResult<AnimeInfo>> {
   return invoke<PagedResult<AnimeInfo>>("search", {
-    provider: "Bangumi",
+    provider: "AniList",
+    language,
     query: { keyword, limit: PAGE_SIZE, offset },
   });
 }
@@ -30,31 +33,29 @@ function getNextSearchPageParam(
 
 export const Route = createFileRoute("/search")({
   validateSearch: (search: Record<string, unknown>): SearchParams => ({
-    q: typeof search.q === "string" ? search.q : undefined,
+    q: typeof search.q === "string" ? search.q.trim() || undefined : undefined,
   }),
+  beforeLoad: ({ search }) => {
+    if (!search.q) throw redirect({ to: "/", replace: true });
+  },
   component: SearchPage,
 });
 
 function SearchPage() {
   const { q } = Route.useSearch();
+  const language = useDisplayLanguage();
 
-  if (!q) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 pt-[20vh] text-muted-foreground">
-        <Search size={40} strokeWidth={1.5} />
-        <p className="text-sm">输入关键词开始搜索</p>
-      </div>
-    );
-  }
+  if (!q) return null;
 
   return (
     <div>
       <AnimeGrid
-        queryKey={["search", q]}
-        queryFn={(offset: number) => fetchSearchResults(q, offset)}
+        key={`${q}:${language}`}
+        queryKey={["search", q, language]}
+        queryFn={(offset: number) => fetchSearchResults(q, offset, language)}
         initialPageParam={0}
         getNextPageParam={(lastPage) => getNextSearchPageParam(lastPage)}
-        title={`"${q}" 的搜索结果`}
+        title={language === "zh" ? `“${q}” 的搜索结果` : `Results for “${q}”`}
         pageSize={PAGE_SIZE}
       />
     </div>

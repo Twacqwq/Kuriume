@@ -1,4 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useDisplayLanguage } from "@/hooks/use-display-language";
+import { displayAnimeTitle } from "@/lib/display-language";
+import { currentDisplayLanguage } from "@/lib/catalog-queries";
+import type { DisplayLanguage } from "@/lib/store";
 import { invoke } from "@tauri-apps/api/core";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -12,36 +16,35 @@ const WEEKDAY_SHORT = ["日", "一", "二", "三", "四", "五", "六"];
 
 function getTodayWeekdayId(): number {
   const jsDay = new Date().getDay(); // 0=Sun
-  return jsDay === 0 ? 7 : jsDay;    // Bangumi: 1=Mon … 7=Sun
+  return jsDay === 0 ? 7 : jsDay;    // AniList view model: 1=Mon … 7=Sun
 }
 
-const calendarQueryOptions = {
-  queryKey: ["calendar", "Bangumi"],
+const calendarQueryOptions = (language: DisplayLanguage) => ({
+  queryKey: ["calendar", "AniList", language],
   queryFn: async () => {
     return invoke<CalendarEntry[]>("get_calendar", {
-      provider: "Bangumi",
+      provider: "AniList",
+      language,
     });
   },
   staleTime: 1000 * 60 * 30, // 30 min
-};
+});
 
 export const Route = createFileRoute("/calendar")({
   loader: async () => {
-    if (queryClient.getQueryData(calendarQueryOptions.queryKey)) {
-      queryClient.prefetchQuery(calendarQueryOptions);
-      return;
-    }
-    await queryClient.prefetchQuery(calendarQueryOptions);
+    const language = await currentDisplayLanguage();
+    await queryClient.prefetchQuery(calendarQueryOptions(language));
   },
   component: CalendarPage,
 });
 
 function CalendarPage() {
-  const { data: calendar = [] } = useQuery(calendarQueryOptions);
+  const language = useDisplayLanguage();
+  const { data: calendar = [], isLoading, isError, refetch } = useQuery(calendarQueryOptions(language));
   const todayId = getTodayWeekdayId();
   const reordered = reorderFromToday(calendar, todayId);
 
-  if (calendar.length === 0) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center pt-[20vh] text-muted-foreground">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -49,12 +52,21 @@ function CalendarPage() {
     );
   }
 
+  if (isError || calendar.length === 0) {
+    return (
+      <div className="flex min-h-72 flex-col items-center justify-center gap-4 text-sm text-muted-foreground">
+        <p role={isError ? "alert" : "status"}>{isError ? "无法载入放送日历" : "本周暂无放送安排"}</p>
+        <button type="button" onClick={() => void refetch()} className="rounded-lg px-4 py-2 text-primary-readable outline-none hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary-readable">重新载入</button>
+      </div>
+    );
+  }
+
   return (
-    <div className="px-4 py-6 md:px-10 md:py-8 lg:px-12 xl:px-16">
+    <div className="mx-auto max-w-7xl px-4 pb-8 pt-6 md:px-6 md:pb-16 md:pt-14 lg:px-10">
       <h1 className="text-xl font-bold text-foreground mb-6">每周放送</h1>
 
       {/* Weekday tabs */}
-      <div className="flex gap-2 mb-8 overflow-x-auto pb-1">
+      <div className="hide-scrollbar flex gap-2 mb-8 overflow-x-auto pb-1">
         {reordered.map((entry) => {
           const isToday = entry.weekday.id === todayId;
           return (
@@ -62,7 +74,7 @@ function CalendarPage() {
               key={entry.weekday.id}
               href={`#day-${entry.weekday.id}`}
               className={cn(
-                "relative shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+                "relative flex min-h-12 shrink-0 items-center rounded-lg px-4 py-2 text-sm font-medium transition-colors",
                 isToday
                   ? "bg-primary text-white shadow-md shadow-primary/25"
                   : "bg-white/5 text-muted-foreground hover:bg-white/8 hover:text-foreground"
@@ -108,7 +120,8 @@ function CalendarPage() {
 }
 
 const CalendarCard = memo(function CalendarCard({ item }: { item: AnimeInfo }) {
-  const title = item.title_cn || item.title;
+  const language = useDisplayLanguage();
+  const title = displayAnimeTitle(item, language);
   const [imgFailed, setImgFailed] = useState(false);
   const hasCover = item.cover && !imgFailed;
 

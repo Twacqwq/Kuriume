@@ -1,32 +1,35 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@custom-variant dark (&:where(.dark, .dark *));
 :root {
-  --radius: 0.625rem;
-  --background: oklch(0.1 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.15 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.15 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.45 0.12 25);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.2 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.2 0 0);
-  --muted-foreground: oklch(0.7 0 0);
-  --accent: oklch(0.2 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.5 0.2 25);
-  --border: oklch(0.25 0 0);
-  --input: oklch(0.25 0 0);
-  --ring: oklch(0.45 0.12 25);
-  --sidebar: oklch(0.12 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.45 0.12 25);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.2 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.25 0 0);
+  --radius: 0.75rem;
+  --background: #0d0d0f;
+  --foreground: #f2efef;
+  --card: #151416;
+  --card-foreground: #f2efef;
+  --popover: #191719;
+  --popover-foreground: #f2efef;
+  --primary: #904840;
+  --primary-foreground: #fff8f6;
+  --primary-readable: #d4938c;
+  --destructive-readable: #ee8585;
+  --secondary: #242124;
+  --secondary-foreground: #f2efef;
+  --muted: #242124;
+  --muted-foreground: #9c9698;
+  --accent: #292427;
+  --accent-foreground: #f2efef;
+  --destructive: #b44e4e;
+  --border: #312d30;
+  --input: #312d30;
+  --ring: #904840;
+  --sidebar: #111012;
+  --sidebar-foreground: #f2efef;
+  --sidebar-primary: #904840;
+  --sidebar-primary-foreground: #fff8f6;
+  --sidebar-accent: #242124;
+  --sidebar-accent-foreground: #f2efef;
+  --sidebar-border: #312d30;
 }
 @theme inline {
   --color-background: var(--background);
@@ -37,6 +40,8 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-readable: var(--primary-readable);
+  --color-destructive-readable: var(--destructive-readable);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -67,17 +72,122 @@ body,
 #root {
   @apply h-full overflow-hidden;
 }
+
+.app-shell { height: 100dvh; }
+.app-shell[data-mobile="true"] { height: 100%; padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+.mobile-topbar { padding-top: env(safe-area-inset-top, 0px); }
+.mobile-tabbar { padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+.app-shell[data-mobile="true"] .app-sidebar { padding-top: max(1rem, env(safe-area-inset-top, 0px)); }
+.player-header { min-height: 64px; padding-top: env(safe-area-inset-top, 0px); }
+.app-shell[data-mobile="false"] .player-header { min-height: 68px; padding-top: 20px; }
+.player-layout { grid-template-rows: auto minmax(0, 1fr); }
+.player-video:not(.fixed) { height: min(56.25vw, 42dvh); }
+.player-options { border-top-width: 1px; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.player-video.fixed { padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+.artplayer-app[data-mobile="true"] .art-controls .art-control-volume { display: none; }
+.artplayer-app[data-mobile="true"] video { touch-action: none; }
+@media (min-width: 768px) {
+  .app-content { padding-top: env(safe-area-inset-top, 0px); padding-bottom: 0; }
+}
+@media (min-width: 900px) and (min-height: 540px) {
+  .player-layout { grid-template-columns: minmax(0, 1fr) clamp(19rem, 25vw, 23rem); grid-template-rows: minmax(0, 1fr); }
+  .player-video:not(.fixed) { height: 100%; }
+  .player-options { grid-column: 2; border-top-width: 0; border-left-width: 1px; }
+}
+@media (pointer: coarse) {
+  button, [role="tab"], [data-slot="select-trigger"] { min-height: 48px; }
+  .artplayer-app .art-control { min-width: 48px; }
+  .artplayer-app .art-controls-bottom { height: 48px; }
+}
 body {
   @apply m-0 text-foreground antialiased;
+  background:
+    radial-gradient(circle at 82% -10%, rgba(144, 72, 64, 0.08), transparent 30rem),
+    var(--background);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
     "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
     sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(144, 72, 64, 0.45);
+  color: #fff;
+}
+
+.artplayer-app video::cue {
+  font-size: clamp(16px, 2vw, 28px);
+  color: #fff;
+  background-color: rgba(0, 0, 0, 0.55);
+  text-shadow: 0 1px 3px #000;
+}
+
+* {
+  scrollbar-color: var(--muted) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--muted);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+  background-clip: padding-box;
+}
+
+@keyframes hero-media-in {
+  from {
+    opacity: 0.45;
+    transform: scale(1.012);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes hero-copy-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-media-enter,
+.hero-poster-enter {
+  animation: hero-media-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.hero-copy-enter {
+  animation: hero-copy-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.artplayer-app {
+  --art-theme: #904840;
+  --art-progress-color: #904840;
 }
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
 }
-/* Hide scrollbar for horizontal scroll areas */
+/* Keep scroll interaction while removing browser scrollbar chrome. */
 .hide-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;

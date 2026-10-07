@@ -3,61 +3,54 @@
 <p align="center">
   <img src="src-tauri/icons/icon.png" width="138" />
   <h1 align="center">Kuriume</h1>
-  <div align="center">
-    <a href="https://github.com/Twacqwq/Kuriume" target="_blank">
-      <img alt="GitHub Stars" src="https://img.shields.io/github/stars/Twacqwq/Kuriume?style=flat-square" /></a>
-    <a href="https://github.com/Twacqwq/Kuriume/releases" target="_blank">
-      <img alt="GitHub Release" src="https://img.shields.io/github/v/release/Twacqwq/Kuriume?style=flat-square" /></a>
-    <a href="https://github.com/Twacqwq/Kuriume/blob/main/LICENSE" target="_blank">
-      <img alt="License" src="https://img.shields.io/github/license/Twacqwq/Kuriume?style=flat-square" /></a>
-  </div>
-  <div align="center">An anime aggregation, parsing, and playback app</div>
+  <div align="center">A quiet desktop anime discovery and playback app</div>
 </p>
 
-<!-- Preview -->
-<p align="center">
-  <video width="900" autoplay loop muted playsinline>
-    <source src="assets/preview.webm" type="video/webm" />
-    <source src="assets/preview.mp4" type="video/mp4" />
-  </video>
-</p>
+Kuriume V1 is a desktop-first rebuild focused strictly on animation. AniList provides the catalog; independent playback providers find media without requiring users to configure API tokens.
 
 ## Features
 
-- **Stream & Watch** — Search torrents and start watching immediately, no waiting for downloads to finish
-- **High-Quality Playback** — Real-time Anime4K upscaling for a sharper picture
-- **Multiple Sources** — Browse anime info from Bangumi, find episodes from online sites or torrent trackers
-- **Manage Your Library** — Watchlist, watch history with auto-resume, and airing calendar to track new episodes
+- **Anime discovery** — seasonal lists, search, airing calendar, details, episodes, and characters from AniList
+- **Unified in-app playback** — Anime1 is the default; MP4/HLS streams use ArtPlayer, with no foreground website or verification flow
+- **Anonymous sources** — Anime1 → Xifan Next → AGE → HiAnime; no account or user-entered key. Short-lived anonymous media cookies stay inside the playback session. Sources with playback ads are excluded from built-in integrations.
+- **Declarative sources** — import JSON rules with no arbitrary JavaScript; AGE动漫 is included as the first built-in rule
+- **Local library** — stable internal media UUIDs, watching states, history, resume, and confirmed source bindings in SQLite
+- **Quiet Cinema UI** — a desktop shell built around the Kuriume (`#904840`) accent color
 
-## Installation
+V1 is intentionally incompatible with the previous database and removes torrent playback, mpv, Anime4K, trackers, and external-player handoff.
 
-Download the latest version from [GitHub Releases](https://github.com/Twacqwq/Kuriume/releases/latest).
+## Development
 
-| Platform | Requirement |
-|----------|-------------|
-| macOS    | macOS 11+ |
-| Windows  | Windows 10+ |
-| iOS      | iOS 16+ |
+```bash
+npm install
+npm run tauri dev
+```
 
-Distribution via platform-specific app stores is planned.
+Useful checks:
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, build instructions, and guidelines.
+```bash
+npm run build
+cargo check --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml --workspace
+```
+
+## Source boundary
+
+Kuriume does not host video. Community rules only describe how to search a site and enumerate its episodes. The user must confirm title and season mappings, and is responsible for using sources they are legally allowed to access.
 
 ## Thanks
 
 - App icon artwork by [ゆきうなぎ](https://www.pixiv.net/artworks/138196800) on Pixiv
 
-## Third-Party Dependencies
-
-This project uses the following open-source libraries, and complies with their respective licenses:
+## Core dependencies
 
 | Library | License |
-|---------|----------|
+|---------|---------|
 | [Tauri](https://tauri.app/) | MIT / Apache-2.0 |
-| [mpv](https://mpv.io/) | GPLv2+ |
-| [FFmpeg](https://ffmpeg.org/) | LGPLv2.1+ |
-| [librqbit](https://github.com/ikatson/librqbit) | Apache-2.0 |
-| [Anime4K](https://github.com/bloc97/Anime4K) | MIT |
+| [React](https://react.dev/) | MIT |
+| [ArtPlayer](https://artplayer.org/) | MIT |
+| [hls.js](https://github.com/video-dev/hls.js/) | Apache-2.0 |
+| [rusqlite](https://github.com/rusqlite/rusqlite) | MIT |
 
 ## License
 
