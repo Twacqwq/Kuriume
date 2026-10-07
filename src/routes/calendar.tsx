@@ -62,7 +62,7 @@ function CalendarPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-6 pb-16 pt-14 lg:px-10">
+    <div className="mx-auto max-w-7xl px-4 pb-8 pt-6 md:px-6 md:pb-16 md:pt-14 lg:px-10">
       <h1 className="text-xl font-bold text-foreground mb-6">每周放送</h1>
 
       {/* Weekday tabs */}
@@ -74,7 +74,7 @@ function CalendarPage() {
               key={entry.weekday.id}
               href={`#day-${entry.weekday.id}`}
               className={cn(
-                "relative shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+                "relative flex min-h-12 shrink-0 items-center rounded-lg px-4 py-2 text-sm font-medium transition-colors",
                 isToday
                   ? "bg-primary text-white shadow-md shadow-primary/25"
                   : "bg-white/5 text-muted-foreground hover:bg-white/8 hover:text-foreground"

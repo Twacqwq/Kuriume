@@ -1,0 +1,7 @@
+{
+  "identifier": "mobile",
+  "description": "Native playback controls in the main mobile view only",
+  "platforms": ["iOS", "android"],
+  "webviews": ["main"],
+  "permissions": ["core:default", "mobile:default"]
+}

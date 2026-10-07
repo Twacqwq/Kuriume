@@ -1,4 +1,4 @@
-//! macOS MP4 transport. Only opaque registered sessions are reachable; this is
+//! Apple media transport. Only opaque registered sessions are reachable; this is
 //! not a URL-forwarding endpoint. All upstream scope/range/cookie checks stay in
 //! the shared media handler.
 use super::{error_response, MediaProxyState};
@@ -16,6 +16,17 @@ pub(super) struct Server {
 }
 
 impl MediaProxyState {
+    #[cfg(debug_assertions)]
+    pub(crate) fn set_dev_origin(&self, url: Option<&reqwest::Url>) {
+        if let Ok(mut origin) = self.inner.dev_origin.lock() {
+            // Tauri uses the host's LAN address for real-device development.
+            // Trust exactly that configured origin, never arbitrary LAN callers.
+            *origin = url
+                .filter(|url| matches!(url.scheme(), "http" | "https"))
+                .map(|url| url.origin().ascii_serialization());
+        }
+    }
+
     pub(super) fn loopback_address(&self) -> Result<SocketAddr, String> {
         let mut server = self
             .inner
@@ -55,15 +66,19 @@ impl MediaProxyState {
                     let service = service_fn(move |request: Request<hyper::body::Incoming>| {
                         let inner = weak.upgrade();
                         async move {
-                            let response = if !valid_request(&request, address) {
-                                error_response(StatusCode::FORBIDDEN, "Invalid media request")
-                            } else if let Some(inner) = inner {
-                                MediaProxyState { inner }
-                                    .response(request.map(|_| Vec::new()))
-                                    .await
-                            } else {
-                                error_response(StatusCode::GONE, "Media transport closed")
-                            };
+                            let dev_origin = inner
+                                .as_ref()
+                                .and_then(|inner| inner.dev_origin.lock().ok()?.clone());
+                            let response =
+                                if !valid_request(&request, address, dev_origin.as_deref()) {
+                                    error_response(StatusCode::FORBIDDEN, "Invalid media request")
+                                } else if let Some(inner) = inner {
+                                    MediaProxyState { inner }
+                                        .response(request.map(|_| Vec::new()))
+                                        .await
+                                } else {
+                                    error_response(StatusCode::GONE, "Media transport closed")
+                                };
                             Ok::<_, Infallible>(response.map(|body| Full::new(Bytes::from(body))))
                         }
                     });
@@ -87,7 +102,7 @@ impl MediaProxyState {
     }
 }
 
-fn valid_request<B>(request: &Request<B>, address: SocketAddr) -> bool {
+fn valid_request<B>(request: &Request<B>, address: SocketAddr, dev_origin: Option<&str>) -> bool {
     // Exact Host prevents DNS-rebinding; a guessed path cannot create a session.
     request.headers().get("host").and_then(|v| v.to_str().ok())
         == Some(address.to_string().as_str())
@@ -100,10 +115,15 @@ fn valid_request<B>(request: &Request<B>, address: SocketAddr) -> bool {
             .get("content-length")
             .is_none_or(|v| v == "0")
         && request.headers().get("origin").is_none_or(|origin| {
-            matches!(
-                origin.to_str().unwrap_or(""),
-                "tauri://localhost" | "http://tauri.localhost" | "http://localhost:1420" | "null"
-            )
+            let origin = origin.to_str().unwrap_or("");
+            dev_origin == Some(origin)
+                || matches!(
+                    origin,
+                    "tauri://localhost"
+                        | "http://tauri.localhost"
+                        | "http://localhost:1420"
+                        | "null"
+                )
         })
 }
 
@@ -111,6 +131,28 @@ fn valid_request<B>(request: &Request<B>, address: SocketAddr) -> bool {
 mod tests {
     use super::*;
     use kuriume_provider::PlaybackHeaders;
+
+    #[test]
+    fn mobile_dev_trusts_only_the_configured_origin() {
+        let address = "127.0.0.1:4567".parse().unwrap();
+        let request = Request::builder()
+            .uri("/session")
+            .header("host", "127.0.0.1:4567")
+            .header("origin", "http://192.168.1.4:1420")
+            .body(())
+            .unwrap();
+        assert!(!valid_request(&request, address, None));
+        assert!(valid_request(
+            &request,
+            address,
+            Some("http://192.168.1.4:1420")
+        ));
+        assert!(!valid_request(
+            &request,
+            address,
+            Some("http://192.168.1.5:1420")
+        ));
+    }
 
     #[tokio::test]
     async fn mp4_uses_loopback_with_scoped_sessions_and_listener_lifetime() {
@@ -166,7 +208,10 @@ mod tests {
                 Some("application/vnd.apple.mpegurl"),
             )
             .unwrap();
+        #[cfg(target_os = "macos")]
         assert!(hls.starts_with("kuriume-media:"));
+        #[cfg(target_os = "ios")]
+        assert!(hls.starts_with("http://127.0.0.1:"));
         drop(proxy);
         // Listener shutdown is asynchronous, but must not keep the state alive.
         tokio::time::timeout(Duration::from_secs(1), async {

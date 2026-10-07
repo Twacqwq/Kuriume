@@ -8,6 +8,11 @@ const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig(async () => ({
   envPrefix: ["VITE_", "TAURI_ENV_PLATFORM"],
+  // Match the mobile WebView baseline; keep the existing desktop build target.
+  build: {
+    target: process.env.TAURI_ENV_PLATFORM === "ios" ? "safari16.4"
+      : process.env.TAURI_ENV_PLATFORM === "android" ? "chrome111" : undefined,
+  },
   plugins: [
     tanstackRouter({
       target: "react",

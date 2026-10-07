@@ -5,6 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { settingsQueryOptions } from "@/hooks/use-display-language";
 import { refreshCatalogLanguage } from "@/lib/catalog-queries";
+import { isMobileApp } from "@/lib/platform";
 import {
   settingsApi,
   type DisplayLanguage,
@@ -141,7 +142,7 @@ function SettingsPage() {
   };
 
   return (
-    <div className="mx-auto min-h-full max-w-4xl px-6 pb-24 pt-14 lg:px-10">
+    <div className="mx-auto min-h-full max-w-4xl px-4 pb-8 pt-6 md:px-6 md:pb-24 md:pt-14 lg:px-10">
       <div className="flex min-h-9 items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-[-0.02em]">设置</h1>
         {feedback && <SettingsFeedback feedback={feedback} />}
@@ -185,7 +186,7 @@ function SettingsPage() {
           </SettingsGroup>
 
           <SettingsGroup title="播放">
-            <SettingRow icon={<Volume2 />} label="默认音量">
+            {!isMobileApp && <SettingRow icon={<Volume2 />} label="默认音量">
               <div className="flex w-full items-center gap-4 md:w-64">
                 <Slider
                   id="default-volume"
@@ -214,7 +215,7 @@ function SettingsPage() {
                   {Math.round(settings.default_volume * 100)}%
                 </output>
               </div>
-            </SettingRow>
+            </SettingRow>}
 
             <SettingRow icon={<Gauge />} label="默认倍速">
               <ToggleGroup

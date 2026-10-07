@@ -4,9 +4,17 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "test": "node --test scripts/*.test.mjs",
+    "check:version": "node scripts/check-version.mjs",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "ios:dev": "tauri ios dev",
+    "ios:build:sim": "tauri ios build --debug --target aarch64-sim --ci",
+    "ios:build:ipa": "node scripts/build-ios-ipa.mjs",
+    "android:dev": "tauri android dev",
+    "android:keygen": "node scripts/create-android-key.mjs",
+    "android:build:apk": "node scripts/build-android-apk.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

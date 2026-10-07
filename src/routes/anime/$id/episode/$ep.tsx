@@ -206,6 +206,16 @@ function EpisodePage() {
 
   const goBack = () => router.navigate({ to: "/anime/$id", params: { id }, replace: true });
 
+  useEffect(() => {
+    const back = (event: Event) => {
+      event.preventDefault();
+      if (isFullscreen) fullscreen.close();
+      else void router.navigate({ to: "/anime/$id", params: { id }, replace: true });
+    };
+    window.addEventListener("kuriume-back", back);
+    return () => window.removeEventListener("kuriume-back", back);
+  }, [isFullscreen, fullscreen.close, router, id]);
+
   const lastSavedRef = useRef(0);
   const saveProgress = useCallback(() => {
     const snapshot = progressRef.current;
@@ -221,6 +231,18 @@ function EpisodePage() {
     progressRef.current = null;
     lastSavedRef.current = 0;
   }, [episodeNumber, saveProgress]);
+
+  useEffect(() => {
+    const save = () => saveProgress();
+    document.addEventListener("visibilitychange", save);
+    document.addEventListener("kuriume-background", save);
+    window.addEventListener("pagehide", save);
+    return () => {
+      document.removeEventListener("visibilitychange", save);
+      document.removeEventListener("kuriume-background", save);
+      window.removeEventListener("pagehide", save);
+    };
+  }, [saveProgress]);
 
   const onProgress = useCallback(
     (position: number, duration: number) => {
@@ -257,11 +279,11 @@ function EpisodePage() {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background">
-      <header inert={isFullscreen} aria-hidden={isFullscreen} className={cn("flex h-17 shrink-0 items-center gap-3 border-b border-white/6 px-5 pt-5", isFullscreen && "invisible")}>
+      <header inert={isFullscreen} aria-hidden={isFullscreen} className={cn("player-header flex shrink-0 items-center gap-3 border-b border-white/6 px-3", isFullscreen && "invisible")}>
         <button
           type="button"
           onClick={goBack}
-          className="grid h-9 w-9 place-items-center rounded-full text-foreground/65 outline-none transition-colors hover:bg-white/6 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-primary-readable"
+          className="grid size-12 shrink-0 place-items-center rounded-full text-foreground/65 outline-none transition-colors hover:bg-white/6 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-primary-readable"
           aria-label="返回详情"
         >
           <ArrowLeft size={18} />
@@ -277,8 +299,8 @@ function EpisodePage() {
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_clamp(19rem,25vw,23rem)]">
-        <main className={cn("min-h-0 min-w-0 bg-black", isFullscreen ? "fixed inset-0 z-50" : "relative")}>
+      <div className="player-layout grid min-h-0 flex-1">
+        <main className={cn("player-video min-h-0 min-w-0 bg-black", isFullscreen ? "fixed inset-0 z-50" : "relative")}>
           {fullscreen.error && <p role="alert" className="absolute left-1/2 top-16 z-50 -translate-x-1/2 rounded-lg bg-secondary px-4 py-2 text-sm text-foreground">{fullscreen.error}</p>}
           {resolver.asset && assetIsCurrent ? (
             <PlaybackSurface
@@ -312,7 +334,7 @@ function EpisodePage() {
           )}
         </main>
 
-        <aside inert={isFullscreen} aria-hidden={isFullscreen} aria-label="播放与选集" className={cn("col-start-2 min-h-0 min-w-0 overflow-hidden border-l border-white/6 bg-card/35", isFullscreen && "invisible")}>
+        <aside inert={isFullscreen} aria-hidden={isFullscreen} aria-label="播放与选集" className={cn("player-options min-h-0 min-w-0 overflow-hidden border-white/6 bg-card/35", isFullscreen && "invisible")}>
           <SourcePanel
             source={onlineSource}
             resolver={resolver}

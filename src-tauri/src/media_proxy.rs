@@ -17,7 +17,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::http::{Request, Response, StatusCode};
 use tauri::UriSchemeResponder;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 mod loopback;
 
 const SESSION_LIMIT: usize = 64;
@@ -34,13 +34,15 @@ pub struct MediaProxyState {
 struct MediaProxyInner {
     client: reqwest::Client,
     sessions: Mutex<HashMap<String, MediaSession>>,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     loopback: Mutex<Option<loopback::Server>>,
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    dev_origin: Mutex<Option<String>>,
 }
 
 #[derive(Clone)]
 struct MediaSession {
-    token: String,
+    local_base: String,
     url: reqwest::Url,
     headers: PlaybackHeaders,
     cookie_origin: String,
@@ -64,8 +66,10 @@ impl MediaProxyState {
             inner: Arc::new(MediaProxyInner {
                 client,
                 sessions: Mutex::new(HashMap::new()),
-                #[cfg(target_os = "macos")]
+                #[cfg(any(target_os = "macos", target_os = "ios"))]
                 loopback: Mutex::new(None),
+                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                dev_origin: Mutex::new(None),
             }),
         }
     }
@@ -80,8 +84,12 @@ impl MediaProxyState {
         let url = validate_remote_url(raw_url, allowed_hosts)?;
         let created_at = unix_time_ms();
         let token = random_token()?;
+        #[cfg(target_os = "ios")]
+        let local_base = format!("http://{}/{token}", self.loopback_address()?);
+        #[cfg(not(target_os = "ios"))]
+        let local_base = local_media_url(&token);
         let session = MediaSession {
-            token: token.clone(),
+            local_base: local_base.clone(),
             cookie_origin: url.origin().ascii_serialization(),
             url,
             headers,
@@ -118,7 +126,7 @@ impl MediaProxyState {
         if mime_type.unwrap_or("video/mp4") == "video/mp4" {
             return Ok(format!("http://{}/{token}", self.loopback_address()?));
         }
-        Ok(local_media_url(&token))
+        Ok(local_base)
     }
 
     pub fn respond(&self, request: Request<Vec<u8>>, responder: UriSchemeResponder) {
@@ -412,7 +420,7 @@ fn rewrite_playlist(bytes: &[u8], session: &MediaSession) -> Result<Vec<u8>, Str
             return Err("Too many HLS resources".into());
         }
         resources.insert(id.clone(), url);
-        Ok(format!("{}/{id}", local_media_url(&session.token)))
+        Ok(format!("{}/{id}", session.local_base))
     };
     let mut result = String::new();
     for line in playlist.lines() {
@@ -505,6 +513,7 @@ fn random_token() -> Result<String, String> {
     Ok(token)
 }
 
+#[cfg(any(not(target_os = "ios"), test))]
 fn local_media_url(token: &str) -> String {
     #[cfg(any(target_os = "windows", target_os = "android"))]
     {
@@ -551,7 +560,7 @@ mod tests {
 
     fn hls_session() -> MediaSession {
         MediaSession {
-            token: "test-hls".into(),
+            local_base: local_media_url("test-hls"),
             url: "https://media.example/show/master.m3u8".parse().unwrap(),
             headers: PlaybackHeaders::new(),
             cookie_origin: "https://media.example".into(),
@@ -604,6 +613,17 @@ mod tests {
         ] {
             assert!(rewrite_playlist(input.as_bytes(), &session).is_err());
         }
+    }
+
+    #[test]
+    fn apple_native_hls_keeps_every_resource_on_the_loopback_transport() {
+        let mut session = hls_session();
+        session.local_base = "http://127.0.0.1:45678/opaque-session".into();
+        let input = b"#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"key\"\n#EXT-X-MEDIA:TYPE=SUBTITLES,URI=\"sub/index.m3u8\"\n#EXT-X-MAP:URI=\"init.mp4\"\n720/index.m3u8\nsegment.ts\n";
+        let output = String::from_utf8(rewrite_playlist(input, &session).unwrap()).unwrap();
+        assert_eq!(output.matches(&session.local_base).count(), 5);
+        assert!(!output.contains("kuriume-media"));
+        assert!(!output.contains("https://"));
     }
 
     #[tokio::test]

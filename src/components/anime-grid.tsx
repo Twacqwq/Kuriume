@@ -205,7 +205,7 @@ export function AnimeGrid<TPageParam>({
   ])
 
   return (
-    <section className="mx-auto w-full max-w-7xl px-6 py-8 lg:px-10">
+    <section className="mx-auto w-full max-w-7xl px-4 py-8 md:px-6 lg:px-10">
       {title && (
         <h2 className="text-xl font-bold text-foreground mb-6">{title}</h2>
       )}

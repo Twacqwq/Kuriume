@@ -33,8 +33,30 @@ openspec/
 # iOS build intermediates
 .ios-build/
 .ios-sim-build/
+/artifacts/
+/.local/
+*.jks
+*.p12
+*.keystore
+keystore.properties
 
-# Tauri generated code
-src-tauri/gen/
+# Commit native project sources, not generated bindings or build output.
+src-tauri/gen/schemas/
+src-tauri/gen/apple/Externals/
+src-tauri/gen/apple/assets/
+src-tauri/gen/apple/build/
+src-tauri/gen/apple/Pods/
+src-tauri/gen/apple/ExportOptions.plist
+src-tauri/gen/apple/**/*.xcuserstate
+src-tauri/gen/apple/**/xcuserdata/
+src-tauri/gen/android/.gradle/
+src-tauri/gen/android/**/build/
+src-tauri/gen/android/local.properties
+src-tauri/gen/android/tauri.settings.gradle
+src-tauri/gen/android/app/tauri.build.gradle.kts
+src-tauri/gen/android/app/tauri.properties
+src-tauri/gen/android/app/src/main/jniLibs/
+**/.tauri/
+**/.build/
 
 scripts/__pycache__

@@ -21,16 +21,18 @@ build:
 
 # Run frontend and Rust compile checks.
 check:
+    npm run check:version
     npm run build
-    cargo check --manifest-path src-tauri/Cargo.toml --workspace
+    cargo check --manifest-path src-tauri/Cargo.toml --workspace --all-targets --locked
 
-# Run Rust tests.
+# Run offline frontend regressions and Rust tests (live source tests opt in).
 test:
-    cargo test --manifest-path src-tauri/Cargo.toml --workspace
+    npm test
+    cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
 
 # Run Clippy with warnings denied.
 lint:
-    cargo clippy --manifest-path src-tauri/Cargo.toml --workspace -- -D warnings
+    cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets --locked -- -D warnings
 
 # Format Rust code.
 fmt:

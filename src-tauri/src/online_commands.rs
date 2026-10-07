@@ -9,10 +9,14 @@ use kuriume_provider::{
 };
 use serde::Serialize;
 use std::collections::HashMap;
+#[cfg(desktop)]
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{command, AppHandle, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{command, AppHandle, State};
+#[cfg(desktop)]
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 
+#[cfg(desktop)]
 static SNIFFER_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 // ── State ────────────────────────────────────────────────────────
@@ -371,14 +375,34 @@ async fn sniff_video_url_impl(
     result.unwrap_or_else(|_| Err("Video URL sniffing timed out (30s)".into()))
 }
 
-#[cfg(not(desktop))]
+#[cfg(mobile)]
 async fn sniff_video_url_impl(
-    _app: AppHandle,
-    _episode_url: String,
-    _allowed_hosts: Vec<String>,
-    _user_agent: Option<String>,
+    app: AppHandle,
+    episode_url: String,
+    allowed_hosts: Vec<String>,
+    user_agent: Option<String>,
 ) -> Result<(String, &'static str), String> {
-    Err("Background source resolution currently requires the desktop app".into())
+    validate_provider_url(&episode_url, &allowed_hosts, "sniff")?;
+    tokio::time::timeout(std::time::Duration::from_secs(36), async move {
+        let urls = tauri_plugin_mobile::sniff(
+            app,
+            serde_json::json!({
+                "url": episode_url, "allowedHosts": allowed_hosts,
+                "userAgent": user_agent, "script": SNIFFER_SCRIPT,
+            }),
+        )
+        .await?;
+        for url in urls.into_iter().take(16) {
+            if url.len() <= 8_192 {
+                if let Ok(mime) = probe_media_url(&url).await {
+                    return Ok((url, mime));
+                }
+            }
+        }
+        Err("No supported media found on this source".into())
+    })
+    .await
+    .map_err(|_| "Source resolution timed out".to_string())?
 }
 
 async fn probe_media_url(raw: &str) -> Result<&'static str, String> {

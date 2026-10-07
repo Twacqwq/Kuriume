@@ -94,7 +94,7 @@ export function HeroBanner({ items }: HeroBannerProps) {
 
       <div
         key={`${media.id}-content`}
-        className="hero-copy-enter relative z-10 flex h-full max-w-3xl flex-col justify-end px-8 pb-10 pt-12 motion-reduce:animate-none lg:px-12 lg:pb-12"
+        className="hero-copy-enter relative z-10 flex h-full max-w-3xl flex-col justify-end px-5 pb-7 pt-10 motion-reduce:animate-none md:px-8 md:pb-10 lg:px-12 lg:pb-12"
       >
         <div className="mb-3 flex flex-wrap items-center gap-x-2 text-xs font-medium text-white/72">
           {media.year && <span>{media.year}</span>}
@@ -105,7 +105,7 @@ export function HeroBanner({ items }: HeroBannerProps) {
 
         <h1
           id={`hero-title-${media.anilist_id}`}
-          className="max-w-2xl text-balance text-4xl font-semibold leading-[1.08] tracking-[-0.025em] text-white xl:text-5xl"
+          className="max-w-2xl text-balance text-2xl font-semibold leading-tight tracking-[-0.025em] text-white md:text-4xl xl:text-5xl"
         >
           {title}
         </h1>

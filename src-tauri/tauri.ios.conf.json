@@ -1,0 +1,8 @@
+{
+  "app": {
+    "windows": [{ "label": "main", "title": "Kuriume" }]
+  },
+  "bundle": {
+    "iOS": { "minimumSystemVersion": "16.4", "infoPlist": "Info.ios.plist" }
+  }
+}

@@ -36,7 +36,7 @@ function HomePage() {
 
   return (
     <div className="min-h-full pb-16">
-      <div className="mx-auto max-w-7xl px-6 pt-12 lg:px-10">
+      <div className="mx-auto max-w-7xl px-4 pt-4 md:px-6 md:pt-12 lg:px-10">
         {!isLoading && spotlight.length === 0 ? (
           <section className="flex min-h-72 flex-col items-center justify-center gap-4 rounded-2xl bg-card px-6 text-center">
             <h1 className="text-lg font-semibold">{isError ? "动漫列表暂时无法载入" : "暂无推荐作品"}</h1>
@@ -49,7 +49,7 @@ function HomePage() {
             <h2 id="continue-watching-title" className="text-lg font-semibold tracking-tight">
               继续观看
             </h2>
-            <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-3">
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {history.slice(0, 6).map((entry) => {
                 const percent =
                   entry.duration > 0
@@ -106,7 +106,7 @@ function HomePage() {
           <h2 id="season-focus-title" className="text-lg font-semibold tracking-tight">
             本季焦点
           </h2>
-          <div className="mt-5 grid grid-cols-4 gap-4 xl:grid-cols-7">
+          <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
             {spotlight.slice(5, 12).map((media) => (
               <Link
                 key={media.id}

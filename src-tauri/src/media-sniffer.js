@@ -62,6 +62,7 @@
   } catch { /* Non-configurable libraries are covered by network observation. */ }
 
   function inspect(video) {
+    video.muted = true;
     if (video.__kuriumeWatched) return;
     video.__kuriumeWatched = true;
     const capture = () => {

@@ -1,106 +1,164 @@
-name: Build & Release
+name: Build and Release
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag, such as v0.2.0 or v0.2.0-beta.1
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
 
 jobs:
-  build-macos:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: '1.93.0'
+      - id: version
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: node scripts/check-version.mjs "$RELEASE_TAG"
+      - id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  checks:
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
+
+  desktop:
+    needs: [prepare, checks]
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: aarch64-apple-darwin
-            runner: macos-latest
-
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            bundle: dmg
+            artifact: macos-arm64
+            extension: dmg
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            bundle: nsis
+            artifact: windows-x64
+            extension: exe
     runs-on: ${{ matrix.runner }}
-
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: '1.93.0'
           targets: ${{ matrix.target }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
-          node-version: 22
-          cache: npm
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Ensure the correct target is used for cross-compilation
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Kuriume ${{ github.ref_name }}'
-          releaseBody: ''
-          releaseDraft: false
-          prerelease: false
-          args: --target ${{ matrix.target }}
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup MSVC dev tools
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
+          workspaces: src-tauri -> target
       - run: npm ci
-
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+      # Updater signatures are not OS code signing. No updater is installed yet.
+      # Ad-hoc signing makes the macOS bundle structurally valid, not notarized.
+      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: '-'
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Kuriume ${{ github.ref_name }}'
-          releaseBody: ''
-          releaseDraft: false
-          prerelease: false
-  # build-linux:
-  #   runs-on: ubuntu-22.04
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: dtolnay/rust-toolchain@stable
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: 22
-  #         cache: npm
-  #     - run: npm ci
-  #     - name: Install system dependencies
-  #       run: |
-  #         sudo apt-get update
-  #         sudo apt-get install -y \
-      #           libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
-  #     - uses: tauri-apps/tauri-action@v0
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #       with:
-  #         tagName: ${{ github.ref_name }}
-  #         releaseName: 'Kuriume ${{ github.ref_name }}'
-  #         releaseDraft: true
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} -- --locked
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ matrix.artifact }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.bundle }}/*.${{ matrix.extension }}
+          if-no-files-found: error
+          retention-days: 14
+
+  mobile:
+    needs: [prepare, checks]
+    uses: ./.github/workflows/mobile-build.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
+      artifact-prefix: release
+    secrets: inherit
+
+  publish:
+    needs: [prepare, desktop, mobile]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: github-release
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_SHA: ${{ needs.prepare.outputs.sha }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-*
+          path: artifacts
+          merge-multiple: true
+      - name: Check artifacts and generate checksums
+        working-directory: artifacts
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          macos=( *.dmg )
+          windows=( *.exe )
+          ios=( *.ipa )
+          android=( *.apk )
+          test "${#macos[@]}" -eq 1
+          test "${#windows[@]}" -eq 1
+          test "${#ios[@]}" -eq 1
+          test "${#android[@]}" -eq 1
+          sha256sum -- "${macos[@]}" "${windows[@]}" "${ios[@]}" "${android[@]}" > SHA256SUMS
+      - name: Upload to draft and publish only the complete release
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$RELEASE_SHA" || {
+            echo 'The release tag moved after the build. Refusing to publish.' >&2
+            exit 1
+          }
+          if gh release view "$RELEASE_TAG" --json isDraft > release.json; then
+            jq -e '.isDraft == true' release.json > /dev/null || {
+              echo 'Refusing to overwrite an already published release.' >&2
+              exit 1
+            }
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --generate-notes --title "Kuriume $RELEASE_TAG"
+          fi
+          gh release upload "$RELEASE_TAG" artifacts/* --clobber
+          if [ "$PRERELEASE" = true ]; then
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false
+          fi

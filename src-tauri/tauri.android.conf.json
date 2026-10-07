@@ -1,0 +1,8 @@
+{
+  "app": {
+    "windows": [{ "label": "main", "title": "Kuriume" }]
+  },
+  "bundle": {
+    "android": { "minSdkVersion": 24 }
+  }
+}

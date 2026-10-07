@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { isMobileApp } from "@/lib/platform";
 import { Button } from "@/components/ui/button";
 import { Link, useMatches } from "@tanstack/react-router";
 import {
@@ -25,17 +26,17 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
   const shortcutLabel = navigator.userAgent.includes("Mac") ? "⌘K" : "Ctrl K";
 
   return (
-    <aside className="relative z-40 flex h-screen w-56 shrink-0 flex-col border-r border-white/6 bg-sidebar/92 px-3 pb-4 pt-8">
-      <div
+    <aside className="app-sidebar relative z-40 hidden h-full w-20 shrink-0 flex-col border-r border-white/6 bg-sidebar/92 px-3 pb-4 pt-8 md:flex lg:w-56">
+      {!isMobileApp && <div
         className="absolute inset-x-0 top-0 h-8"
         data-tauri-drag-region
-      />
+      />}
       <Link
         to="/"
         className="mb-8 flex h-12 items-center gap-3 rounded-xl px-2 outline-none focus-visible:ring-[3px] focus-visible:ring-primary-readable"
       >
         <img src="/icon.png" alt="" className="h-10 w-10 rounded-xl" />
-        <div className="min-w-0">
+        <div className="hidden min-w-0 lg:block">
           <p className="text-sm font-semibold tracking-[0.08em]">KURIUME</p>
           <p className="text-[10px] tracking-[0.18em] text-muted-foreground">
             栗梅
@@ -54,8 +55,8 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
         )}
       >
         <Search size={16} />
-        <span className="flex-1 text-left">搜索动画</span>
-        <kbd className="rounded border border-white/8 px-1.5 py-0.5 text-[10px]">
+        <span className="sr-only flex-1 text-left lg:not-sr-only">搜索动画</span>
+        <kbd className="hidden rounded border border-white/8 px-1.5 py-0.5 text-[10px] lg:block">
           {shortcutLabel}
         </kbd>
       </Button>
@@ -86,7 +87,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
                 strokeWidth={active ? 2.2 : 1.75}
                 className={active ? "text-primary-readable" : undefined}
               />
-              {item.label}
+              <span className="sr-only lg:not-sr-only">{item.label}</span>
             </Link>
           );
         })}
@@ -110,7 +111,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
               currentPath === "/settings" ? "text-primary-readable" : undefined
             }
           />
-          设置
+          <span className="sr-only lg:not-sr-only">设置</span>
         </Link>
       </div>
     </aside>

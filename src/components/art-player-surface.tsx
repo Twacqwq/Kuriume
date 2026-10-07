@@ -1,10 +1,13 @@
 import type { DirectMediaAsset, PlaybackSubtitle } from "@/lib/playback";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
+import { usePlayerGestures } from "@/hooks/use-player-gestures";
+import { isMobileApp } from "@/lib/platform";
+import { Sun, Volume2, MoveHorizontal, CircleAlert } from "lucide-react";
 import { subtitleLanguage } from "@/lib/playback-selection";
 import type { usePlayerFullscreen } from "@/hooks/use-player-fullscreen";
 import Artplayer from "artplayer";
 import type Hls from "hls.js";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const KURIUME = "#904840";
 // Fullscreen belongs to the desktop page, including the double-click shortcut.
@@ -46,6 +49,8 @@ export function ArtPlayerSurface({
   const fullscreenRef = useRef(fullscreen);
   fullscreenRef.current = fullscreen;
   const language = useDisplayLanguage();
+  const [gesturePlayer, setGesturePlayer] = useState<Artplayer | null>(null);
+  const gesture = usePlayerGestures(gesturePlayer, language);
   const callbacksRef = useRef({ onEnded, onProgress, onError, onPlaying, onSubtitleError });
   callbacksRef.current = { onEnded, onProgress, onError, onPlaying, onSubtitleError };
   const initialOptionsRef = useRef({ poster, startTime, autoPlay, defaultVolume, defaultSpeed, language });
@@ -74,17 +79,18 @@ export function ArtPlayerSurface({
       theme: KURIUME,
       lang: language === "zh" ? "zh-cn" : "en",
       autoplay: autoPlay,
-      volume: defaultVolume,
+      // Mobile gestures operate the device volume; do not attenuate it again.
+      volume: isMobileApp ? 1 : defaultVolume,
       mutex: true,
       playsInline: true,
       hotkey: true,
       pip: false,
       fullscreen: false,
       fullscreenWeb: false,
-      controls: (["app", "system"] as const).map((mode) => {
+      controls: (isMobileApp ? ["system"] as const : ["app", "system"] as const).map((mode) => {
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "grid size-9 place-items-center rounded outline-none focus-visible:ring-2 focus-visible:ring-primary-readable disabled:opacity-50";
+        button.className = "grid size-9 place-items-center rounded outline-none focus-visible:ring-2 focus-visible:ring-primary-readable disabled:opacity-50 [@media(pointer:coarse)]:size-12";
         return {
           name: `kuriume-${mode}-fullscreen`,
           position: "right",
@@ -135,7 +141,8 @@ export function ArtPlayerSurface({
       },
     });
     artRef.current = art;
-    art.on("dblclick", () => fullscreenRef.current.toggle("system"));
+    setGesturePlayer(art);
+    if (!isMobileApp) art.on("dblclick", () => fullscreenRef.current.toggle("system"));
 
     const startupTimer = window.setTimeout(() => {
       if (!disposed && !art.isReady) callbacksRef.current.onError?.("Video startup timed out after 60 seconds");
@@ -164,6 +171,7 @@ export function ArtPlayerSurface({
       hls?.destroy();
       art.destroy(false);
       artRef.current = null;
+      setGesturePlayer(null);
     };
   }, [asset]);
 
@@ -216,8 +224,8 @@ export function ArtPlayerSurface({
       const button = art.controls[`kuriume-${mode}-fullscreen`]?.querySelector("button");
       if (!button) continue;
       const active = fullscreen.mode === mode;
-      const name = mode === "app" ? "App 全屏" : "完全全屏";
-      const englishName = mode === "app" ? "App fullscreen" : "System fullscreen";
+      const name = isMobileApp ? "全屏" : mode === "app" ? "App 全屏" : "完全全屏";
+      const englishName = isMobileApp ? "Fullscreen" : mode === "app" ? "App fullscreen" : "System fullscreen";
       const label = language === "zh" ? `${active ? "退出 " : ""}${name}` : `${active ? "Exit " : ""}${englishName}`;
       const icon = mode === "app"
         ? (active ? art.icons.fullscreenWebOff : art.icons.fullscreenWebOn)
@@ -231,10 +239,14 @@ export function ArtPlayerSurface({
   }, [asset, fullscreen.mode, fullscreen.pending, language]);
 
   return (
-    <div
-      ref={containerRef}
-      className="artplayer-app h-full w-full overflow-hidden bg-black"
-      data-testid="art-player-surface"
-    />
+    <div className="relative h-full w-full overflow-hidden bg-black">
+      <div ref={containerRef} className="artplayer-app h-full w-full overflow-hidden bg-black" data-mobile={isMobileApp} data-testid="art-player-surface" />
+      {gesture && <div role="status" aria-live="polite" className="pointer-events-none absolute inset-0 z-30 grid place-items-center">
+        <div className="flex max-w-[85%] items-center gap-3 rounded-xl bg-black/85 px-5 py-4 text-sm font-medium text-white tabular-nums">
+          {gesture.kind === "brightness" ? <Sun size={22} /> : gesture.kind === "volume" ? <Volume2 size={22} /> : gesture.kind === "seek" ? <MoveHorizontal size={22} /> : <CircleAlert size={22} />}
+          {gesture.text}
+        </div>
+      </div>}
+    </div>
   );
 }

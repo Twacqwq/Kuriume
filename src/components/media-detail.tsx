@@ -83,13 +83,13 @@ export function MediaDetail({
 
   return (
     <div className="min-h-full pb-16">
-      <section className="relative min-h-[500px] overflow-hidden">
+      <section className="relative min-h-[440px] overflow-hidden md:min-h-[500px]">
         <HeroArtwork media={media} />
-        <div className="absolute left-8 top-10 z-20">
+        <div className="absolute left-4 top-4 z-20 md:left-8 md:top-10">
           <button
             type="button"
             onClick={onBack}
-            className="grid h-10 w-10 place-items-center rounded-full border border-white/8 bg-black/35 text-white/75 backdrop-blur-xl transition hover:bg-black/55 hover:text-white"
+            className="grid size-12 place-items-center rounded-full border border-white/8 bg-black/35 text-white/75 backdrop-blur-xl transition hover:bg-black/55 hover:text-white"
             aria-label="返回首页"
             title="返回首页"
           >
@@ -97,7 +97,7 @@ export function MediaDetail({
           </button>
         </div>
 
-        <div className="relative z-10 mx-auto flex min-h-[500px] max-w-7xl items-end gap-9 px-10 pb-12 pt-28">
+        <div className="relative z-10 mx-auto flex min-h-[440px] max-w-7xl items-end gap-9 px-5 pb-8 pt-24 md:min-h-[500px] md:px-10 md:pb-12 md:pt-28">
           <div className="hidden w-52 shrink-0 overflow-hidden rounded-xl bg-card shadow-2xl shadow-black/45 ring-1 ring-white/9 lg:block">
             {media.cover && (
               <img
@@ -107,7 +107,7 @@ export function MediaDetail({
               />
             )}
           </div>
-          <div className="max-w-3xl pb-1">
+          <div className="min-w-0 max-w-3xl pb-1">
             <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-white/60">
               {media.format && <MetaPill>{formatMediaFormat(media.format)}</MetaPill>}
               {media.year && <span>{media.year}</span>}
@@ -127,7 +127,7 @@ export function MediaDetail({
                 </>
               )}
             </div>
-            <h1 className="text-4xl font-semibold tracking-tight text-white xl:text-5xl">
+            <h1 className="text-3xl font-semibold tracking-tight text-white [overflow-wrap:anywhere] md:text-4xl xl:text-5xl">
               {title}
             </h1>
             {description && (
@@ -135,7 +135,7 @@ export function MediaDetail({
                 {description}
               </p>
             )}
-            <div className="mt-7 flex items-center gap-3">
+            <div className="mt-7 flex flex-wrap items-center gap-3">
               <Button asChild size="lg" className="gap-2 rounded-full px-6">
                 <Link
                   to="/anime/$id/episode/$ep"
@@ -158,7 +158,7 @@ export function MediaDetail({
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl space-y-14 px-10 pt-10">
+      <div className="mx-auto max-w-7xl space-y-10 px-4 pt-7 md:space-y-14 md:px-10 md:pt-10">
         <section>
           <SectionHeading
             title="剧集"

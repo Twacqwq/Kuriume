@@ -1,5 +1,8 @@
 [workspace]
-members = ["crates/kuriume-provider", "crates/kuriume-store"]
+members = ["crates/kuriume-provider", "crates/kuriume-store", "crates/tauri-plugin-mobile"]
+
+[workspace.package]
+version = "0.1.0"
 
 [workspace.dependencies]
 tauri = { version = "2", features = ["unstable"] }
@@ -17,7 +20,7 @@ kuriume-store = { path = "crates/kuriume-store" }
 
 [package]
 name = "kuriume"
-version = "0.1.0"
+version.workspace = true
 description = "An anime aggregation, parsing, and playback app"
 authors = ["Twacqwq"]
 license = "GPL-3.0"
@@ -50,6 +53,11 @@ kuriume-store = { workspace = true }
 block2 = "0.6"
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSNotification", "NSOperation", "NSString", "block2"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
+
+[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+tauri-plugin-mobile = { path = "crates/tauri-plugin-mobile" }

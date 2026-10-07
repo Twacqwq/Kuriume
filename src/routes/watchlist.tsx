@@ -78,10 +78,10 @@ function LibraryPage() {
       : entries.filter((entry) => entry.status === view);
 
   return (
-    <div className="mx-auto min-h-full max-w-7xl px-6 pb-16 pt-14 lg:px-10">
+    <div className="mx-auto min-h-full max-w-7xl px-4 pb-8 pt-6 md:px-6 md:pb-16 md:pt-14 lg:px-10">
       <h1 className="text-2xl font-semibold">{language === "zh" ? "资料库" : "Library"}</h1>
 
-      <nav aria-label={language === "zh" ? "资料库分类" : "Library categories"} className="mt-7 flex gap-1 border-b border-border/60">
+      <nav aria-label={language === "zh" ? "资料库分类" : "Library categories"} className="hide-scrollbar mt-7 flex gap-1 overflow-x-auto whitespace-nowrap border-b border-border/60">
         {VIEWS.map((item) => (
           <button
             key={item.id}

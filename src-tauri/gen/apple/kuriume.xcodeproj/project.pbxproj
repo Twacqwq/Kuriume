@@ -1,0 +1,482 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0B60076EA32754E2DEABF6DA /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7430EFA6E92CE38BEF47B412 /* WebKit.framework */; };
+		1C67F1459D02E8EE90C6CC73 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 75442F701C385178CB3D9101 /* Security.framework */; };
+		29FF5AE7FCDAFE212D276E36 /* assets in Resources */ = {isa = PBXBuildFile; fileRef = F46137D78FF47B43F1EAF143 /* assets */; };
+		30B50C097B396E86B04BC402 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FCAB341E6846E4E34061CADE /* QuartzCore.framework */; };
+		3559B617808C92D7277DCC76 /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 702146B5CADF9B8DEE99D305 /* libapp.a */; };
+		4DE4BDAC06869E587E2F9A04 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CB57143DD12B157CE41C0C18 /* UIKit.framework */; };
+		5274A970357F6CD02C4D2B7C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 35F3BB63CAD47F049EA23E7F /* Assets.xcassets */; };
+		58806F90A4139C239F3E18C0 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 0C22C1876798AF827712D4E1 /* main.mm */; };
+		5D9F593221A6A9EBA2E4EE31 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 57626EBAA9951DDE4E3A3632 /* Metal.framework */; };
+		69D284FE6FF6022ADD922FD4 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B6E51C0029F5AA32EFB7802A /* CoreGraphics.framework */; };
+		7578CAA3613B37DD9505652E /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 4078ADAD07C9408EADFAAEEF /* LaunchScreen.storyboard */; };
+		AA5D579DCBEDB14098A211BB /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D5DD88F4A46AFBEAD411FD2D /* MetalKit.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		042D606B726EA5CF75B76A48 /* store_commands.rs */ = {isa = PBXFileReference; path = store_commands.rs; sourceTree = "<group>"; };
+		0C22C1876798AF827712D4E1 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		1C6274502CE840660F21D7FE /* loopback.rs */ = {isa = PBXFileReference; path = loopback.rs; sourceTree = "<group>"; };
+		2F5614206BD0B4181445EB49 /* kuriume_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = kuriume_iOS.entitlements; sourceTree = "<group>"; };
+		2F58216A1C05A3CAE9CA58EB /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
+		35F3BB63CAD47F049EA23E7F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		39CF16EBD5A1DD76F3C4C776 /* fullscreen_macos.rs */ = {isa = PBXFileReference; path = fullscreen_macos.rs; sourceTree = "<group>"; };
+		4078ADAD07C9408EADFAAEEF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		46C2D1B43F2773C5442A280A /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
+		57626EBAA9951DDE4E3A3632 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		5E09950D2659468774BBA059 /* media_proxy.rs */ = {isa = PBXFileReference; path = media_proxy.rs; sourceTree = "<group>"; };
+		702146B5CADF9B8DEE99D305 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
+		7430EFA6E92CE38BEF47B412 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		75442F701C385178CB3D9101 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		7BA9EF9758E7A1C07D0CEE17 /* media-sniffer.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "media-sniffer.js"; sourceTree = "<group>"; };
+		85E0E8A38DA90612F61BC45E /* online_commands.rs */ = {isa = PBXFileReference; path = online_commands.rs; sourceTree = "<group>"; };
+		890CC45F92493E1DB55CBC0E /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		A1419D2DF7FE410D87BAC10C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		B6E51C0029F5AA32EFB7802A /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		C14EBBC8FB3A9B51BFA08D95 /* commands.rs */ = {isa = PBXFileReference; path = commands.rs; sourceTree = "<group>"; };
+		CB57143DD12B157CE41C0C18 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		D5DD88F4A46AFBEAD411FD2D /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		DAD641C72808CF2D8B53C60F /* kuriume_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = kuriume_iOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F46137D78FF47B43F1EAF143 /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
+		FCAB341E6846E4E34061CADE /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		83EDAABE74EAA6A02D4B5639 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3559B617808C92D7277DCC76 /* libapp.a in Frameworks */,
+				69D284FE6FF6022ADD922FD4 /* CoreGraphics.framework in Frameworks */,
+				5D9F593221A6A9EBA2E4EE31 /* Metal.framework in Frameworks */,
+				AA5D579DCBEDB14098A211BB /* MetalKit.framework in Frameworks */,
+				30B50C097B396E86B04BC402 /* QuartzCore.framework in Frameworks */,
+				1C67F1459D02E8EE90C6CC73 /* Security.framework in Frameworks */,
+				4DE4BDAC06869E587E2F9A04 /* UIKit.framework in Frameworks */,
+				0B60076EA32754E2DEABF6DA /* WebKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0AD6A03AEB8982D3CE646D9D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				DAD641C72808CF2D8B53C60F /* kuriume_iOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1A601DC2B758547556E04360 /* Externals */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Externals;
+			sourceTree = "<group>";
+		};
+		1E9E1FEA37478175BEAECD5F = {
+			isa = PBXGroup;
+			children = (
+				F46137D78FF47B43F1EAF143 /* assets */,
+				35F3BB63CAD47F049EA23E7F /* Assets.xcassets */,
+				4078ADAD07C9408EADFAAEEF /* LaunchScreen.storyboard */,
+				1A601DC2B758547556E04360 /* Externals */,
+				3146CF9A304AB14FCF47B152 /* kuriume_iOS */,
+				B13AD79F6EF41528BC1984CA /* Sources */,
+				39653FB4109F7185A73E2583 /* src */,
+				B5827FA02EC50B2CA1DFAB6E /* Frameworks */,
+				0AD6A03AEB8982D3CE646D9D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		3146CF9A304AB14FCF47B152 /* kuriume_iOS */ = {
+			isa = PBXGroup;
+			children = (
+				A1419D2DF7FE410D87BAC10C /* Info.plist */,
+				2F5614206BD0B4181445EB49 /* kuriume_iOS.entitlements */,
+			);
+			path = kuriume_iOS;
+			sourceTree = "<group>";
+		};
+		39653FB4109F7185A73E2583 /* src */ = {
+			isa = PBXGroup;
+			children = (
+				C14EBBC8FB3A9B51BFA08D95 /* commands.rs */,
+				39CF16EBD5A1DD76F3C4C776 /* fullscreen_macos.rs */,
+				890CC45F92493E1DB55CBC0E /* lib.rs */,
+				2F58216A1C05A3CAE9CA58EB /* main.rs */,
+				5E09950D2659468774BBA059 /* media_proxy.rs */,
+				7BA9EF9758E7A1C07D0CEE17 /* media-sniffer.js */,
+				85E0E8A38DA90612F61BC45E /* online_commands.rs */,
+				042D606B726EA5CF75B76A48 /* store_commands.rs */,
+				44588371D2CE2A8296C095FF /* media_proxy */,
+			);
+			name = src;
+			path = ../../src;
+			sourceTree = "<group>";
+		};
+		44588371D2CE2A8296C095FF /* media_proxy */ = {
+			isa = PBXGroup;
+			children = (
+				1C6274502CE840660F21D7FE /* loopback.rs */,
+			);
+			path = media_proxy;
+			sourceTree = "<group>";
+		};
+		81FE2396CA3CE060FF7C7CEF /* kuriume */ = {
+			isa = PBXGroup;
+			children = (
+				0C22C1876798AF827712D4E1 /* main.mm */,
+				9F960837929CA968C944889E /* bindings */,
+			);
+			path = kuriume;
+			sourceTree = "<group>";
+		};
+		9F960837929CA968C944889E /* bindings */ = {
+			isa = PBXGroup;
+			children = (
+				46C2D1B43F2773C5442A280A /* bindings.h */,
+			);
+			path = bindings;
+			sourceTree = "<group>";
+		};
+		B13AD79F6EF41528BC1984CA /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				81FE2396CA3CE060FF7C7CEF /* kuriume */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		B5827FA02EC50B2CA1DFAB6E /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B6E51C0029F5AA32EFB7802A /* CoreGraphics.framework */,
+				702146B5CADF9B8DEE99D305 /* libapp.a */,
+				57626EBAA9951DDE4E3A3632 /* Metal.framework */,
+				D5DD88F4A46AFBEAD411FD2D /* MetalKit.framework */,
+				FCAB341E6846E4E34061CADE /* QuartzCore.framework */,
+				75442F701C385178CB3D9101 /* Security.framework */,
+				CB57143DD12B157CE41C0C18 /* UIKit.framework */,
+				7430EFA6E92CE38BEF47B412 /* WebKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		45C4B8512D78D8F51BA265F0 /* kuriume_iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DD0C603F83B73A5C2EABF91B /* Build configuration list for PBXNativeTarget "kuriume_iOS" */;
+			buildPhases = (
+				B82BE5EFF3DD133800AB3F42 /* Build Rust Code */,
+				FCFF00736777536847CB0276 /* Sources */,
+				07AA7FED538324BC6338A342 /* Resources */,
+				83EDAABE74EAA6A02D4B5639 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = kuriume_iOS;
+			packageProductDependencies = (
+			);
+			productName = kuriume_iOS;
+			productReference = DAD641C72808CF2D8B53C60F /* kuriume_iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A3084098C426ED90A408CDAB /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = E933751CD6BC210A2E98BF4A /* Build configuration list for PBXProject "kuriume" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 1E9E1FEA37478175BEAECD5F;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 0AD6A03AEB8982D3CE646D9D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				45C4B8512D78D8F51BA265F0 /* kuriume_iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		07AA7FED538324BC6338A342 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5274A970357F6CD02C4D2B7C /* Assets.xcassets in Resources */,
+				7578CAA3613B37DD9505652E /* LaunchScreen.storyboard in Resources */,
+				29FF5AE7FCDAFE212D276E36 /* assets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		B82BE5EFF3DD133800AB3F42 /* Build Rust Code */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust Code";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a",
+				"$(SRCROOT)/Externals/arm64/${CONFIGURATION}/libapp.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"${KURIUME_PREBUILT_IOS:-}\" = \"1\" ]; then\n  test \"$PLATFORM_NAME\" = \"iphoneos\" && test \"$CONFIGURATION\" = \"release\" && test -f \"$PROJECT_DIR/Externals/arm64/release/libapp.a\"\nelse\n  npm run -- tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}\nfi";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		FCFF00736777536847CB0276 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				58806F90A4139C239F3E18C0 /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		5DB8A933BB4890CA90871396 /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = release;
+		};
+		6845C2C3183E741E6B20A157 /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = kuriume_iOS/kuriume_iOS.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = kuriume_iOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.twac.kuriume;
+				PRODUCT_NAME = "Kuriume";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = debug;
+		};
+		91627D1A7AC8D830CD872C52 /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = kuriume_iOS/kuriume_iOS.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = kuriume_iOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.twac.kuriume;
+				PRODUCT_NAME = "Kuriume";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = release;
+		};
+		B1453A2B0A38347415517358 /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		DD0C603F83B73A5C2EABF91B /* Build configuration list for PBXNativeTarget "kuriume_iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6845C2C3183E741E6B20A157 /* debug */,
+				91627D1A7AC8D830CD872C52 /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+		E933751CD6BC210A2E98BF4A /* Build configuration list for PBXProject "kuriume" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B1453A2B0A38347415517358 /* debug */,
+				5DB8A933BB4890CA90871396 /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A3084098C426ED90A408CDAB /* Project object */;
+}

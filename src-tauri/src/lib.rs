@@ -42,6 +42,9 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder.menu(Menu::new);
 
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_mobile::init());
+
     builder
         .on_window_event(|window, event| {
             #[cfg(target_os = "macos")]
@@ -68,6 +71,9 @@ pub fn run() {
         .manage(OnlineSourceState::new())
         .manage(media_proxy)
         .setup(|app| {
+            #[cfg(all(debug_assertions, any(target_os = "macos", target_os = "ios")))]
+            app.state::<MediaProxyState>()
+                .set_dev_origin(app.config().build.dev_url.as_ref());
             #[cfg(target_os = "macos")]
             if let Some(window) = app.get_webview_window("main") {
                 fullscreen_macos::install(&window)?;
