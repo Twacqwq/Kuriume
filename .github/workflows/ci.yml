@@ -32,11 +32,11 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, node24
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0, node24
         with:
           node-version-file: .node-version
           cache: npm
@@ -49,9 +49,26 @@ jobs:
           workspaces: src-tauri -> target
           save-if: ${{ github.event_name != 'pull_request' }}
       - run: npm ci
+      - name: Verify generated app icons
+        shell: bash
+        run: |
+          npm run icons:generate
+          # ICNS stores its image entries in nondeterministic order; check PNG/ICO and mobile assets.
+          git diff --exit-code -- src-tauri/icons src-tauri/gen/android/app/src/main/res src-tauri/gen/apple/Assets.xcassets ':(exclude)src-tauri/icons/icon.icns'
+          test -z "$(git ls-files --others --exclude-standard -- src-tauri/icons src-tauri/gen/android/app/src/main/res src-tauri/gen/apple/Assets.xcassets)"
       - run: npm run check:version
       - run: npm test
       - run: npm run build
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets --locked -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
+
+  packages:
+    needs: checks
+    # Called release checks inherit the caller's push event; their ref input
+    # keeps them from recursively building another set of main packages.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && inputs.ref == ''
+    uses: ./.github/workflows/build-packages.yml
+    with:
+      ref: ${{ github.sha }}
+    secrets: inherit

@@ -26,6 +26,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
   const matches = useMatches();
   const currentPath = matches[matches.length - 1]?.pathname ?? "/";
   const shortcutLabel = navigator.userAgent.includes("Mac") ? "⌘K" : "Ctrl K";
+  const settingsActive = currentPath === "/settings" || currentPath.startsWith("/settings/");
 
   return (
     <aside className="app-sidebar relative z-40 hidden h-full w-20 shrink-0 flex-col border-r border-white/6 bg-sidebar/92 px-3 pb-4 pt-8 md:flex lg:w-56">
@@ -98,19 +99,19 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
       <div className="mt-auto">
         <Link
           to="/settings"
-          aria-current={currentPath === "/settings" ? "page" : undefined}
+          aria-current={settingsActive ? "page" : undefined}
           className={cn(
             "flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl px-1 text-[10px] outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-primary-readable lg:min-h-11 lg:flex-row lg:justify-start lg:gap-3 lg:px-3 lg:text-sm",
-            currentPath === "/settings"
+            settingsActive
               ? "bg-primary/14 text-foreground"
               : "text-muted-foreground hover:bg-white/4 hover:text-foreground",
           )}
         >
           <Settings
             size={18}
-            strokeWidth={currentPath === "/settings" ? 2.2 : 1.75}
+            strokeWidth={settingsActive ? 2.2 : 1.75}
             className={
-              currentPath === "/settings" ? "text-primary-readable" : undefined
+              settingsActive ? "text-primary-readable" : undefined
             }
           />
           <span>{language === "zh" ? "设置" : "Settings"}</span>

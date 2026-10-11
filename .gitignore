@@ -60,3 +60,6 @@ src-tauri/gen/android/app/src/main/jniLibs/
 **/.build/
 
 scripts/__pycache__
+
+# Local UI verification captures, not application assets.
+/.impeccable/review/

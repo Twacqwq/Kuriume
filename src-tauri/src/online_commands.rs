@@ -1,5 +1,6 @@
 //! Unified playback-source registry and Tauri command boundary.
 
+use crate::diagnostics::{self, Code, Details, Event, Level};
 use crate::media_proxy::MediaProxyState;
 use crate::store_commands::StoreState;
 use kuriume_provider::{
@@ -248,11 +249,14 @@ pub(crate) async fn playback_source_search(
     {
         return Err("Alternative titles exceed V1 limits".into());
     }
-    state
-        .provider(provider_id)?
-        .search(query)
-        .await
-        .map_err(|error| error.to_string())
+    diagnostics::observe(
+        Event::SourceSearch,
+        provider_id,
+        diagnostics::operation(),
+        state.provider(provider_id)?.search(query),
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[command]
@@ -264,11 +268,14 @@ pub(crate) async fn playback_source_episodes(
     if candidate_id.is_empty() || candidate_id.len() > 16_384 {
         return Err("Invalid candidate identifier".into());
     }
-    state
-        .provider(provider_id)?
-        .episodes(candidate_id)
-        .await
-        .map_err(|error| error.to_string())
+    diagnostics::observe(
+        Event::SourceEpisodes,
+        provider_id,
+        diagnostics::operation(),
+        state.provider(provider_id)?.episodes(candidate_id),
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 // ── Video URL sniffer ────────────────────────────────────────────
@@ -277,6 +284,8 @@ pub(crate) async fn playback_source_episodes(
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum PlayableAsset {
     Direct {
+        #[serde(rename = "diagnosticId")]
+        diagnostic_id: u64,
         url: String,
         #[serde(rename = "mimeType")]
         mime_type: Option<String>,
@@ -454,11 +463,15 @@ pub(crate) async fn playback_source_resolve(
     request: PlaybackResolveRequest,
 ) -> Result<Vec<PlayableSource>, String> {
     validate_resolve_request(&request)?;
-    let sources = state
-        .provider(provider_id)?
-        .resolve(request)
-        .await
-        .map_err(|error| error.to_string())?;
+    let diagnostic_id = diagnostics::operation();
+    let sources = diagnostics::observe(
+        Event::SourceResolve,
+        provider_id,
+        diagnostic_id,
+        state.provider(provider_id)?.resolve(request),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
 
     let mut result = Vec::new();
     let mut last_error = None;
@@ -468,7 +481,38 @@ pub(crate) async fn playback_source_resolve(
         if sniff && !result.is_empty() {
             continue;
         }
-        match prepare_playback_asset(&app, &media_proxy, source.plan).await {
+        let started = std::time::Instant::now();
+        diagnostics::record(
+            Event::SourcePrepare,
+            Level::Info,
+            Details {
+                operation: Some(diagnostic_id),
+                provider: Some(diagnostics::provider(provider_id)),
+                code: Some(Code::Start),
+                ..Details::default()
+            },
+        );
+        let prepared = prepare_playback_asset(&app, &media_proxy, source.plan, diagnostic_id).await;
+        diagnostics::record(
+            Event::SourcePrepare,
+            if prepared.is_ok() {
+                Level::Info
+            } else {
+                Level::Error
+            },
+            Details {
+                operation: Some(diagnostic_id),
+                provider: Some(diagnostics::provider(provider_id)),
+                code: Some(if prepared.is_ok() {
+                    Code::Ok
+                } else {
+                    Code::Source
+                }),
+                elapsed_ms: Some(started.elapsed().as_millis() as u64),
+                ..Details::default()
+            },
+        );
+        match prepared {
             Ok(asset) => result.push(PlayableSource {
                 name: source.name,
                 asset,
@@ -477,6 +521,15 @@ pub(crate) async fn playback_source_resolve(
         }
     }
     if result.is_empty() {
+        diagnostics::record(
+            Event::SourceResolve,
+            Level::Error,
+            Details {
+                operation: Some(diagnostic_id),
+                code: Some(Code::Empty),
+                ..Details::default()
+            },
+        );
         return Err(last_error.unwrap_or_else(|| "No playable sources for this episode".into()));
     }
     Ok(result)
@@ -486,6 +539,7 @@ async fn prepare_playback_asset(
     app: &AppHandle,
     media_proxy: &MediaProxyState,
     plan: ResolvePlan,
+    diagnostic_id: u64,
 ) -> Result<PlayableAsset, String> {
     match plan {
         ResolvePlan::Direct {
@@ -506,15 +560,23 @@ async fn prepare_playback_asset(
                         headers.clone(),
                         &allowed_hosts,
                         Some("text/vtt"),
+                        Some(diagnostic_id),
                     )?;
                 }
             }
             let url = if headers.is_empty() {
                 url
             } else {
-                media_proxy.register(&url, headers, &allowed_hosts, mime_type.as_deref())?
+                media_proxy.register(
+                    &url,
+                    headers,
+                    &allowed_hosts,
+                    mime_type.as_deref(),
+                    Some(diagnostic_id),
+                )?
             };
             Ok(PlayableAsset::Direct {
+                diagnostic_id,
                 url,
                 mime_type,
                 subtitles,
@@ -535,6 +597,7 @@ async fn prepare_playback_asset(
             .await?;
             validate_public_http_url(&url)?;
             Ok(PlayableAsset::Direct {
+                diagnostic_id,
                 mime_type: Some(mime.into()),
                 url,
                 subtitles: Vec::new(),
@@ -708,6 +771,7 @@ mod tests {
     #[test]
     fn playable_asset_is_media_only_with_camel_case_fields() {
         let direct = serde_json::to_value(PlayableAsset::Direct {
+            diagnostic_id: 1,
             url: "kuriume-media://localhost/session".into(),
             mime_type: Some("video/mp4".into()),
             subtitles: Vec::new(),

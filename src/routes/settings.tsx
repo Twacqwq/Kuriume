@@ -14,7 +14,7 @@ import {
 } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AlertCircle,
   Check,
@@ -24,6 +24,8 @@ import {
   Radio,
   RefreshCw,
   Volume2,
+  ScrollText,
+  ChevronRight,
 } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -249,6 +251,13 @@ function SettingsPage() {
                 onCheckedChange={(checked) => void saveAutoNext(checked)}
               />
             </SettingRow>
+          </SettingsGroup>
+          <SettingsGroup title={zh ? "诊断" : "Diagnostics"}>
+            <Link to="/settings/logs" className="flex min-h-20 items-center gap-3 px-4 py-3 text-sm font-medium outline-none hover:bg-secondary/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-readable">
+              <ScrollText className="size-4.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="flex-1">{zh ? "日志与诊断" : "Logs & diagnostics"}</span>
+              <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
+            </Link>
           </SettingsGroup>
         </div>
       )}

@@ -163,6 +163,7 @@ mod tests {
                 PlaybackHeaders::new(),
                 &["media.example".into()],
                 Some("video/mp4"),
+                None,
             )
             .unwrap();
         let parsed: reqwest::Url = url.parse().unwrap();
@@ -206,6 +207,7 @@ mod tests {
                 PlaybackHeaders::new(),
                 &["media.example".into()],
                 Some("application/vnd.apple.mpegurl"),
+                None,
             )
             .unwrap();
         #[cfg(target_os = "macos")]

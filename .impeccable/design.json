@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-11T09:25:08Z",
+  "title": "Design System: Kuriume",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "栗梅" },
+      "primary-readable": { "role": "primary", "displayName": "Readable accent" },
+      "background": { "role": "neutral", "displayName": "App canvas" },
+      "card": { "role": "neutral", "displayName": "Settings surface" },
+      "secondary": { "role": "neutral", "displayName": "Neutral control fill" }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Desktop settings heading", "purpose": "Desktop settings route headings; the logs route uses a smaller mobile size." },
+      "title": { "displayName": "Mobile top bar", "purpose": "App section name in mobile chrome." },
+      "body": { "displayName": "Interface body", "purpose": "Compact settings copy with the app-wide font stack." },
+      "label": { "displayName": "Button label", "purpose": "Bold action text." }
+    },
+    "shadows": [
+      { "name": "shadow-xs", "value": "0 1px 2px 0 #0000000d", "purpose": "Existing input and outline-button shadow." },
+      { "name": "shadow-lg", "value": "0 10px 15px -3px #0000001a, 0 4px 6px -4px #0000001a", "purpose": "Existing alert-dialog elevation." }
+    ],
+    "motion": [
+      { "name": "default-transition-duration", "value": "150ms", "purpose": "Existing button and navigation state transitions." },
+      { "name": "default-transition-timing-function", "value": "cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Existing Tailwind state-transition easing." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Existing primary variant, shown with the diagnostics confirmation's 48px height override.",
+      "html": "<button class=\"ds-primary\" type=\"button\">清空日志</button>",
+      "css": ".ds-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:8px 16px;border:0;border-radius:calc(var(--radius) - 2px);background:var(--primary);color:var(--primary-foreground);font:700 14px/20px var(--font-sans);white-space:nowrap;outline:none;transition:all 150ms cubic-bezier(.4,0,.2,1)}.ds-primary:hover{background:color-mix(in oklab,var(--primary) 90%,transparent)}.ds-primary:focus-visible{box-shadow:0 0 0 3px var(--primary-readable)}.ds-primary:disabled{pointer-events:none;opacity:.5}"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Existing secondary variant, shown as the diagnostics refresh action with its 48px override.",
+      "html": "<button class=\"ds-secondary\" type=\"button\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\"/><path d=\"M21 3v5h-5\"/><path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\"/><path d=\"M8 16H3v5\"/></svg>刷新</button>",
+      "css": ".ds-secondary{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:8px 12px;border:0;border-radius:calc(var(--radius) - 2px);background:var(--secondary);color:var(--secondary-foreground);font:700 14px/20px var(--font-sans);white-space:nowrap;outline:none;transition:all 150ms cubic-bezier(.4,0,.2,1)}.ds-secondary:hover{background:color-mix(in oklab,var(--secondary) 80%,transparent)}.ds-secondary:focus-visible{box-shadow:0 0 0 3px var(--primary-readable)}.ds-secondary:disabled{pointer-events:none;opacity:.5}"
+    },
+    {
+      "name": "Ghost button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Existing ghost variant, shown as the diagnostics copy action with its 48px override.",
+      "html": "<button class=\"ds-ghost\" type=\"button\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>复制本页</button>",
+      "css": ".ds-ghost{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:8px 12px;border:0;border-radius:calc(var(--radius) - 2px);background:transparent;color:var(--foreground);font:700 14px/20px var(--font-sans);white-space:nowrap;outline:none;transition:all 150ms cubic-bezier(.4,0,.2,1)}.ds-ghost:hover{background:color-mix(in oklab,var(--accent) 50%,transparent);color:var(--accent-foreground)}.ds-ghost:focus-visible{box-shadow:0 0 0 3px var(--primary-readable)}.ds-ghost:disabled{pointer-events:none;opacity:.5}"
+    },
+    {
+      "name": "Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Existing shared Input primitive; diagnostics uses a local textarea for manual copying.",
+      "html": "<input class=\"ds-input\" aria-label=\"输入\" placeholder=\"输入\" />",
+      "css": ".ds-input{height:36px;width:100%;min-width:0;padding:4px 12px;border:1px solid var(--input);border-radius:calc(var(--radius) - 2px);background:transparent;color:var(--foreground);font:400 14px/20px var(--font-sans);box-shadow:0 1px 2px 0 #0000000d;outline:none;transition:color 150ms cubic-bezier(.4,0,.2,1),box-shadow 150ms cubic-bezier(.4,0,.2,1)}.ds-input::placeholder{color:var(--muted-foreground)}.ds-input:focus-visible{border-color:var(--primary-readable);box-shadow:0 0 0 3px var(--primary-readable)}.ds-input[aria-invalid=true]{border-color:var(--destructive-readable);box-shadow:0 0 0 3px color-mix(in oklab,var(--destructive-readable) 35%,transparent)}.ds-input:disabled{pointer-events:none;cursor:not-allowed;opacity:.5}"
+    },
+    {
+      "name": "Active settings navigation",
+      "kind": "nav",
+      "refersTo": "settings-navigation",
+      "description": "Existing active sidebar link in its wide layout; settings child routes retain this state.",
+      "html": "<a class=\"ds-settings-nav\" href=\"/settings\" aria-current=\"page\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/></svg><span>设置</span></a>",
+      "css": ".ds-settings-nav{display:flex;align-items:center;justify-content:flex-start;gap:12px;min-height:44px;padding:0 12px;border-radius:calc(var(--radius) + 4px);background:color-mix(in oklab,var(--primary) 14%,transparent);color:var(--foreground);font:400 14px/20px var(--font-sans);text-decoration:none;outline:none;transition:color 150ms cubic-bezier(.4,0,.2,1),background-color 150ms cubic-bezier(.4,0,.2,1)}.ds-settings-nav svg{color:var(--primary-readable)}.ds-settings-nav:focus-visible{box-shadow:0 0 0 3px var(--primary-readable)}.ds-settings-nav:not([aria-current=page]){background:transparent;color:var(--muted-foreground)}.ds-settings-nav:not([aria-current=page]) svg{color:inherit}.ds-settings-nav:not([aria-current=page]):hover{background:#ffffff0a;color:var(--foreground)}"
+    }
+  ],
+  "narrative": {
+    "overview": "Kuriume uses a dark neutral palette with the confirmed 栗梅 accent, bundled Manrope and Chinese fallback fonts, and shadcn/ui components styled with Tailwind. Settings use compact groups, bold headings and actions, and minimal explanatory text. Desktop and mobile share colors, controls, and interaction states.\n\nThis is an extraction of the existing implementation, not a new visual direction. Sources: `src/main.css`, `src/fonts.css`, `src/components/ui/`, `src/components/sidebar.tsx`, `src/components/mobile-navigation.tsx`, and the two settings routes. Diagnostics behavior below is local to `/settings/logs`.",
+    "keyCharacteristics": [
+      "Dark tonal surfaces with the 栗梅 accent.",
+      "Bundled Manrope and Noto Sans SC; bold headings and actions.",
+      "Compact settings rows and concise bilingual labels.",
+      "Shared controls and active navigation across desktop and mobile."
+    ],
+    "rules": [],
+    "dos": [
+      "Do reuse the existing semantic colors, bundled fonts, and shadcn/ui controls.",
+      "Do keep explanatory text brief and preserve Chinese and English labels.",
+      "Do retain visible focus, disabled, loading, error, and empty states where applicable.",
+      "Do preserve the shared settings width, responsive padding, and 48px settings actions."
+    ],
+    "donts": [
+      "Don't replace the confirmed dark 栗梅 palette or bundled font stack during a settings extension.",
+      "Don't turn diagnostics pagination, retention copy, or detail layout into global app rules."
+    ]
+  }
+}

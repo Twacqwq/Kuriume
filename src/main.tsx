@@ -6,6 +6,10 @@ import { queryClient } from "@/lib/query-client";
 import { PageLoading } from "@/components/page-loading";
 import { routeTree } from "./routeTree.gen";
 import "./main.css";
+import { installErrorDiagnostics } from "@/lib/diagnostics";
+
+const removeErrorDiagnostics = installErrorDiagnostics();
+if (import.meta.hot) import.meta.hot.dispose(removeErrorDiagnostics);
 
 const router = createRouter({
   routeTree,

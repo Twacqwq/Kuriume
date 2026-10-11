@@ -5,6 +5,7 @@ export interface PlaybackSubtitle {
 }
 
 export interface DirectMediaAsset {
+  diagnosticId?: number;
   kind: "direct";
   url: string;
   mimeType?: "application/x-mpegURL" | "application/vnd.apple.mpegurl" | "video/mp4" | "video/webm";

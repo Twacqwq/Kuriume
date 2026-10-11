@@ -5,6 +5,7 @@ import {
 import type { PlayableAsset, PlayableSource } from "@/lib/playback";
 import { nextPlaybackSource } from "@/lib/playback-selection";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { diagnose } from "@/lib/diagnostics";
 
 export type ResolverPhase = "idle" | "resolving" | "ready" | "error";
 
@@ -99,6 +100,12 @@ export function usePlaybackResolver() {
   }, []);
 
   const selectedSource = state.sources[state.selectedIndex];
+  const diagnosticId = selectedSource?.asset.diagnosticId;
+  useEffect(() => {
+    if (state.phase === "ready" && state.failedNames.length > 0) {
+      diagnose("player_fallback", "warn", { operation: diagnosticId, attempt: state.failedNames.length });
+    }
+  }, [diagnosticId, state.phase, state.selectedIndex, state.failedNames.length]);
   return { ...state, asset: state.phase === "ready" ? selectedSource?.asset ?? null : null,
     selectedSource, resolve, selectSource, reportError, reset };
 }

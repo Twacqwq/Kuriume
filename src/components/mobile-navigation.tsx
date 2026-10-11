@@ -14,7 +14,7 @@ export function MobileNavigation({ onSearch }: { onSearch: () => void }) {
   ] as const;
   // Detail has its own back navigation; keep browsing chrome on root screens.
   if (path.startsWith("/anime/")) return null;
-  const current = items.find((item) => item.to === path);
+  const current = items.find((item) => item.to === path || (item.to !== "/" && path.startsWith(`${item.to}/`)));
   return <>
     <header className="mobile-topbar flex shrink-0 items-center justify-between gap-3 bg-background px-5 pb-1 md:hidden">
       {path === "/" ? <Link to="/" className="flex min-h-14 items-center gap-2.5 text-lg font-bold tracking-tight">

@@ -1,3 +1,4 @@
+use crate::diagnostics::{observe, operation, Event};
 use kuriume_provider::{
     AnimeInfo, AnimeProvider, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery,
     GetListQuery, PagedResult, SearchQuery,
@@ -41,11 +42,14 @@ pub(crate) async fn get_list(
     query: GetListQuery,
     language: Option<&str>,
 ) -> Result<PagedResult<AnimeInfo>, String> {
-    state
-        .get(provider)?
-        .get_list(query, language)
-        .await
-        .map_err(|error| error.to_string())
+    observe(
+        Event::CatalogRequest,
+        provider,
+        operation(),
+        state.get(provider)?.get_list(query, language),
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[command]
@@ -55,11 +59,14 @@ pub(crate) async fn search(
     query: SearchQuery,
     language: Option<&str>,
 ) -> Result<PagedResult<AnimeInfo>, String> {
-    state
-        .get(provider)?
-        .search(query, language)
-        .await
-        .map_err(|error| error.to_string())
+    observe(
+        Event::CatalogRequest,
+        provider,
+        operation(),
+        state.get(provider)?.search(query, language),
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[command]
@@ -69,11 +76,14 @@ pub(crate) async fn get_detail(
     id: &str,
     language: Option<&str>,
 ) -> Result<AnimeInfo, String> {
-    state
-        .get(provider)?
-        .get_detail(id, language)
-        .await
-        .map_err(|error| error.to_string())
+    observe(
+        Event::CatalogRequest,
+        provider,
+        operation(),
+        state.get(provider)?.get_detail(id, language),
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[command]
@@ -82,11 +92,14 @@ pub(crate) async fn get_episodes(
     provider: &str,
     query: GetEpisodesQuery,
 ) -> Result<Vec<EpisodesInfo>, String> {
-    state
-        .get(provider)?
-        .get_episodes(query)
-        .await
-        .map_err(|error| error.to_string())
+    observe(
+        Event::CatalogRequest,
+        provider,
+        operation(),
+        state.get(provider)?.get_episodes(query),
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[command]
@@ -95,11 +108,14 @@ pub(crate) async fn get_calendar(
     provider: &str,
     language: Option<&str>,
 ) -> Result<Vec<CalendarEntry>, String> {
-    state
-        .get(provider)?
-        .get_calendar(language)
-        .await
-        .map_err(|error| error.to_string())
+    observe(
+        Event::CatalogRequest,
+        provider,
+        operation(),
+        state.get(provider)?.get_calendar(language),
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[command]
@@ -108,9 +124,12 @@ pub(crate) async fn get_characters(
     provider: &str,
     id: &str,
 ) -> Result<Vec<CharacterInfo>, String> {
-    state
-        .get(provider)?
-        .get_characters(id)
-        .await
-        .map_err(|error| error.to_string())
+    observe(
+        Event::CatalogRequest,
+        provider,
+        operation(),
+        state.get(provider)?.get_characters(id),
+    )
+    .await
+    .map_err(|error| error.to_string())
 }

@@ -9,6 +9,7 @@ use tauri::menu::Menu;
 use tauri::Manager;
 
 mod commands;
+mod diagnostics;
 #[cfg(target_os = "macos")]
 mod fullscreen_macos;
 mod media_proxy;
@@ -17,6 +18,11 @@ mod store_commands;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    diagnostics::record(
+        diagnostics::Event::AppStarted,
+        diagnostics::Level::Info,
+        diagnostics::Details::default(),
+    );
     let mut catalog = ProviderState::new();
     catalog.register(Arc::new(AniList::new()));
 
@@ -102,6 +108,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            crate::diagnostics::diagnostics_write,
+            crate::diagnostics::diagnostics_read,
+            crate::diagnostics::diagnostics_clear,
             crate::commands::get_list,
             crate::commands::search,
             crate::commands::get_detail,
