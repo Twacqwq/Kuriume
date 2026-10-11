@@ -1,0 +1,49 @@
+name: Package artifact
+description: Stage an allowlisted package set with provenance and checksums, then upload it
+inputs:
+  platform:
+    description: macos-arm64, windows-x64, android-arm64 or ios-unsigned
+    required: true
+  source-sha:
+    description: Resolved source commit shared by all builds
+    required: true
+  build-number:
+    description: Shared product build number
+    required: true
+  signing:
+    description: Verified signing status (notarized, ad-hoc, signed or unsigned)
+    required: true
+  paths:
+    description: JSON array from tauri-action artifactPaths; mobile paths are deterministic
+    default: '[]'
+  prefix:
+    description: Workflow artifact name prefix
+    default: packages
+runs:
+  using: composite
+  steps:
+    - name: Stage packages and record provenance
+      id: stage
+      shell: bash
+      env:
+        PACKAGE_PLATFORM: ${{ inputs.platform }}
+        SOURCE_SHA: ${{ inputs.source-sha }}
+        KURIUME_BUILD_NUMBER: ${{ inputs.build-number }}
+        PACKAGE_SIGNING: ${{ inputs.signing }}
+        PACKAGE_PATHS: ${{ inputs.paths }}
+      run: node scripts/package-artifacts.mjs stage
+    - name: Upload packages
+      id: upload
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, node24
+      with:
+        name: ${{ inputs.prefix }}-${{ inputs.platform }}
+        path: ${{ steps.stage.outputs.path }}
+        if-no-files-found: error
+        retention-days: 14
+        compression-level: 0
+    - name: Link downloads in the run summary
+      shell: bash
+      env:
+        ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        PACKAGE_PLATFORM: ${{ inputs.platform }}
+      run: printf '\n[Download %s](%s) (retained for 14 days)\n' "$PACKAGE_PLATFORM" "$ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"

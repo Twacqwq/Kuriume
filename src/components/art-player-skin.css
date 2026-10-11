@@ -1,0 +1,301 @@
+.artplayer-app {
+  container: kuriume-player / inline-size;
+}
+
+.artplayer-app .art-video-player,
+.artplayer-app .art-video-player.art-mobile {
+  --art-font-color: var(--foreground);
+  --art-progress-color: rgb(255 255 255 / 18%);
+  --art-loaded-color: rgb(255 255 255 / 34%);
+  --art-hover-color: rgb(255 255 255 / 12%);
+  --art-padding: 20px;
+  --art-border-radius: 12px;
+  --art-transition-duration: 160ms;
+  --art-bottom-height: 160px;
+  --art-bottom-offset: 4px;
+  --art-control-height: 48px;
+  --art-control-icon-size: 22px;
+  --art-progress-height: 8px;
+  --art-progress-top-gap: 18px;
+  --art-bottom-gap: 18px;
+  --art-indicator-size: 12px;
+  --art-state-size: 64px;
+  --art-state-opacity: 1;
+  --art-widget-background: var(--popover);
+  --art-tip-background: var(--popover);
+  --art-settings-icon-size: 20px;
+  --art-settings-max-height: calc(100% - 80px);
+  --art-selector-max-height: calc(100% - 80px);
+  --art-volume-height: 108px;
+  font-family: inherit;
+  font-size: 13px;
+  text-shadow: none;
+}
+
+.artplayer-app .art-video-player svg[stroke="currentColor"] {
+  fill: none;
+}
+
+.artplayer-app .art-video-player .art-bottom {
+  padding-bottom: 8px;
+  transition: opacity var(--art-transition-duration) ease-out;
+  background-image: linear-gradient(to top, rgb(0 0 0 / 88%), rgb(0 0 0 / 42%) 58%, transparent);
+}
+
+.artplayer-app .art-video-player:focus-within .art-bottom {
+  opacity: 1;
+}
+
+.artplayer-app .art-video-player:focus-within .art-bottom :is(.art-controls, .art-progress) {
+  transform: translateY(0);
+}
+
+.artplayer-app .art-video-player .art-controls {
+  gap: 4px;
+  overflow: visible;
+}
+
+.artplayer-app .art-video-player .art-controls :is(.art-controls-left, .art-controls-right) {
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+}
+
+.artplayer-app .art-controls .art-control {
+  opacity: 1;
+}
+
+.artplayer-app .art-controls .art-control-time {
+  color: rgb(255 255 255 / 86%);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.015em;
+}
+
+.artplayer-app .kuriume-player-button,
+.artplayer-app .art-control-setting,
+.artplayer-app .art-video-player .art-controls .art-control-playAndPause > .art-icon,
+.artplayer-app .art-video-player .art-controls .art-control-volume > .art-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  border: 0;
+  border-radius: 12px;
+  padding: 0;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  outline: none;
+  transition: background-color 140ms ease, color 140ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.artplayer-app .kuriume-player-button > :is(svg, .art-icon),
+.artplayer-app .art-controls .art-icon > svg {
+  width: 22px;
+  height: 22px;
+}
+
+.artplayer-app :is(.kuriume-player-button, [role="button"]):active {
+  background-color: rgb(255 255 255 / 16%);
+}
+
+.artplayer-app .kuriume-player-button[aria-pressed="true"],
+.artplayer-app .art-control-setting[aria-expanded="true"] {
+  color: var(--primary-readable);
+  background-color: rgb(144 72 64 / 22%);
+}
+
+.artplayer-app .kuriume-player-button:disabled {
+  cursor: wait;
+  opacity: 0.45;
+}
+
+.artplayer-app :is(button, [role="button"], [role="slider"]):focus-visible {
+  outline: 2px solid var(--primary-readable);
+  outline-offset: -3px;
+}
+
+.artplayer-app .art-progress {
+  border-radius: 6px;
+  touch-action: none;
+}
+
+.artplayer-app .art-progress :is(.art-control-progress-inner, .art-progress-loaded, .art-progress-played, .art-progress-hover) {
+  border-radius: 999px;
+}
+
+.artplayer-app .art-video-player .art-progress .art-progress-indicator {
+  background-color: var(--primary-readable) !important;
+}
+
+.artplayer-app .art-progress:focus-visible .art-progress-indicator {
+  --art-indicator-scale: 1;
+}
+
+.artplayer-app .art-bottom .art-progress .art-control-progress .art-control-progress-inner .art-progress-tip {
+  padding: 6px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.artplayer-app .art-video-player .art-settings {
+  bottom: 64px;
+  border: 1px solid var(--border);
+  max-width: calc(100% - 24px);
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted-foreground) transparent;
+  overscroll-behavior: contain;
+  transition: none;
+}
+
+.artplayer-app .art-video-player .art-settings .art-setting-panel .art-setting-item {
+  flex-shrink: 0;
+  min-height: 48px;
+  gap: 12px;
+  padding: 0 14px;
+  font-size: 13px;
+  outline: none;
+}
+
+.artplayer-app .art-video-player .art-settings .art-setting-panel .art-setting-item.art-current {
+  color: var(--primary-readable);
+  background-color: rgb(144 72 64 / 16%);
+}
+
+.artplayer-app .art-video-player .art-settings .art-setting-panel .art-setting-item .art-setting-item-left {
+  gap: 10px;
+}
+
+.artplayer-app .art-video-player .art-settings .art-setting-panel .art-setting-item .art-setting-item-right-tooltip {
+  color: var(--muted-foreground);
+}
+
+.artplayer-app .art-settings .art-setting-item-back {
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+}
+
+.artplayer-app .art-video-player .art-mask .art-state {
+  border: 1px solid rgb(255 255 255 / 20%);
+  border-radius: 50%;
+  background: rgb(16 14 16 / 80%);
+  color: var(--foreground);
+  transform: none;
+  transition: opacity 160ms ease-out;
+}
+
+.artplayer-app .art-state .art-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+}
+
+.artplayer-app .art-state .art-icon-state {
+  padding-left: 3px;
+}
+
+.artplayer-app .art-video-player .art-loading .art-icon {
+  width: 32px;
+  height: 32px;
+  color: var(--primary-readable);
+  animation: kuriume-player-loading 1s linear infinite;
+}
+
+.artplayer-app .art-video-player .art-notice .art-notice-inner {
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: var(--popover);
+  color: var(--foreground);
+  font-size: 12px;
+}
+
+.kuriume-gesture-feedback {
+  display: flex;
+  max-width: 85%;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 14px;
+  padding: 14px 20px;
+  background: rgb(16 14 16 / 92%);
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (hover: hover) {
+  .artplayer-app :is(.kuriume-player-button, .art-control-setting, .art-control-playAndPause > .art-icon, .art-control-volume > .art-icon):hover {
+    background-color: rgb(255 255 255 / 10%);
+  }
+}
+
+@container kuriume-player (max-width: 560px) {
+  .artplayer-app .art-video-player,
+  .artplayer-app .art-video-player.art-mobile {
+    --art-padding: 12px;
+    --art-state-size: 56px;
+  }
+  .artplayer-app .art-controls .art-control-time {
+    position: absolute;
+    left: 0;
+    bottom: 87px;
+    min-height: 24px;
+    padding: 0 !important;
+    font-size: 12px;
+  }
+  .artplayer-app .art-controls .art-controls-right {
+    margin-left: auto;
+  }
+}
+
+@media (pointer: coarse) {
+  .artplayer-app .art-video-player,
+  .artplayer-app .art-video-player.art-mobile {
+    --art-indicator-scale: 1;
+  }
+}
+
+/* Inline mobile playback stays quiet; advanced controls belong to fullscreen. */
+.artplayer-app[data-mobile="true"][data-fullscreen="false"] .art-video-player {
+  --art-bottom-height: 110px;
+  --art-progress-height: 5px;
+}
+
+.artplayer-app[data-mobile="true"][data-fullscreen="false"] .art-control-setting {
+  display: none;
+}
+
+.artplayer-app[data-mobile="true"][data-fullscreen="false"] .art-controls .art-control-time {
+  position: static;
+  min-width: 0;
+  margin-left: 4px;
+  padding: 0 !important;
+  font-size: 12px;
+}
+
+@keyframes kuriume-player-loading {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artplayer-app .art-video-player,
+  .artplayer-app .art-video-player.art-mobile {
+    --art-transition-duration: 0ms;
+    --art-bottom-offset: 0px;
+  }
+  .artplayer-app .art-video-player .art-loading .art-icon {
+    animation: none;
+  }
+  .artplayer-app .art-mask .art-state,
+  .artplayer-app .kuriume-player-button,
+  .artplayer-app .art-control-setting,
+  .artplayer-app .art-control-playAndPause > .art-icon,
+  .artplayer-app .art-control-volume > .art-icon {
+    transition: none;
+  }
+}

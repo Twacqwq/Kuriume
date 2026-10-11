@@ -2,6 +2,7 @@ import type { AnimeInfo } from "@/lib/types";
 import { invoke } from "@tauri-apps/api/core";
 
 export type DisplayLanguage = "en" | "zh";
+export const DEFAULT_DISPLAY_LANGUAGE: DisplayLanguage = "zh";
 
 export interface Settings {
   default_volume: number;
@@ -33,7 +34,7 @@ export interface StoredMedia {
 }
 
 export const mediaApi = {
-  ensure: (media: AnimeInfo, language: DisplayLanguage = "en") =>
+  ensure: (media: AnimeInfo, language: DisplayLanguage = DEFAULT_DISPLAY_LANGUAGE) =>
     invoke<StoredMedia>("media_ensure", {
       input: {
         provider: "anilist",

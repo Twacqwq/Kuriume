@@ -4,6 +4,7 @@
 //! return only an opaque local URL to the renderer. Authorization query strings
 //! never enter frontend state, history, or logs.
 
+use crate::diagnostics::{self, Code, Details, Event, Level};
 use kuriume_provider::PlaybackHeaders;
 use reqwest::header::{
     HeaderName, HeaderValue, ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, ETAG,
@@ -42,6 +43,7 @@ struct MediaProxyInner {
 
 #[derive(Clone)]
 struct MediaSession {
+    diagnostic_id: Option<u64>,
     local_base: String,
     url: reqwest::Url,
     headers: PlaybackHeaders,
@@ -80,6 +82,7 @@ impl MediaProxyState {
         headers: PlaybackHeaders,
         allowed_hosts: &[String],
         mime_type: Option<&str>,
+        diagnostic_id: Option<u64>,
     ) -> Result<String, String> {
         let url = validate_remote_url(raw_url, allowed_hosts)?;
         let created_at = unix_time_ms();
@@ -89,6 +92,7 @@ impl MediaProxyState {
         #[cfg(not(target_os = "ios"))]
         let local_base = local_media_url(&token);
         let session = MediaSession {
+            diagnostic_id,
             local_base: local_base.clone(),
             cookie_origin: url.origin().ascii_serialization(),
             url,
@@ -171,6 +175,18 @@ async fn proxy_request(
     request: Request<Vec<u8>>,
     mut session: MediaSession,
 ) -> Response<Vec<u8>> {
+    let log_failure = |code, status| {
+        diagnostics::record(
+            Event::MediaRequest,
+            Level::Error,
+            Details {
+                operation: session.diagnostic_id,
+                code: Some(code),
+                status,
+                ..Details::default()
+            },
+        )
+    };
     if request.method() == tauri::http::Method::OPTIONS {
         return cors_response(StatusCode::NO_CONTENT, Vec::new());
     }
@@ -239,12 +255,19 @@ async fn proxy_request(
         }
         let upstream = match upstream.send().await {
             Ok(response) => response,
-            Err(_) => return error_response(StatusCode::BAD_GATEWAY, "Unable to reach media host"),
+            Err(error) => {
+                log_failure(
+                    diagnostics::http_code(&error),
+                    error.status().map(|s| s.as_u16()),
+                );
+                return error_response(StatusCode::BAD_GATEWAY, "Unable to reach media host");
+            }
         };
         if !upstream.status().is_redirection() {
             break upstream;
         }
         if redirects >= 3 {
+            log_failure(Code::Source, None);
             return error_response(StatusCode::BAD_GATEWAY, "Too many media redirects");
         }
         let next = upstream
@@ -254,6 +277,7 @@ async fn proxy_request(
             .and_then(|location| session.url.join(location).ok())
             .and_then(|url| validate_remote_url(url.as_str(), &session.allowed_hosts).ok());
         let Some(next) = next else {
+            log_failure(Code::Source, None);
             return error_response(
                 StatusCode::BAD_GATEWAY,
                 "Media redirect left the declared source scope",
@@ -274,6 +298,7 @@ async fn proxy_request(
         return builder.body(Vec::new()).unwrap_or_default();
     }
     if !upstream.status().is_success() {
+        log_failure(Code::Http, Some(upstream.status().as_u16()));
         let status =
             StatusCode::from_u16(upstream.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
         return error_response(status, "Media host rejected the request");
@@ -288,6 +313,7 @@ async fn proxy_request(
             .content_length()
             .is_some_and(|length| length > max_body as u64)
     {
+        log_failure(Code::Source, None);
         return error_response(
             StatusCode::BAD_GATEWAY,
             "Media host returned an oversized media chunk",
@@ -307,11 +333,13 @@ async fn proxy_request(
                     body.extend_from_slice(&chunk);
                 }
                 Ok(Some(_)) => {
-                    return error_response(StatusCode::BAD_GATEWAY, "Media chunk is too large")
+                    log_failure(Code::Source, None);
+                    return error_response(StatusCode::BAD_GATEWAY, "Media chunk is too large");
                 }
                 Ok(None) => break body,
-                Err(_) => {
-                    return error_response(StatusCode::BAD_GATEWAY, "Unable to read media chunk")
+                Err(error) => {
+                    log_failure(diagnostics::http_code(&error), None);
+                    return error_response(StatusCode::BAD_GATEWAY, "Unable to read media chunk");
                 }
             }
         }
@@ -320,7 +348,10 @@ async fn proxy_request(
     if body.starts_with(b"#EXTM3U") {
         body = match rewrite_playlist(&body, &session) {
             Ok(body) => body,
-            Err(error) => return error_response(StatusCode::BAD_GATEWAY, &error),
+            Err(error) => {
+                log_failure(Code::Parse, None);
+                return error_response(StatusCode::BAD_GATEWAY, &error);
+            }
         };
         // Rewritten manifests have their own length and must not retain the
         // upstream range, ETag or Content-Length of the original document.
@@ -560,6 +591,7 @@ mod tests {
 
     fn hls_session() -> MediaSession {
         MediaSession {
+            diagnostic_id: None,
             local_base: local_media_url("test-hls"),
             url: "https://media.example/show/master.m3u8".parse().unwrap(),
             headers: PlaybackHeaders::new(),
@@ -674,7 +706,13 @@ mod tests {
             };
             let proxy = MediaProxyState::new();
             let local = proxy
-                .register(url, headers.clone(), allowed_hosts, mime_type.as_deref())
+                .register(
+                    url,
+                    headers.clone(),
+                    allowed_hosts,
+                    mime_type.as_deref(),
+                    None,
+                )
                 .unwrap();
             #[cfg(target_os = "macos")]
             if local.starts_with("http://127.0.0.1:") {
@@ -764,7 +802,13 @@ mod tests {
         };
         let proxy = MediaProxyState::new();
         let local = proxy
-            .register(url, headers.clone(), allowed_hosts, mime_type.as_deref())
+            .register(
+                url,
+                headers.clone(),
+                allowed_hosts,
+                mime_type.as_deref(),
+                None,
+            )
             .unwrap();
         let token = local.rsplit('/').next().unwrap();
         let mut session = proxy.inner.sessions.lock().unwrap()[token].clone();

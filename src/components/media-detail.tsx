@@ -73,48 +73,49 @@ export function MediaDetail({
     : 1;
   const playLabel = latest
     ? latestComplete
-      ? `播放第 ${playEpisode} 话`
-      : `继续第 ${playEpisode} 话`
-    : "播放第 1 话";
+      ? (language === "zh" ? `播放第 ${playEpisode} 话` : `Play episode ${playEpisode}`)
+      : (language === "zh" ? `继续第 ${playEpisode} 话` : `Resume episode ${playEpisode}`)
+    : (language === "zh" ? "播放第 1 话" : "Play episode 1");
   const resumeTime =
     latest && !latestComplete && playEpisode === latest.episode
       ? latest.position
       : undefined;
 
   return (
-    <div className="min-h-full pb-16">
-      <section className="relative min-h-[440px] overflow-hidden md:min-h-[500px]">
+    <div className="media-detail min-h-full pb-10 md:pb-16">
+      <section className="relative overflow-hidden">
         <HeroArtwork media={media} />
         <div className="absolute left-4 top-4 z-20 md:left-8 md:top-10">
           <button
             type="button"
             onClick={onBack}
-            className="grid size-12 place-items-center rounded-full border border-white/8 bg-black/35 text-white/75 backdrop-blur-xl transition hover:bg-black/55 hover:text-white"
-            aria-label="返回首页"
-            title="返回首页"
+            className="grid size-12 place-items-center rounded-full bg-black/45 text-white transition-colors hover:bg-black/65 focus-visible:outline-2 focus-visible:outline-primary-readable motion-reduce:transition-none"
+            aria-label={language === "zh" ? "返回首页" : "Back to home"}
+            title={language === "zh" ? "返回首页" : "Back to home"}
           >
             <ArrowLeft size={18} />
           </button>
         </div>
 
-        <div className="relative z-10 mx-auto flex min-h-[440px] max-w-7xl items-end gap-9 px-5 pb-8 pt-24 md:min-h-[500px] md:px-10 md:pb-12 md:pt-28">
-          <div className="hidden w-52 shrink-0 overflow-hidden rounded-xl bg-card shadow-2xl shadow-black/45 ring-1 ring-white/9 lg:block">
+        <div className="relative z-10 mx-auto grid max-w-7xl grid-cols-[5.5rem_minmax(0,1fr)] items-end gap-x-4 gap-y-5 px-4 pb-6 pt-24 md:grid-cols-[8rem_minmax(0,1fr)] md:gap-x-7 md:px-6 md:pb-9 md:pt-28 lg:min-h-[460px] lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-x-9 lg:px-10">
+          <div className="self-end overflow-hidden rounded-xl bg-card shadow-[0_16px_36px_-16px_rgba(0,0,0,0.7)] lg:row-span-2">
             {media.cover && (
               <img
                 src={media.cover}
-                alt={title}
+                alt=""
+                decoding="async"
                 className="aspect-2/3 w-full object-cover"
               />
             )}
           </div>
-          <div className="min-w-0 max-w-3xl pb-1">
-            <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-white/60">
-              {media.format && <MetaPill>{formatMediaFormat(media.format)}</MetaPill>}
+          <div className="min-w-0 max-w-3xl">
+            <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-white/75">
+              {media.format && <MetaPill>{formatMediaFormat(media.format, language)}</MetaPill>}
               {media.year && <span>{media.year}</span>}
               {media.total_episodes > 0 && (
                 <>
                   <span className="text-white/25">·</span>
-                  <span>{media.total_episodes} 话</span>
+                  <span>{language === "zh" ? `${media.total_episodes} 话` : `${media.total_episodes} episodes`}</span>
                 </>
               )}
               {media.score && (
@@ -127,16 +128,13 @@ export function MediaDetail({
                 </>
               )}
             </div>
-            <h1 className="text-3xl font-semibold tracking-tight text-white [overflow-wrap:anywhere] md:text-4xl xl:text-5xl">
+            <h1 className="text-balance text-2xl font-bold leading-tight tracking-[-0.025em] text-white [overflow-wrap:anywhere] md:text-4xl xl:text-5xl">
               {title}
             </h1>
-            {description && (
-              <p className="mt-5 line-clamp-4 max-w-2xl text-sm leading-7 text-white/62">
-                {description}
-              </p>
-            )}
-            <div className="mt-7 flex flex-wrap items-center gap-3">
-              <Button asChild size="lg" className="gap-2 rounded-full px-6">
+          </div>
+          <div className="col-span-2 lg:col-span-1 lg:col-start-2">
+            <div className="flex flex-wrap items-center gap-3 [&>button]:min-h-12 [&>button]:rounded-xl">
+              <Button asChild size="lg" className="min-h-12 flex-1 gap-2 rounded-xl px-5 sm:flex-none">
                 <Link
                   to="/anime/$id/episode/$ep"
                   params={{ id: media.id, ep: String(playEpisode) }}
@@ -158,14 +156,29 @@ export function MediaDetail({
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl space-y-10 px-4 pt-7 md:space-y-14 md:px-10 md:pt-10">
+      <div className="mx-auto max-w-7xl space-y-8 px-4 pt-5 md:space-y-12 md:px-6 md:pt-8 lg:px-10">
+        {description && (
+          <section className="max-w-3xl" aria-labelledby="anime-synopsis">
+            <h2 id="anime-synopsis" className="mb-3 text-lg font-bold tracking-tight">{language === "zh" ? "简介" : "Synopsis"}</h2>
+            {description.length > 220 ? (
+              <details className="group">
+                <summary className="cursor-pointer list-none rounded-lg text-sm leading-7 text-muted-foreground focus-visible:outline-2 focus-visible:outline-primary-readable [&::-webkit-details-marker]:hidden">
+                  <span className="line-clamp-3 group-open:hidden">{description}</span>
+                  <span className="inline-flex min-h-11 items-center font-medium text-primary-readable group-open:hidden">{language === "zh" ? "展开简介" : "Read more"}</span>
+                  <span className="hidden min-h-11 items-center font-medium text-primary-readable group-open:inline-flex">{language === "zh" ? "收起简介" : "Show less"}</span>
+                </summary>
+                <p className="text-sm leading-7 text-muted-foreground">{description}</p>
+              </details>
+            ) : <p className="text-sm leading-7 text-muted-foreground">{description}</p>}
+          </section>
+        )}
         <section>
           <SectionHeading
-            title="剧集"
-            aside={media.total_episodes ? `共 ${media.total_episodes} 话` : undefined}
+            title={language === "zh" ? "剧集" : "Episodes"}
+            aside={media.total_episodes ? (language === "zh" ? `共 ${media.total_episodes} 话` : `${media.total_episodes} episodes`) : undefined}
           />
           {episodes.length > 0 ? (
-            <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
               {episodes.map((episode) => {
                 const progress = history.find(
                   (entry) =>
@@ -188,14 +201,14 @@ export function MediaDetail({
                           ? progress?.position
                           : undefined,
                     }}
-                    className="group relative overflow-hidden rounded-xl border border-white/5 bg-card/70 p-4 transition hover:border-primary/30 hover:bg-card"
+                    className="group relative overflow-hidden rounded-xl bg-card px-4 py-3.5 transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-primary-readable motion-reduce:transition-none"
                   >
-                    <div className="flex items-start gap-3">
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/5 text-xs font-semibold text-white/65 group-hover:bg-primary group-hover:text-primary-foreground">
+                    <div className="flex items-center gap-3">
+                      <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-secondary text-sm font-bold tabular-nums text-foreground/80">
                         {episode.ep}
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">
+                        <p className="line-clamp-2 text-sm font-medium leading-5">
                           {displayEpisodeTitle(
                             episode,
                             episode.ep,
@@ -203,7 +216,7 @@ export function MediaDetail({
                           )}
                         </p>
                         {episode.duration && (
-                          <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                          <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                             <Clock3 size={11} />
                             {episode.duration}
                           </p>
@@ -224,7 +237,7 @@ export function MediaDetail({
             </div>
           ) : (
             <p className="mt-5 rounded-xl border border-white/5 bg-card/50 p-6 text-sm text-muted-foreground">
-              暂无剧集信息
+              {language === "zh" ? "暂无剧集信息" : "No episode information yet"}
             </p>
           )}
         </section>
@@ -232,26 +245,26 @@ export function MediaDetail({
         {(media.genres.length > 0 || media.studios.length > 0) && (
           <section className="grid gap-8 lg:grid-cols-[1fr_1.6fr]">
             <div>
-              <SectionHeading title="作品信息" />
+              <SectionHeading title={language === "zh" ? "作品信息" : "Information"} />
               <dl className="mt-5 space-y-3 text-sm">
                 {media.studios.length > 0 && (
-                  <InfoRow label="动画制作" value={media.studios.join("、")} />
+                  <InfoRow label={language === "zh" ? "动画制作" : "Studio"} value={media.studios.join(", ")} />
                 )}
                 {media.status && (
-                  <InfoRow label="状态" value={formatMediaStatus(media.status)} />
+                  <InfoRow label={language === "zh" ? "状态" : "Status"} value={formatMediaStatus(media.status, language)} />
                 )}
                 {media.air_date && (
-                  <InfoRow label="首播" value={media.air_date} />
+                  <InfoRow label={language === "zh" ? "首播" : "Premiered"} value={media.air_date} />
                 )}
               </dl>
             </div>
             <div>
-              <SectionHeading title="类型" />
+              <SectionHeading title={language === "zh" ? "类型" : "Genres"} />
               <div className="mt-5 flex flex-wrap gap-2">
                 {media.genres.map((genre) => (
                   <span
                     key={genre}
-                    className="rounded-full border border-white/7 bg-white/4 px-3 py-1.5 text-xs text-white/58"
+                          className="rounded-lg bg-secondary/70 px-3 py-1.5 text-xs text-muted-foreground"
                   >
                     {genre}
                   </span>
@@ -263,12 +276,12 @@ export function MediaDetail({
 
         {characters.length > 0 && (
           <section>
-            <SectionHeading title="角色" />
-            <div className="mt-5 grid grid-cols-3 gap-3 xl:grid-cols-6">
+            <SectionHeading title={language === "zh" ? "角色" : "Characters"} />
+            <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3 xl:grid-cols-4">
               {characters.slice(0, 12).map((character) => (
                 <div
                   key={character.id}
-                  className="flex items-center gap-3 rounded-xl border border-white/5 bg-card/55 p-3"
+                  className="flex min-w-0 items-center gap-3"
                 >
                   <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-white/5">
                     {character.avatar && (
@@ -281,11 +294,11 @@ export function MediaDetail({
                     )}
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-xs font-medium">
+                    <p className="line-clamp-2 text-sm font-medium leading-5">
                       {character.name}
                     </p>
                     {character.role && (
-                      <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
                         {character.role}
                       </p>
                     )}
@@ -314,9 +327,9 @@ function HeroArtwork({ media }: { media: AnimeInfo }) {
           )}
         />
       )}
-      <div className="absolute inset-0 bg-black/38" />
-      <div className="absolute inset-0 bg-linear-to-r from-background via-background/55 to-background/10" />
-      <div className="absolute inset-0 bg-linear-to-t from-background via-transparent to-black/20" />
+      <div className="absolute inset-0 bg-black/25" />
+      <div className="absolute inset-0 hidden bg-linear-to-r from-background via-background/55 to-background/10 lg:block" />
+      <div className="absolute inset-0 bg-linear-to-t from-background via-background/65 to-black/10 lg:via-background/25" />
     </div>
   );
 }
@@ -330,7 +343,7 @@ function SectionHeading({
 }) {
   return (
     <div className="flex items-end justify-between">
-      <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+      <h2 className="text-lg font-bold tracking-tight">{title}</h2>
       {aside && <p className="text-xs text-muted-foreground">{aside}</p>}
     </div>
   );
@@ -353,7 +366,8 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatMediaStatus(status: string) {
+function formatMediaStatus(status: string, language: "en" | "zh") {
+  if (language === "en") return ({ RELEASING: "Airing", FINISHED: "Finished", NOT_YET_RELEASED: "Upcoming", CANCELLED: "Cancelled", HIATUS: "On hiatus" }[status] ?? status);
   return (
     {
       RELEASING: "连载中",
@@ -365,7 +379,8 @@ function formatMediaStatus(status: string) {
   );
 }
 
-function formatMediaFormat(format: string) {
+function formatMediaFormat(format: string, language: "en" | "zh") {
+  if (language === "en") return ({ TV: "TV", TV_SHORT: "Short", MOVIE: "Movie", ONA: "Web anime", SPECIAL: "Special", MUSIC: "Music" }[format] ?? format);
   return (
     {
       TV: "TV 动画",

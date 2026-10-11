@@ -16,6 +16,7 @@ import { Route as MeRouteImport } from './routes/me'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SettingsLogsRouteImport } from './routes/settings_.logs'
 import { Route as AnimeIdRouteImport } from './routes/anime/$id'
 import { Route as AnimeIdIndexRouteImport } from './routes/anime/$id/index'
 import { Route as AnimeIdEpisodeEpRouteImport } from './routes/anime/$id/episode/$ep'
@@ -55,6 +56,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsLogsRoute = SettingsLogsRouteImport.update({
+  id: '/settings_/logs',
+  path: '/settings/logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AnimeIdRoute = AnimeIdRouteImport.update({
   id: '/anime/$id',
   path: '/anime/$id',
@@ -80,6 +86,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/anime/$id': typeof AnimeIdRouteWithChildren
+  '/settings/logs': typeof SettingsLogsRoute
   '/anime/$id/': typeof AnimeIdIndexRoute
   '/anime/$id/episode/$ep': typeof AnimeIdEpisodeEpRoute
 }
@@ -91,6 +98,7 @@ export interface FileRoutesByTo {
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
+  '/settings/logs': typeof SettingsLogsRoute
   '/anime/$id': typeof AnimeIdIndexRoute
   '/anime/$id/episode/$ep': typeof AnimeIdEpisodeEpRoute
 }
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/anime/$id': typeof AnimeIdRouteWithChildren
+  '/settings_/logs': typeof SettingsLogsRoute
   '/anime/$id/': typeof AnimeIdIndexRoute
   '/anime/$id/episode/$ep': typeof AnimeIdEpisodeEpRoute
 }
@@ -118,6 +127,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/watchlist'
     | '/anime/$id'
+    | '/settings/logs'
     | '/anime/$id/'
     | '/anime/$id/episode/$ep'
   fileRoutesByTo: FileRoutesByTo
@@ -129,6 +139,7 @@ export interface FileRouteTypes {
     | '/search'
     | '/settings'
     | '/watchlist'
+    | '/settings/logs'
     | '/anime/$id'
     | '/anime/$id/episode/$ep'
   id:
@@ -141,6 +152,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/watchlist'
     | '/anime/$id'
+    | '/settings_/logs'
     | '/anime/$id/'
     | '/anime/$id/episode/$ep'
   fileRoutesById: FileRoutesById
@@ -154,6 +166,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   WatchlistRoute: typeof WatchlistRoute
   AnimeIdRoute: typeof AnimeIdRouteWithChildren
+  SettingsLogsRoute: typeof SettingsLogsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -207,6 +220,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings_/logs': {
+      id: '/settings_/logs'
+      path: '/settings/logs'
+      fullPath: '/settings/logs'
+      preLoaderRoute: typeof SettingsLogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/anime/$id': {
       id: '/anime/$id'
       path: '/anime/$id'
@@ -253,6 +273,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   WatchlistRoute: WatchlistRoute,
   AnimeIdRoute: AnimeIdRouteWithChildren,
+  SettingsLogsRoute: SettingsLogsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

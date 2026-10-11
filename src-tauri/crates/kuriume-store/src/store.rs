@@ -5,7 +5,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 const CURRENT_SCHEMA_VERSION: i64 = 3;
-const DEFAULT_DISPLAY_LANGUAGE: &str = "en";
+const DEFAULT_DISPLAY_LANGUAGE: &str = "zh";
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -151,7 +151,7 @@ impl Store {
               default_volume REAL NOT NULL DEFAULT 0.8,
               default_speed REAL NOT NULL DEFAULT 1.0,
               auto_next INTEGER NOT NULL DEFAULT 1,
-              display_language TEXT NOT NULL DEFAULT 'en'
+              display_language TEXT NOT NULL DEFAULT 'zh'
             );
             INSERT OR IGNORE INTO settings (id) VALUES (1);
 
@@ -720,7 +720,7 @@ fn migrate(connection: &mut Connection) -> Result<()> {
     if !table_has_column(&transaction, "settings", "display_language")? {
         transaction.execute_batch(
             "ALTER TABLE settings ADD COLUMN display_language \
-             TEXT NOT NULL DEFAULT 'en';",
+             TEXT NOT NULL DEFAULT 'zh';",
         )?;
     }
 
@@ -865,10 +865,10 @@ mod tests {
     }
 
     #[test]
-    fn new_database_uses_english_as_the_default_display_language() {
+    fn new_database_uses_chinese_as_the_default_display_language() {
         let store = store();
         let settings = store.get_settings().unwrap();
-        assert_eq!(settings.display_language, DEFAULT_DISPLAY_LANGUAGE);
+        assert_eq!(settings.display_language, "zh");
         assert_eq!(
             store
                 .connection
@@ -876,6 +876,19 @@ mod tests {
                 .unwrap(),
             CURRENT_SCHEMA_VERSION
         );
+    }
+
+    #[test]
+    fn language_migration_preserves_saved_choices_and_repairs_invalid_values() {
+        let mut store = store();
+        for (saved, expected) in [("en", "en"), ("zh", "zh"), ("invalid", "zh")] {
+            store
+                .connection
+                .execute("UPDATE settings SET display_language = ?1", [saved])
+                .unwrap();
+            migrate(&mut store.connection).unwrap();
+            assert_eq!(store.get_settings().unwrap().display_language, expected);
+        }
     }
 
     #[test]

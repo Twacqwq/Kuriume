@@ -8,10 +8,15 @@ import type { usePlayerFullscreen } from "@/hooks/use-player-fullscreen";
 import Artplayer from "artplayer";
 import type Hls from "hls.js";
 import { useEffect, useRef, useState } from "react";
+import { playerIcons } from "@/components/art-player-icons";
+import { bindPlayerAccessibility } from "@/components/art-player-accessibility";
+import "@/components/art-player-skin.css";
+import { diagnose, type DiagnosticCode } from "@/lib/diagnostics";
 
 const KURIUME = "#904840";
 // Fullscreen belongs to the desktop page, including the double-click shortcut.
 Artplayer.DBCLICK_FULLSCREEN = false;
+Artplayer.SETTING_ITEM_HEIGHT = 48;
 
 export interface ArtPlayerSurfaceProps {
   asset: DirectMediaAsset;
@@ -64,6 +69,11 @@ export function ArtPlayerSurface({
 
     let hls: Hls | null = null;
     let disposed = false;
+    const started = performance.now();
+    const operation = asset.diagnosticId;
+    let firstPlay = true;
+    let waitingSince: number | undefined;
+    let waitingTimer: ReturnType<typeof setTimeout> | undefined;
     const mediaType =
       asset.mimeType === "application/x-mpegURL" ||
       asset.mimeType === "application/vnd.apple.mpegurl" ||
@@ -71,12 +81,21 @@ export function ArtPlayerSurface({
         ? "m3u8"
         : undefined;
 
+    const controlButton = (icon: string) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "kuriume-player-button";
+      button.innerHTML = icon;
+      return button;
+    };
     const art = new Artplayer({
       container,
       url: asset.url,
       ...(mediaType ? { type: mediaType } : {}),
       ...(poster ? { poster } : {}),
       theme: KURIUME,
+      icons: playerIcons,
+      cssVar: { "--art-control-opacity": 1, "--art-control-icon-scale": 1 },
       lang: language === "zh" ? "zh-cn" : "en",
       autoplay: autoPlay,
       // Mobile gestures operate the device volume; do not attenuate it again.
@@ -88,12 +107,11 @@ export function ArtPlayerSurface({
       fullscreen: false,
       fullscreenWeb: false,
       controls: (isMobileApp ? ["system"] as const : ["app", "system"] as const).map((mode) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "grid size-9 place-items-center rounded outline-none focus-visible:ring-2 focus-visible:ring-primary-readable disabled:opacity-50 [@media(pointer:coarse)]:size-12";
+        const button = controlButton(mode === "app" ? playerIcons.fullscreenWebOn : playerIcons.fullscreenOn);
         return {
           name: `kuriume-${mode}-fullscreen`,
-          position: "right",
+          position: "right" as const,
+          index: mode === "app" ? 60 : 70,
           html: button,
           mounted(this: Artplayer) {
             this.proxy(button, "click", () => fullscreenRef.current.toggle(mode));
@@ -103,7 +121,7 @@ export function ArtPlayerSurface({
       playbackRate: true,
       aspectRatio: true,
       screenshot: false,
-      setting: false,
+      setting: true,
       backdrop: false,
       gesture: false,
       fastForward: false,
@@ -118,6 +136,7 @@ export function ArtPlayerSurface({
           // AVFoundation cannot request Tauri's custom scheme; Hls.js feeds
           // the same in-app video element through MediaSource in that case.
           if (!proxied && video.canPlayType("application/vnd.apple.mpegurl")) {
+            diagnose("player_load", "info", { operation, engine: "native_hls", code: "start" });
             video.src = url;
             return;
           }
@@ -125,27 +144,45 @@ export function ArtPlayerSurface({
             const Hls = (await import("hls.js")).default;
             if (disposed) return;
             if (!Hls.isSupported()) {
+              diagnose("player_error", "error", { operation, code: "unsupported", engine: "hlsjs" });
               callbacksRef.current.onError?.("当前 WebView 不支持 HLS 播放");
               return;
             }
             hls = new Hls({ enableWorker: true, lowLatencyMode: false });
+            diagnose("player_load", "info", { operation, engine: "hlsjs", code: "start" });
             hls.on(Hls.Events.ERROR, (_event, data) => {
+              const detail = data.details.toLowerCase();
+              const code: DiagnosticCode = detail.includes("manifest") ? "hls_manifest" : detail.includes("frag") ? "hls_fragment" : detail.includes("key") ? "hls_key" : detail.includes("buffer") ? "hls_buffer" : "decode";
+              diagnose("player_error", data.fatal ? "error" : "warn", { operation, code, engine: "hlsjs", status: data.response?.code });
               if (data.fatal) callbacksRef.current.onError?.(`HLS ${data.type}: ${data.details}`);
             });
             hls.loadSource(url);
             hls.attachMedia(video);
           } catch (reason) {
+            if (!disposed) diagnose("player_error", "error", { operation, code: "unsupported", engine: "hlsjs" });
             if (!disposed) callbacksRef.current.onError?.(`HLS loading failed: ${String(reason)}`);
           }
         },
       },
     });
+    if (!mediaType) diagnose("player_load", "info", { operation, engine: "html_video", code: "start" });
+    // Preserve quarter-speed values instead of the library's one-decimal labels.
+    for (const rate of Artplayer.PLAYBACK_RATE) {
+      const item = art.setting.find(`playback-rate-${rate}`);
+      if (item) item.html = `${rate}×`;
+    }
+    // Some browsers expose native PiP even when its ArtPlayer control is off.
+    art.video.disablePictureInPicture = true;
+    const unbindAccessibility = bindPlayerAccessibility(art, language);
     artRef.current = art;
     setGesturePlayer(art);
     if (!isMobileApp) art.on("dblclick", () => fullscreenRef.current.toggle("system"));
 
     const startupTimer = window.setTimeout(() => {
-      if (!disposed && !art.isReady) callbacksRef.current.onError?.("Video startup timed out after 60 seconds");
+      if (!disposed && !art.isReady) {
+        diagnose("player_error", "error", { operation, code: "timeout", elapsedMs: 60_000 });
+        callbacksRef.current.onError?.("Video startup timed out after 60 seconds");
+      }
     }, 60_000);
 
     art.on("ready", () => {
@@ -159,16 +196,40 @@ export function ArtPlayerSurface({
       callbacksRef.current.onProgress?.(art.currentTime, art.duration);
     });
     art.on("video:ended", () => callbacksRef.current.onEnded?.());
-    art.on("video:playing", () => callbacksRef.current.onPlaying?.());
+    const qualityDetails = () => ({ width: art.video.videoWidth, height: art.video.videoHeight, droppedFrames: art.video.getVideoPlaybackQuality?.().droppedVideoFrames });
+    art.on("video:playing", () => {
+      if (firstPlay) {
+        diagnose("player_playing", "info", { operation, code: "ok", elapsedMs: performance.now() - started, ...qualityDetails() });
+        firstPlay = false;
+      }
+      if (waitingSince !== undefined && performance.now() - waitingSince >= 2_000) {
+        diagnose("player_buffering", "info", { operation, code: "ok", elapsedMs: performance.now() - waitingSince, ...qualityDetails() });
+      }
+      clearTimeout(waitingTimer);
+      waitingSince = undefined;
+      callbacksRef.current.onPlaying?.();
+    });
+    art.on("video:waiting", () => {
+      if (waitingSince !== undefined) return;
+      waitingSince = performance.now();
+      waitingTimer = setTimeout(() => {
+        if (!disposed && !art.video.paused) diagnose("player_buffering", "warn", { operation, code: "start", position: art.currentTime, ...qualityDetails() });
+      }, 2_000);
+    });
+    art.on("video:seeked", () => diagnose("player_seek", "info", { operation, position: art.currentTime }));
     art.on("video:error", () => {
       const error = art.video.error;
+      const codes: DiagnosticCode[] = ["unknown", "aborted", "network", "decode", "unsupported"];
+      diagnose("player_error", "error", { operation, code: codes[error?.code ?? 0] ?? "unknown", ...qualityDetails() });
       callbacksRef.current.onError?.(error?.message || `Media error ${error?.code ?? "unknown"}`);
     });
 
     return () => {
       disposed = true;
       window.clearTimeout(startupTimer);
+      clearTimeout(waitingTimer);
       hls?.destroy();
+      unbindAccessibility();
       art.destroy(false);
       artRef.current = null;
       setGesturePlayer(null);
@@ -189,11 +250,18 @@ export function ArtPlayerSurface({
     track.default = true;
     let objectUrl: string | undefined;
     let disposed = false;
-    track.onerror = () => callbacksRef.current.onSubtitleError?.(true);
+    const failed = () => {
+      diagnose("subtitle_error", "warn", { operation: asset.diagnosticId, code: controller.signal.aborted ? "timeout" : "subtitle" });
+      callbacksRef.current.onSubtitleError?.(true);
+    };
+    track.onerror = failed;
     const timer = window.setTimeout(() => controller.abort(new Error("Subtitle loading timed out")), 20_000);
     void fetch(subtitle.url, { signal: controller.signal })
       .then(async (response) => {
-        if (!response.ok) throw new Error(`Subtitle HTTP ${response.status}`);
+        if (!response.ok) {
+          diagnose("subtitle_error", "warn", { operation: asset.diagnosticId, code: "http", status: response.status });
+          throw new Error(`Subtitle HTTP ${response.status}`);
+        }
         const text = await response.text();
         if (!text.trimStart().startsWith("WEBVTT")) throw new Error("Invalid WebVTT subtitles");
         if (controller.signal.aborted) return;
@@ -203,7 +271,7 @@ export function ArtPlayerSurface({
         track.track.mode = "showing";
       })
       .catch(() => {
-        if (!disposed) callbacksRef.current.onSubtitleError?.(true);
+        if (!disposed) failed();
       })
       .finally(() => window.clearTimeout(timer));
     return () => {
@@ -220,6 +288,7 @@ export function ArtPlayerSurface({
   useEffect(() => {
     const art = artRef.current;
     if (!art) return;
+    if (isMobileApp && fullscreen.mode === "normal") art.setting.show = false;
     for (const mode of ["app", "system"] as const) {
       const button = art.controls[`kuriume-${mode}-fullscreen`]?.querySelector("button");
       if (!button) continue;
@@ -240,9 +309,9 @@ export function ArtPlayerSurface({
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
-      <div ref={containerRef} className="artplayer-app h-full w-full overflow-hidden bg-black" data-mobile={isMobileApp} data-testid="art-player-surface" />
+      <div ref={containerRef} className="artplayer-app h-full w-full overflow-hidden bg-black" data-mobile={isMobileApp} data-fullscreen={fullscreen.mode !== "normal"} data-testid="art-player-surface" />
       {gesture && <div role="status" aria-live="polite" className="pointer-events-none absolute inset-0 z-30 grid place-items-center">
-        <div className="flex max-w-[85%] items-center gap-3 rounded-xl bg-black/85 px-5 py-4 text-sm font-medium text-white tabular-nums">
+        <div className="kuriume-gesture-feedback">
           {gesture.kind === "brightness" ? <Sun size={22} /> : gesture.kind === "volume" ? <Volume2 size={22} /> : gesture.kind === "seek" ? <MoveHorizontal size={22} /> : <CircleAlert size={22} />}
           {gesture.text}
         </div>

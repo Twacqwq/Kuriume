@@ -15,6 +15,8 @@ use crate::models::{
 };
 use crate::provider::AnimeProvider;
 
+mod search;
+
 const ANILIST_API: &str = "https://graphql.anilist.co";
 const BANGUMI_API: &str = "https://api.bgm.tv";
 const USER_AGENT: &str = "Kuriume/0.1 (https://github.com/Kuriume/Kuriume)";
@@ -311,65 +313,6 @@ impl AniList {
             .error_for_status()?;
         Ok(response.json().await?)
     }
-
-    async fn search_chinese(&self, query: &SearchQuery) -> Result<PagedResult<AnimeInfo>> {
-        // This only bridges search names. All returned identities and playback
-        // aliases still belong to AniList; no parallel Bangumi catalog is added.
-        let limit = query.limit.clamp(1, 25);
-        let keyword = zhconv::zhconv(query.keyword.trim(), zhconv::Variant::ZhHans);
-        let subjects = self.bangumi_search(&keyword, limit, query.offset).await?;
-        let mut result = PagedResult {
-            data: Vec::new(),
-            total: subjects.total,
-            limit,
-            offset: query.offset,
-        };
-        let mut seen = BTreeSet::new();
-        let mut pending = subjects.data.into_iter();
-        loop {
-            // A full page of aliases exceeds AniList's query complexity limit.
-            // Ten titles leave headroom without making a request per title.
-            let batch: Vec<_> = pending.by_ref().take(10).collect();
-            if batch.is_empty() {
-                break;
-            }
-            // Search text is passed in variables, never interpolated into GraphQL.
-            let variables = batch
-                .iter()
-                .enumerate()
-                .map(|(i, subject)| (format!("s{i}"), json!(subject.name)))
-                .collect::<serde_json::Map<String, Value>>();
-            let declarations = (0..batch.len())
-                .map(|i| format!("$s{i}: String!"))
-                .collect::<Vec<_>>()
-                .join(",");
-            let fields = (0..batch.len()).map(|i| format!(
-                "r{i}: Page(perPage: 5) {{ media(type: ANIME, isAdult: false, search: $s{i}, sort: SEARCH_MATCH) {{ {MEDIA_FIELDS} }} }}"
-            )).collect::<Vec<_>>().join("\n");
-            let mut matches: HashMap<String, SearchMediaPage> = self
-                .graphql(
-                    format!("query ({declarations}) {{ {fields} }}"),
-                    Value::Object(variables),
-                )
-                .await?;
-            for (i, subject) in batch.into_iter().enumerate() {
-                let candidates = matches.remove(&format!("r{i}")).ok_or_else(|| {
-                    ProviderError::Source("AniList returned incomplete search results".into())
-                })?;
-                if let Some(media) = match_search_subject(&subject, candidates.media) {
-                    if !seen.insert(media.id) {
-                        continue;
-                    }
-                    let mut info = AnimeInfo::from(media);
-                    if let Some(metadata) = subject.into_metadata() {
-                        metadata.apply_to(&mut info);
-                    }
-                    result.data.push(info);
-                }
-            }
-        }
-        Ok(result)
-    }
 }
 
 impl Default for AniList {
@@ -387,34 +330,10 @@ impl AnimeProvider for AniList {
     async fn search(
         &self,
         query: SearchQuery,
-        language: Option<&str>,
+        _language: Option<&str>,
     ) -> Result<PagedResult<AnimeInfo>> {
-        let limit = query.limit.clamp(1, 50);
-        let page = query.offset / limit + 1;
-        if query.keyword.trim().is_empty() {
-            return Ok(PagedResult {
-                data: Vec::new(),
-                total: 0,
-                limit,
-                offset: query.offset,
-            });
-        }
-        if query.keyword.chars().any(is_han) && !contains_kana(&query.keyword) {
-            let result = self.search_chinese(&query).await?;
-            // An AniList-only title may not yet be indexed by Bangumi.
-            if result.total > 0 || query.offset > 0 {
-                return Ok(result);
-            }
-        }
-        self.page(
-            page,
-            limit,
-            None,
-            Some(query.keyword.trim()),
-            "SEARCH_MATCH",
-            language,
-        )
-        .await
+        // Search must never wait on Bangumi, including title enrichment.
+        self.search_catalog(query).await
     }
 
     async fn get_detail(&self, id: &str, language: Option<&str>) -> Result<AnimeInfo> {
@@ -623,11 +542,6 @@ struct MediaPage {
     media: Vec<Media>,
 }
 
-#[derive(Deserialize)]
-struct SearchMediaPage {
-    media: Vec<Media>,
-}
-
 fn catalog_page_total(page: &MediaPage, offset: u32, limit: u32) -> u64 {
     if page.page_info.has_next_page {
         page.page_info
@@ -754,7 +668,6 @@ impl CachedChineseMetadata {
 
 #[derive(Debug, Deserialize)]
 struct BangumiSearchResponse {
-    total: u64,
     #[serde(default)]
     data: Vec<BangumiSubject>,
 }
@@ -788,40 +701,6 @@ impl BangumiSubject {
             },
         )
     }
-}
-
-fn match_search_subject(subject: &BangumiSubject, candidates: Vec<Media>) -> Option<Media> {
-    let mut ranked: Vec<_> = candidates
-        .into_iter()
-        .filter_map(|media| {
-            let request = LocalizationRequest::from(&media);
-            let keys = request
-                .aliases
-                .iter()
-                .map(|title| normalized_catalog_title(title))
-                .collect();
-            let alternate_keys = request
-                .aliases
-                .iter()
-                .filter_map(|title| localization_base_title(title))
-                .map(normalized_catalog_title)
-                .collect();
-            let score = bangumi_match_score(subject, &keys, request.year, request.episode_count)
-                .max(bangumi_variant_score(
-                    subject,
-                    &alternate_keys,
-                    request.year,
-                    request.episode_count,
-                ));
-            (score >= 80).then_some((score, media))
-        })
-        .collect();
-    ranked.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
-    // Never silently map an ambiguous title to the wrong season or remake.
-    if ranked.len() > 1 && ranked[0].0 == ranked[1].0 {
-        return None;
-    }
-    ranked.into_iter().next().map(|(_, media)| media)
 }
 
 #[derive(Debug, Deserialize)]
@@ -1237,29 +1116,6 @@ mod tests {
     }
 
     #[test]
-    fn chinese_search_mapping_preserves_identity_and_rejects_ambiguous_or_wrong_seasons() {
-        let subject: BangumiSubject = serde_json::from_value(json!({
-            "name": "無職転生Ⅲ ～異世界行ったら本気だす～",
-            "name_cn": "无职转生 第三季", "date": "2026-07-05", "eps": 14
-        }))
-        .unwrap();
-        let matched = match_search_subject(&subject, vec![mushoku_media()]).unwrap();
-        assert_eq!(matched.id, 178789);
-        let mut other_season = mushoku_media();
-        other_season.title.native = Some("無職転生Ⅱ ～異世界行ったら本気だす～".into());
-        other_season.title.romaji = Some("Mushoku Tensei II".into());
-        other_season.title.english = None;
-        other_season.synonyms.clear();
-        assert!(match_search_subject(&subject, vec![other_season]).is_none());
-        let mut remake = mushoku_media();
-        remake.season_year = Some(2020);
-        assert!(match_search_subject(&subject, vec![remake]).is_none());
-        let mut ambiguous = mushoku_media();
-        ambiguous.id = 999;
-        assert!(match_search_subject(&subject, vec![mushoku_media(), ambiguous]).is_none());
-    }
-
-    #[test]
     fn anilist_last_page_overrides_estimated_search_total() {
         let mut page = MediaPage {
             media: vec![mushoku_media()],
@@ -1294,13 +1150,15 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires the live AniList and Bangumi services"]
-    async fn live_chinese_search_maps_simplified_traditional_and_missing_anilist_aliases() {
+    #[ignore = "requires only the live AniList service"]
+    async fn live_anilist_search_matches_scripts_aliases_and_paginates_without_bangumi() {
         let provider = AniList::new();
         for (keyword, expected, language) in [
             ("葬送的芙莉莲", 154587, "zh"),
             ("葬送的芙莉蓮", 154587, "en"),
             ("无职转生 第三季", 178789, "zh"),
+            ("鬼滅之刃", 101922, "zh"),
+            ("史莱姆", 182205, "zh"),
         ] {
             let result = provider
                 .search(
@@ -1325,7 +1183,6 @@ mod tests {
                 .find(|m| m.anilist_id == expected)
                 .expect(keyword);
             assert_eq!(media.id, format!("anilist:{expected}"));
-            assert!(media.title_cn.is_some());
             assert!(!media.title_en.is_empty());
         }
         let first = provider
@@ -1380,6 +1237,27 @@ mod tests {
             .unwrap();
         assert!(broad.total > 25);
         assert!(!broad.data.is_empty());
+        let later = provider
+            .search(
+                SearchQuery {
+                    keyword: "魔法".into(),
+                    limit: 25,
+                    offset: 150,
+                },
+                Some("zh"),
+            )
+            .await
+            .unwrap();
+        assert_eq!(later.data.len(), 25);
+        assert_eq!(later.offset, 150);
+        assert!(later
+            .data
+            .iter()
+            .all(|item| !broad.data.iter().any(|first| first.id == item.id)));
+        assert!(
+            provider.chinese_metadata.lock().await.is_empty(),
+            "search must never request Bangumi localization"
+        );
     }
 
     #[test]
@@ -1586,18 +1464,9 @@ mod tests {
     async fn live_chinese_list_fills_mushoku_tensei_third_season_title() {
         let provider = AniList::new();
         let result = provider
-            .search(
-                SearchQuery {
-                    keyword: "Mushoku Tensei III".into(),
-                    limit: 3,
-                    offset: 0,
-                },
-                Some("zh"),
-            )
-            .await
-            .unwrap();
+            .localized_list(vec![provider.media(178789).await.unwrap()], Some("zh"))
+            .await;
         let media = result
-            .data
             .iter()
             .find(|media| media.anilist_id == 178789)
             .unwrap();

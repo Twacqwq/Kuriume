@@ -25,7 +25,9 @@ export function usePlayerFullscreen() {
       : undefined);
     controller.current = fullscreen;
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) void fullscreen.exit();
+      // Escape dismisses the foreground menu first, then exits fullscreen.
+      const overlay = document.querySelector('[role="dialog"], [role="menu"], [role="listbox"], .art-setting-show .art-settings');
+      if (event.key === "Escape" && !event.defaultPrevented && !overlay) void fullscreen.exit();
     };
     // Capture before ArtPlayer's Escape hotkey prevents the default event.
     window.addEventListener("keydown", escape, true);

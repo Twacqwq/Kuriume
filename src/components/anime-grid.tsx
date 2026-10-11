@@ -5,6 +5,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import { LoadingStatus } from '@/components/page-loading'
 import { useDisplayLanguage } from '@/hooks/use-display-language'
 import { displayAnimeTitle } from '@/lib/display-language'
 import type { AnimeInfo, PagedResult } from '@/lib/types'
@@ -68,7 +70,7 @@ export function AnimeGrid<TPageParam>({
     isFetchingNextPage,
     isFetchNextPageError,
     isError,
-    isLoading,
+    isPending,
     error,
     refetch,
   } = useInfiniteQuery({
@@ -211,15 +213,19 @@ export function AnimeGrid<TPageParam>({
       )}
 
       <div ref={containerCallbackRef}>
-      {isLoading ? (
-        <div
-          className="grid gap-x-3 gap-y-6 md:gap-x-4"
-          style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-        >
-          {Array.from({ length: pageSize }).map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
-        </div>
+      {isPending ? (
+        <>
+          <LoadingStatus className="mb-4" />
+          <div
+            aria-hidden="true"
+            className="grid gap-x-3 gap-y-6 md:gap-x-4"
+            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+          >
+            {Array.from({ length: Math.min(pageSize, 14) }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        </>
       ) : isError && items.length === 0 ? (
         <GridError
           message={toErrorMessage(error)}
@@ -276,14 +282,18 @@ export function AnimeGrid<TPageParam>({
 
           {/* Loading more indicator */}
           {isFetchingNextPage && (
-            <div
-              className="grid gap-x-3 gap-y-6 md:gap-x-4"
-              style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-            >
-              {Array.from({ length: Math.min(pageSize, 14) }).map((_, i) => (
-                <SkeletonCard key={i} />
-              ))}
-            </div>
+            <>
+              <LoadingStatus className="mb-4" />
+              <div
+                aria-hidden="true"
+                className="grid gap-x-3 gap-y-6 md:gap-x-4"
+                style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+              >
+                {Array.from({ length: Math.min(pageSize, 14) }).map((_, i) => (
+                  <SkeletonCard key={i} />
+                ))}
+              </div>
+            </>
           )}
 
           {isFetchNextPageError && (
@@ -303,11 +313,11 @@ export function AnimeGrid<TPageParam>({
 
 function SkeletonCard() {
   return (
-    <div className="animate-pulse motion-reduce:animate-none">
-      <div className="aspect-2/3 rounded-lg bg-card" />
+    <div aria-hidden="true">
+      <Skeleton className="aspect-2/3 rounded-lg" />
       <div className="mt-2 space-y-1.5">
-        <div className="h-4 w-3/4 rounded bg-card" />
-        <div className="h-3 w-1/2 rounded bg-card" />
+        <Skeleton className="h-4 w-3/4" />
+        <Skeleton className="h-3 w-1/2" />
       </div>
     </div>
   )
@@ -341,6 +351,7 @@ interface AnimeCardProps {
 }
 
 const AnimeCard = memo(function AnimeCard({ item }: AnimeCardProps) {
+  const language = useDisplayLanguage();
   const [imgFailed, setImgFailed] = useState(false);
   const hasCover = item.cover && !imgFailed;
 
@@ -370,7 +381,7 @@ const AnimeCard = memo(function AnimeCard({ item }: AnimeCardProps) {
         {item.score > 0 && (
           <div
             className="absolute top-2 right-2 flex items-center gap-1 rounded-md bg-black/68 px-1.5 py-0.5 text-xs text-white/88"
-            aria-label={`评分 ${item.score}`}
+            aria-label={`${language === "zh" ? "评分" : "Score"} ${item.score}`}
           >
             <Star size={10} fill="currentColor" aria-hidden="true" />
             {item.score}
@@ -379,14 +390,14 @@ const AnimeCard = memo(function AnimeCard({ item }: AnimeCardProps) {
       </div>
       {/* Info */}
       <div className="mt-2 space-y-1">
-        <h3 className="text-sm font-medium text-foreground line-clamp-1 group-hover:text-primary-readable transition-colors motion-reduce:transition-none">
+        <h3 className="min-h-10 text-sm leading-5 font-medium text-foreground line-clamp-2 group-hover:text-primary-readable transition-colors motion-reduce:transition-none">
           {item.title}
         </h3>
         {(item.year > 0 || item.episodes > 0) && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {item.year > 0 && <span>{item.year}</span>}
             {item.year > 0 && item.episodes > 0 && <span>·</span>}
-            {item.episodes > 0 && <span>{item.episodes}话</span>}
+            {item.episodes > 0 && <span>{item.episodes}{language === "zh" ? " 话" : " eps"}</span>}
           </div>
         )}
         <div className="hidden gap-1.5 sm:flex">

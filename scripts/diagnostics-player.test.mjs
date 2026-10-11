@@ -1,0 +1,85 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import ts from "typescript";
+
+test("player diagnostics do not flood progress or change playback callbacks, and clean up timers", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let now = 0;
+  t.mock.method(performance, "now", () => now);
+  const effects = [], records = [], callbacks = [];
+  const previousWindow = globalThis.window, previousDocument = globalThis.document;
+  globalThis.window = globalThis;
+  globalThis.document = { createElement: () => ({}) };
+  let art, refIndex = 0;
+  class Player {
+    static PLAYBACK_RATE = [1];
+    constructor() {
+      art = this;
+      this.listeners = new Map();
+      this.setting = { find: () => null };
+      this.video = { paused: false, videoWidth: 1920, videoHeight: 1080, getVideoPlaybackQuality: () => ({ droppedVideoFrames: 2 }) };
+      this.currentTime = 30; this.duration = 1500; this.isReady = false;
+    }
+    on(name, fn) { this.listeners.set(name, fn); }
+    emit(name) { this.listeners.get(name)?.(); }
+    destroy() { this.listeners.clear(); }
+  }
+  globalThis.__playerDiag = { Player, effects, records, ref: (value) => ({ current: refIndex++ === 0 ? {} : value }) };
+  const data = (code) => `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
+  const imports = {
+    react: data("export const useEffect=fn=>globalThis.__playerDiag.effects.push(fn);export const useRef=globalThis.__playerDiag.ref;export const useState=()=>[null,()=>{}];"),
+    "react/jsx-runtime": data("export const jsx=(...args)=>args;export const jsxs=jsx;"),
+    artplayer: data("export default globalThis.__playerDiag.Player;"),
+    "@/hooks/use-display-language": data('export const useDisplayLanguage=()=>"zh";'),
+    "@/hooks/use-player-gestures": data("export const usePlayerGestures=()=>null;"),
+    "@/lib/platform": data("export const isMobileApp=false;"),
+    "@/lib/playback-selection": data("export const subtitleLanguage=()=>'';"),
+    "@/components/art-player-icons": data("export const playerIcons={};"),
+    "@/components/art-player-accessibility": data("export const bindPlayerAccessibility=()=>()=>{};"),
+    "@/lib/diagnostics": data("export const diagnose=(...args)=>globalThis.__playerDiag.records.push(args);"),
+    "lucide-react": data("export const Sun=()=>{}, Volume2=Sun, MoveHorizontal=Sun, CircleAlert=Sun;"),
+  };
+  const source = await readFile(new URL("../src/components/art-player-surface.tsx", import.meta.url), "utf8");
+  const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+  const { ArtPlayerSurface } = await import(data(js.replace(/import "[^"]+\.css";/g, "").replace(/from "([^"]+)"/g, (_, id) => `from "${imports[id]}"`)));
+  let dispose;
+  try {
+    ArtPlayerSurface({ asset: { kind:"direct", url:"https://private.example/?token=secret", mimeType:"video/mp4", diagnosticId:42 }, fullscreen:{mode:"normal"}, defaultSpeed:1.5,
+      onProgress: (...args) => callbacks.push(["progress", ...args]), onPlaying: () => callbacks.push(["playing"]), onError: (message) => callbacks.push(["error", message]), onEnded: () => callbacks.push(["ended"]) });
+    dispose = effects[0]();
+    art.isReady = true;
+    art.emit("ready");
+    assert.equal(art.playbackRate, 1.5);
+    const before = records.length;
+    for (let i=0;i<10_000;i++) art.emit("video:timeupdate");
+    assert.equal(records.length, before, "progress ticks must never be logged");
+    assert.equal(callbacks.length, 10_000);
+    art.emit("video:playing"); art.emit("video:playing");
+    assert.equal(records.filter(([event]) => event === "player_playing").length, 1);
+    assert.equal(callbacks.filter(([event]) => event === "playing").length, 2);
+    art.emit("video:waiting");
+    now = 2500;
+    t.mock.timers.tick(2500);
+    art.emit("video:playing");
+    assert.equal(records.filter(([event]) => event === "player_buffering").length, 2);
+    art.emit("video:seeked");
+    art.video.error = { code: 3, message: "Original error with secret URL" };
+    art.emit("video:error");
+    assert.equal(callbacks.at(-1)[1], "Original error with secret URL", "UI error behavior is unchanged");
+    assert.equal(records.at(-1)[2].code, "decode");
+    art.emit("video:ended");
+    assert.equal(callbacks.at(-1)[0], "ended");
+    assert(!JSON.stringify(records).includes("secret"));
+    art.emit("video:waiting");
+    dispose(); dispose = undefined;
+    const finalCount = records.length;
+    t.mock.timers.tick(65_000);
+    assert.equal(records.length, finalCount);
+    assert.equal(art.listeners.size, 0);
+  } finally {
+    dispose?.();
+    globalThis.window = previousWindow; globalThis.document = previousDocument;
+    delete globalThis.__playerDiag;
+  }
+});

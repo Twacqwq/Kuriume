@@ -64,6 +64,9 @@ export function SearchPanel({ open, onClose }: SearchPanelProps) {
             aria-label={language === "zh" ? "搜索动画" : "Search anime"}
             enterKeyHint="search"
             autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
             className="h-12 min-w-0 flex-1 bg-transparent text-base text-foreground placeholder:text-muted-foreground outline-none"
           />
           <button type="button" onClick={onClose} aria-label={language === "zh" ? "关闭搜索" : "Close search"} className="grid size-12 shrink-0 place-items-center rounded-lg text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary-readable"><X size={19} /></button>

@@ -38,6 +38,44 @@ Restart server**. This uses the rustup-managed analyzer on `PATH` without
 upgrading the compiler or disabling diagnostics. Confirm real errors with
 `cargo check --manifest-path src-tauri/Cargo.toml --workspace --all-targets`.
 
+### App icons
+
+`public/icon.png` is the source used by both the UI and native app icons. After
+changing it (or initializing a mobile project), run `npm run icons:generate`.
+The [Tauri icon command](https://v2.tauri.app/develop/icons/) updates desktop
+resources in `src-tauri/icons` and the launcher/AppIcon assets directly in the
+Android and iOS projects. Commit those generated assets together with the source.
+CI regenerates them and checks PNG/ICO and mobile assets for stale or missing
+files (ICNS entry ordering is nondeterministic). Changing the UI image alone does
+not change an installed app's launcher icon. iOS icons are flattened on white.
+
+### In-app diagnostics
+
+Open **Settings → Logs & diagnostics** after reproducing a problem, then copy
+the relevant page into the report. Logs are process-local: restarting the app
+clears them. They are never written to a file/database or uploaded automatically.
+Clipboard copying happens only on request; WebViews without clipboard support
+offer selectable text instead.
+
+The Rust buffer retains at most **1 MiB of serialized log content and 1,000
+entries**, evicting oldest entries first. Individual records are capped at 4 KiB;
+identical consecutive events within two seconds are coalesced. These limits are
+not a claim about total application RAM: container overhead, a bounded frontend
+queue (32 pending + 8 in-flight records), and one 50-entry UI page also use memory.
+Recording is best-effort and never blocks playback waiting for the log lock.
+
+Use `diagnostics::record` / `diagnose` with the shared event codes and typed fields.
+Do not pass arbitrary messages, stack traces, titles, search terms, device IDs,
+URLs, headers, cookies or tokens. Those fields are rejected at the IPC boundary.
+Capture source/catalog outcomes, media failures, initial playback, sustained
+buffering, seeks and native-control failures—not every timeupdate or successful
+HLS fragment. Resolution operation IDs correlate Rust/media/player events within
+this run; they do not identify a user or survive restart. This is not a persistent
+crash reporter; copy before restarting if the UI remains usable.
+
+Run `npm test` and `cargo test --manifest-path src-tauri/Cargo.toml --lib diagnostics`
+for the queue bounds, byte/count eviction, pagination, clearing and privacy checks.
+
 ## Commit Convention
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/):
@@ -93,8 +131,8 @@ Google Play, and fastlane are not part of this phase.
 
 | Platform | Distribution | Current release workflow |
 | --- | --- | --- |
-| macOS Apple Silicon | DMG | Enabled; ad-hoc signed, not notarized |
-| Windows x64 | NSIS EXE | Enabled; not code-signed |
+| macOS Apple Silicon (M-series) | arm64 DMG and `.app.tar.gz` | Ad-hoc by default; optional Developer ID signing + notarization; no Intel build |
+| Windows x64 | NSIS EXE and MSI | Enabled; not code-signed |
 | Android arm64 | Signed APK | Main artifacts and versioned releases; signing secrets required |
 | iOS / iPadOS | Unsigned device IPA for user-managed re-signing | Main artifacts and versioned releases; no Apple credentials needed |
 
@@ -112,6 +150,46 @@ secrets belong to GitHub Actions and trusted main/release jobs, never PR jobs. K
 identifier stable across upgrades. The current app has no in-app updater; users
 download and install a newer release. Do not add updater keys or `latest.json`
 until the corresponding updater and signature verification are implemented.
+
+### Apple distribution outside the App Store
+
+For ordinary macOS downloads, the supported path is **Developer ID Application
+signing + hardened runtime + Apple notarization + a stapled ticket**. Creating a
+DMG or ad-hoc signing alone does not establish Gatekeeper trust. A paid Apple
+Developer Program account is needed for this public distribution path; users
+can still see the normal first-open confirmation. See
+[Tauri's macOS signing guide](https://v2.tauri.app/distribute/sign/macos/) and
+[Apple's notarization documentation](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
+Never ask users to globally disable Gatekeeper to compensate for unsigned builds.
+
+Signing is **disabled by default**. When credentials become available:
+
+1. Add repository Actions secrets `APPLE_CERTIFICATE` (base64 P12),
+   `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` (the full
+   `Developer ID Application: ...` identity), `APPLE_ID`, `APPLE_PASSWORD`
+   (an app-specific password, not the account password), and `APPLE_TEAM_ID`.
+2. Set the repository Actions **variable** `MACOS_SIGNING_ENABLED=true`.
+3. Build a commit already on main. Tauri imports the P12 into a temporary
+   keychain and handles signing/notarization. The workflow verifies the arm64
+   architecture, the code signature, the stapled ticket and Gatekeeper
+   assessment before labeling the package `notarized`.
+
+Enabling signing with missing/invalid credentials fails the build; it never
+silently falls back to ad-hoc. Without the flag, Apple credentials are not passed
+to the builder, and the manifest clearly records `ad-hoc`. Do not confuse OS
+code signing with Tauri updater signatures. Windows Authenticode is not configured.
+
+iOS/iPadOS cannot generally reproduce the Mac's “download DMG and install”
+experience, particularly for our users in mainland China. Our current route is
+a clearly labeled unsigned IPA plus user-managed re-signing, for example through
+[AltStore Classic](https://faq.altstore.io/altstore-classic/your-altstore).
+Free-account installs need refresh within seven days, and initial setup uses
+[AltServer on a computer](https://faq.altstore.io/altstore-classic/altserver).
+Publishing an IPA or an AltStore source does not remove Apple's signing rules.
+Apple's [EU Web Distribution](https://developer.apple.com/support/web-distribution-eu/)
+requires eligible developers, authorized domains and notarized apps; it is not
+a general GitHub-IPA installation channel for mainland users. No TestFlight,
+enterprise certificate, or paid third-party signing service is introduced here.
 
 ### Mobile packages and signing
 
@@ -183,13 +261,23 @@ never substitutes an unsigned APK, a changing debug certificate, or a new key.
 No Apple account, development team, provisioning profile or TestFlight setup is
 needed for the unsigned IPA. It still needs valid re-signing before installation.
 
-The **Mobile packages** workflow runs on pushes to `main` and can also be run
-manually. It only signs commits already reachable from `main`, never PR code.
-Download `mobile-android-arm64` and `mobile-ios-unsigned` from the run's
-**Artifacts** section. Artifacts include package checksums and expire after 14
-days. Versioned releases call the same workflow and publish both mobile packages
-alongside the desktop installers only when every required build succeeds.
-Merging a feature PR produces test artifacts; it does not publish a new Release.
+After checks pass on a push to `main`, **CI** calls the shared **Build packages**
+workflow for desktop and mobile. That workflow can also be run manually for a
+commit already reachable from main; PR code never receives signing secrets.
+Download `packages-macos-arm64`, `packages-windows-x64`,
+`packages-android-arm64`, and `packages-ios-unsigned` from the CI run's
+**Artifacts** section or its summary links. They expire after 14 days.
+Versioned releases use the identical builders with a `release-` artifact prefix.
+Merging an ordinary feature PR produces test artifacts, not a public Release.
+
+`.github/actions/package-artifact` is the one upload/staging entry point. It
+accepts only the expected installer files, normalizes names to
+`Kuriume-<version>-<build-number>-<platform>.<extension>`, records commit/version/
+build number/signing status and SHA-256 checksums, and avoids recompressing
+already compressed packages. It never uploads the full target tree, credentials
+or native intermediates. The release job verifies all six packages against the
+same identity and hashes before copying only approved files to its upload folder.
+`build-manifest.json` is a traceability record, not a cryptographic attestation.
 
 Product versions still come from `package.json`. Mobile builds share one UTC
 minute number since 2020-01-01, computed once per workflow: Android uses it as
@@ -206,8 +294,9 @@ an unsigned iPhone/iPad arm64 IPA and a signed Android arm64 release APK also
 build successfully. Package checks cover device architecture, version, APK
 signature, release mode, and 16 KB ZIP alignment; the Android native library's
 LOAD segments also use 16 KB alignment. The frontend tests, workspace Rust tests,
-Clippy, and workflow syntax checks pass. The GitHub-hosted mobile workflow still
-needs its first run after merging to main.
+Clippy, and workflow syntax checks pass. Subsequent GitHub mobile runs have
+succeeded; the expanded macOS App archive/MSI pipeline and optional notarization
+still require their first hosted run after merging this CI change.
 An iPhone 16 Pro / iOS 18.3 simulator played Frieren episode 1 through Anime1,
 Xifan Next, and AGE's Hongniu line. AGE's initial VIP line returned no video;
 switching lines recovered playback. Fullscreen and saved-position restoration
@@ -234,8 +323,8 @@ the workspace version, local Cargo lock entries, npm lock, manifest, and changel
 in one release PR. `npm run check:version` rejects drift before a build. Do not
 bump individual crates or platform files independently.
 
-The Cargo lock JSONPath uses `name.value` because the pinned Release Please
-17.3.0 TOML updater wraps scalar values with source-position metadata. When
+The Cargo lock JSONPath uses `name.value` because Release Please 17.6.0
+(bundled by the pinned action v5.0.0) wraps TOML scalar values with source-position metadata. When
 upgrading that action, verify an in-memory stable/prerelease bump changes only
 the four workspace entries, not dependency versions.
 
@@ -243,7 +332,8 @@ Supported tags are `vX.Y.Z` and `vX.Y.Z-alpha.N`, `-beta.N`, or `-rc.N`. The tag
 must exactly match all version files. Do not move published version tags.
 
 1. PRs targeting `main` and pushes to `main` run frontend checks and Rust
-   checks/tests on macOS and Windows. Pushes to `main` also build mobile packages.
+   checks/tests on macOS and Windows. Successful pushes to `main` then build all
+   four platform groups through `build-packages.yml`.
    Pushes to `v1` do not trigger CI. Live
    third-party-source tests remain opt-in.
 2. Conventional commits on `main` feed Release Please. Review and merge its
@@ -252,10 +342,13 @@ must exactly match all version files. Do not move published version tags.
 3. Release Please directly calls the reusable release workflow. It resolves the
    tag to a commit, validates the version, and runs CI and all desktop/mobile builds
    against that same commit.
-4. After every required build succeeds, the publish job uploads installers and
-   `SHA256SUMS`, then publishes the draft. Prerelease tags are not marked latest.
+4. After every required build succeeds, the publish job verifies the complete
+   package set, uploads installers, `SHA256SUMS` and `build-manifest.json`, then
+   publishes the draft. Prerelease tags are not marked latest.
    A failed build leaves the draft unpublished; already public releases are not
-   overwritten. Never manually publish a draft while its build is in progress.
+   overwritten. A full rerun removes superseded generated installers from that
+   unpublished draft; unrelated attachments are left alone. Never manually
+   publish a draft while its build is in progress.
 
 For a failed draft build, rerun the failed workflow/jobs. Alternatively run
 **Build and Release** manually with an existing matching version tag. A branch
@@ -276,6 +369,53 @@ Node is selected from `.node-version` (26). Rust is pinned in
 `rust-toolchain.toml`; update the matching toolchain inputs in Actions together.
 Actions are pinned to reviewed commit SHAs. Toolchain/action upgrades should pass
 the same checks before merging.
+
+Tailwind's core and Vite plugin are pinned together at 4.3.3, which uses the
+Node 26-compatible module hooks. Upgrade them together and compare generated
+styles; do not suppress Node deprecations globally. The complete HLS library is
+loaded only on demand (native HLS remains preferred where supported). Its
+~592 kB minified chunk has a 650 kB budget; every other JS chunk retains a 500 kB
+budget. The Vite budget check fails the build if either grows beyond its limit
+or HLS becomes a static/mixed chunk. Do not switch to `hls.js/light` just to fit
+the generic warning threshold: it omits subtitle/audio/codec capabilities.
+
+The JavaScript runtime bundled **inside an Action** is separate from the Node
+version used by application commands. Our JavaScript Actions now use Node 24
+while `npm`/build scripts use Node 26. Updating `setup-node`'s input alone cannot
+fix an old Action's Node 20 deprecation warning. The macOS arm64 capacity notice
+is GitHub runner scheduling, not a compiler warning; we keep the supported runner
+and do not change architectures merely to hide that notice.
+
+### Cross-platform workflow references and naming
+
+Reviewed on 2026-10-11; these are patterns to learn from, not workflows to copy wholesale:
+
+| Project | Relevant maintenance pattern | Decision for Kuriume |
+| --- | --- | --- |
+| [Readest](https://github.com/readest/readest/blob/main/.github/workflows/release.yml) | Tauri multi-platform matrix; signed macOS bundles, multiple desktop architectures and APKs | Reuse the matrix/platform-boundary approach; do not adopt its extra CEF, cloud storage or updater infrastructure |
+| [Readest Nightly](https://github.com/readest/readest/blob/main/.github/workflows/nightly.yml) | Scheduled timestamped builds; per-platform metadata assembled before updating the nightly index | Main CI artifacts suffice for now; no extra nightly job or duplicated build recipes |
+| [Kazumi](https://github.com/Predidit/Kazumi/blob/main/.github/workflows/release.yaml) | Flutter platform jobs with versioned desktop packages/APK and a clearly named `no_sign.ipa` | Keep the unsigned IPA distinction; framework migration is unnecessary |
+| [Artcraft](https://github.com/storytold/artcraft/blob/main/.github/workflows/artcraft-macos-publish.yml) | Universal Mac DMG/App archive, Developer ID + notarization; Windows EXE/MSI in a separate workflow | Adopt formats and optional signing, but target Apple Silicon only; keep one reusable build flow and all-platform publish gate |
+
+Readest's [iOS distribution uses App Store/TestFlight lanes](https://github.com/readest/readest/blob/main/fastlane/Fastfile);
+“supports all platforms” does not mean every platform can directly install a
+GitHub Release asset. No current Linux package is advertised by Kuriume; adding
+one also needs Linux-specific build/runtime/playback validation.
+
+Common names refer to different layers:
+
+- **Monorepo / shared codebase**: one repository, shared product version, thin
+  platform-specific configuration/native adapters; not a branch per OS.
+- **Matrix build**: expand the desktop build across OS/architecture combinations.
+- **Reusable workflow** (`workflow_call`): reuse complete jobs between main and
+  versioned releases. **Composite Action**: reuse a group of steps, such as our
+  artifact staging/upload action.
+- **Stable** (`vX.Y.Z`), **Beta/RC** (`vX.Y.Z-beta.N` / `-rc.N`) and
+  **Nightly/Canary** (frequent development snapshots) are release-channel names,
+  not installer types. We currently keep main test artifacts and versioned
+  stable/prerelease releases; no scheduled Nightly/Canary or auto-update feed.
+- **Universal / arm64 / x64** describe architectures; **DMG / MSI / APK / IPA**
+  describe packaging. An **unsigned IPA** describes signing status, not a channel.
 
 ## Code Style
 
