@@ -13,14 +13,16 @@ export interface Settings {
 
 export const settingsApi = {
   get: () => invoke<Settings>("get_settings"),
-  setDefaultVolume: (volume: number) =>
-    invoke<void>("set_default_volume", { volume }),
-  setDefaultSpeed: (speed: number) =>
-    invoke<void>("set_default_speed", { speed }),
-  setAutoNext: (enabled: boolean) =>
-    invoke<void>("set_auto_next", { enabled }),
   setDisplayLanguage: (language: DisplayLanguage) =>
     invoke<void>("set_display_language", { language }),
+};
+
+// One small, process-local entry. Settings change only through our save actions.
+export const settingsQueryOptions = {
+  queryKey: ["settings"] as const,
+  queryFn: settingsApi.get,
+  staleTime: Infinity,
+  gcTime: Infinity,
 };
 
 export interface StoredMedia {

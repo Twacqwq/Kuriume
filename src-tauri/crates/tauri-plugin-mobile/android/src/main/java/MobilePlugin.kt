@@ -4,9 +4,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.os.Build
 import android.provider.Settings
 import android.view.WindowManager
 import android.webkit.WebView
@@ -32,8 +29,6 @@ class MobilePlugin(private val activity: Activity) : Plugin(activity) {
     private var previousOrientation: Int? = null
     private var view: WebView? = null
     private var sniffer: MediaSniffer? = null
-    private val focusListener = AudioManager.OnAudioFocusChangeListener { change -> if (change < 0) background() }
-    private var focus: AudioFocusRequest? = null
 
     override fun load(webView: WebView) { view = webView; activity.volumeControlStream = AudioManager.STREAM_MUSIC }
     private fun brightness(): Double {
@@ -45,9 +40,6 @@ class MobilePlugin(private val activity: Activity) : Plugin(activity) {
         originalBrightness?.let { original -> activity.window.attributes = activity.window.attributes.apply { screenBrightness = original } }
         originalBrightness = null
         activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        if (Build.VERSION.SDK_INT >= 26) focus?.let { audio.abandonAudioFocusRequest(it) }
-        else if (session != null) { @Suppress("DEPRECATION") audio.abandonAudioFocus(focusListener) }
-        focus = null
     }
     private fun background() {
         restore()
@@ -64,19 +56,12 @@ class MobilePlugin(private val activity: Activity) : Plugin(activity) {
             try {
                 when (args.action) {
                     "prepare" -> {
+                        // Chromium owns audio focus for the HTML video. A second
+                        // native owner steals it from WebView, or mistakes the
+                        // video's own focus gain for backgrounding and pauses it.
                         if (session != args.session || originalBrightness == null) {
                             restore(); session = args.session
                             originalBrightness = activity.window.attributes.screenBrightness
-                            val granted = if (Build.VERSION.SDK_INT >= 26) {
-                                val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                                    .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MOVIE).build())
-                                    .setOnAudioFocusChangeListener(focusListener).build()
-                                focus = request
-                                audio.requestAudioFocus(request)
-                            } else { @Suppress("DEPRECATION") audio.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN) }
-                            if (granted != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-                                restore(); session = null; invoke.reject("Audio focus unavailable"); return@runOnUiThread
-                            }
                         }
                         activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     }

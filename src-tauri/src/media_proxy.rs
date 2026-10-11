@@ -4,7 +4,7 @@
 //! return only an opaque local URL to the renderer. Authorization query strings
 //! never enter frontend state, history, or logs.
 
-use crate::diagnostics::{self, Code, Details, Event, Level};
+use crate::diagnostics::{self, Action, Code, Details, Event, Level};
 use kuriume_provider::PlaybackHeaders;
 use reqwest::header::{
     HeaderName, HeaderValue, ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, ETAG,
@@ -175,7 +175,7 @@ async fn proxy_request(
     request: Request<Vec<u8>>,
     mut session: MediaSession,
 ) -> Response<Vec<u8>> {
-    let log_failure = |code, status| {
+    let log_failure = |code, status, action, message: &str| {
         diagnostics::record(
             Event::MediaRequest,
             Level::Error,
@@ -183,6 +183,8 @@ async fn proxy_request(
                 operation: session.diagnostic_id,
                 code: Some(code),
                 status,
+                action: Some(action),
+                message: Some(message.to_owned()),
                 ..Details::default()
             },
         )
@@ -259,6 +261,8 @@ async fn proxy_request(
                 log_failure(
                     diagnostics::http_code(&error),
                     error.status().map(|s| s.as_u16()),
+                    Action::Fetch,
+                    &diagnostics::error_message(&error),
                 );
                 return error_response(StatusCode::BAD_GATEWAY, "Unable to reach media host");
             }
@@ -267,7 +271,12 @@ async fn proxy_request(
             break upstream;
         }
         if redirects >= 3 {
-            log_failure(Code::Source, None);
+            log_failure(
+                Code::Source,
+                None,
+                Action::Redirect,
+                "Too many media redirects (limit: 3)",
+            );
             return error_response(StatusCode::BAD_GATEWAY, "Too many media redirects");
         }
         let next = upstream
@@ -277,7 +286,12 @@ async fn proxy_request(
             .and_then(|location| session.url.join(location).ok())
             .and_then(|url| validate_remote_url(url.as_str(), &session.allowed_hosts).ok());
         let Some(next) = next else {
-            log_failure(Code::Source, None);
+            log_failure(
+                Code::Source,
+                None,
+                Action::Redirect,
+                "Media redirect left the declared source scope",
+            );
             return error_response(
                 StatusCode::BAD_GATEWAY,
                 "Media redirect left the declared source scope",
@@ -298,7 +312,12 @@ async fn proxy_request(
         return builder.body(Vec::new()).unwrap_or_default();
     }
     if !upstream.status().is_success() {
-        log_failure(Code::Http, Some(upstream.status().as_u16()));
+        log_failure(
+            Code::Http,
+            Some(upstream.status().as_u16()),
+            Action::Fetch,
+            "Media host rejected the request",
+        );
         let status =
             StatusCode::from_u16(upstream.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
         return error_response(status, "Media host rejected the request");
@@ -313,7 +332,12 @@ async fn proxy_request(
             .content_length()
             .is_some_and(|length| length > max_body as u64)
     {
-        log_failure(Code::Source, None);
+        log_failure(
+            Code::Source,
+            None,
+            Action::Read,
+            "Media host returned an oversized media chunk",
+        );
         return error_response(
             StatusCode::BAD_GATEWAY,
             "Media host returned an oversized media chunk",
@@ -333,12 +357,22 @@ async fn proxy_request(
                     body.extend_from_slice(&chunk);
                 }
                 Ok(Some(_)) => {
-                    log_failure(Code::Source, None);
+                    log_failure(
+                        Code::Source,
+                        None,
+                        Action::Read,
+                        "Media chunk exceeded the size limit while reading",
+                    );
                     return error_response(StatusCode::BAD_GATEWAY, "Media chunk is too large");
                 }
                 Ok(None) => break body,
                 Err(error) => {
-                    log_failure(diagnostics::http_code(&error), None);
+                    log_failure(
+                        diagnostics::http_code(&error),
+                        None,
+                        Action::Read,
+                        &diagnostics::error_message(&error),
+                    );
                     return error_response(StatusCode::BAD_GATEWAY, "Unable to read media chunk");
                 }
             }
@@ -349,7 +383,7 @@ async fn proxy_request(
         body = match rewrite_playlist(&body, &session) {
             Ok(body) => body,
             Err(error) => {
-                log_failure(Code::Parse, None);
+                log_failure(Code::Parse, None, Action::Playlist, &error);
                 return error_response(StatusCode::BAD_GATEWAY, &error);
             }
         };

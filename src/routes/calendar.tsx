@@ -1,15 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
 import { displayAnimeTitle } from "@/lib/display-language";
-import { currentDisplayLanguage } from "@/lib/catalog-queries";
-import type { DisplayLanguage } from "@/lib/store";
-import { invoke } from "@tauri-apps/api/core";
+import { calendarQueryOptions, ensureCatalogSettings } from "@/lib/catalog-queries";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Star, Film } from "lucide-react";
 import { memo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { queryClient } from "@/lib/query-client";
 import type { AnimeInfo, CalendarEntry } from "@/lib/types";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { CalendarPageLoading } from "@/components/page-loading";
@@ -22,23 +19,8 @@ function getTodayWeekdayId(): number {
   return jsDay === 0 ? 7 : jsDay;    // AniList view model: 1=Mon … 7=Sun
 }
 
-const calendarQueryOptions = (language: DisplayLanguage) => ({
-  queryKey: ["calendar", "AniList", language],
-  queryFn: async () => {
-    return invoke<CalendarEntry[]>("get_calendar", {
-      provider: "AniList",
-      language,
-    });
-  },
-  staleTime: 1000 * 60 * 30, // 30 min
-});
-
 export const Route = createFileRoute("/calendar")({
-  loader: async () => {
-    const language = await currentDisplayLanguage();
-    // Cached schedules can render while useQuery refreshes them in the background.
-    await queryClient.ensureQueryData(calendarQueryOptions(language)).catch(() => undefined);
-  },
+  loader: ensureCatalogSettings,
   pendingComponent: CalendarPageLoading,
   component: CalendarPage,
 });

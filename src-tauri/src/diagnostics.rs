@@ -1,4 +1,4 @@
-//! Process-local diagnostics. Never persists or accepts raw messages/URLs.
+//! Process-local diagnostics. Error messages are bounded and redacted before storage.
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::{
@@ -25,6 +25,9 @@ pub enum Event {
     MediaRequest,
     PlayerLoad,
     PlayerPlaying,
+    PlayerPlay,
+    PlayerPause,
+    PlayerBackground,
     PlayerBuffering,
     PlayerSeek,
     PlayerError,
@@ -102,14 +105,40 @@ pub enum Engine {
     HtmlVideo,
 }
 
-// A typed allowlist is safer than trying to redact arbitrary error strings.
-// No titles, search terms, paths, URLs, headers, cookies or device identifiers.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum Action {
+    List,
+    Search,
+    Detail,
+    Episodes,
+    Calendar,
+    Characters,
+    Direct,
+    Sniff,
+    Fetch,
+    Read,
+    Redirect,
+    Playlist,
+    Prepare,
+    Pause,
+    Levels,
+    Volume,
+    Brightness,
+    Finish,
+    Fullscreen,
+    Leave,
+}
+
+// Keep context typed; only error text passes through the bounded redactor.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct Details {
     pub operation: Option<u64>,
     pub provider: Option<Provider>,
     pub code: Option<Code>,
+    pub action: Option<Action>,
+    pub message: Option<String>,
     pub elapsed_ms: Option<u64>,
     pub status: Option<u16>,
     pub count: Option<u32>,
@@ -152,7 +181,8 @@ struct Buffer {
 }
 
 impl Buffer {
-    fn push(&mut self, input: Input, now: u64) {
+    fn push(&mut self, mut input: Input, now: u64) {
+        input.details.message = input.details.message.as_deref().map(sanitize_message);
         if let Some((last, size)) = self.entries.back_mut() {
             if last.input == input && now.saturating_sub(last.last_at) <= 2_000 {
                 last.repeats = last.repeats.saturating_add(1);
@@ -280,11 +310,60 @@ pub fn http_code(error: &reqwest::Error) -> Code {
     }
 }
 
-/// Observe provider calls without retaining their raw error text or arguments.
+/// Error text only, never request/response payloads. URLs (including their path
+/// and query), credentials, local paths and opaque tokens must not reach memory.
+pub fn sanitize_message(message: &str) -> String {
+    static RULES: OnceLock<Vec<regex::Regex>> = OnceLock::new();
+    let rules = RULES.get_or_init(|| [
+        r#"(?i)(?:authorization|proxy-authorization|set-cookie|cookie|[a-z_]*(?:token|password|secret)|api[-_]?key)\s*[\"']?\s*[:=][^\r\n]*"#,
+        r"(?i)\b(?:bearer|basic)\s+[^\s,;]+",
+        r#"(?i)(?:[a-z][a-z0-9+.-]*://|www\.)[^\s<>\"']+"#,
+        r#"(?:[A-Za-z]:\\|/)[^\s<>\"']+"#,
+        r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+        r"[A-Za-z0-9_+=.-]{40,}",
+    ].into_iter().map(|pattern| regex::Regex::new(pattern).expect("static redaction pattern")).collect());
+    let mut text: String = message.chars().take(2048).collect();
+    for rule in rules {
+        text = rule.replace_all(&text, "[redacted]").into_owned();
+    }
+    text = text
+        .chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}') {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
+    let mut end = text.len().min(1024);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.truncate(end);
+    text
+}
+
+pub fn error_message(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut parts = vec![sanitize_message(&error.to_string())];
+    let mut source = error.source();
+    for _ in 0..3 {
+        let Some(cause) = source else { break };
+        let message = sanitize_message(&cause.to_string());
+        if !parts.iter().any(|part| part.contains(&message)) {
+            parts.push(message);
+        }
+        source = cause.source();
+    }
+    sanitize_message(&parts.join("; caused by: "))
+}
+
+/// Preserve caller behavior, but retain a safe, useful error chain for diagnosis.
 pub async fn observe<T>(
     event: Event,
     provider_id: &str,
     operation: u64,
+    action: Option<Action>,
     future: impl std::future::Future<Output = kuriume_provider::Result<T>>,
 ) -> kuriume_provider::Result<T> {
     let provider = provider(provider_id);
@@ -295,6 +374,7 @@ pub async fn observe<T>(
             operation: Some(operation),
             provider: Some(provider),
             code: Some(Code::Start),
+            action,
             ..Details::default()
         },
     );
@@ -321,6 +401,8 @@ pub async fn observe<T>(
             provider: Some(provider),
             code: Some(code),
             status,
+            action,
+            message: result.as_ref().err().map(|error| error_message(error)),
             elapsed_ms: Some(started.elapsed().as_millis() as u64),
             ..Details::default()
         },
@@ -378,7 +460,7 @@ mod tests {
         let id = operation();
         let private = "https://private.example/?token=secret-cookie";
         let result: kuriume_provider::Result<()> =
-            observe(Event::SourceResolve, "builtin:age", id, async {
+            observe(Event::SourceResolve, "builtin:age", id, None, async {
                 Err(kuriume_provider::ProviderError::Network(private.into()))
             })
             .await;
@@ -396,9 +478,13 @@ mod tests {
         assert_eq!(entry.input.details.provider, Some(Provider::Agedm));
         assert!(!serde_json::to_string(&snapshot).unwrap().contains(private));
         assert_eq!(
-            observe(Event::CatalogRequest, "AniList", operation(), async {
-                Ok(42)
-            })
+            observe(
+                Event::CatalogRequest,
+                "AniList",
+                operation(),
+                Some(Action::Search),
+                async { Ok(42) }
+            )
             .await
             .unwrap(),
             42
@@ -483,12 +569,56 @@ mod tests {
     }
     #[test]
     fn diagnostics_reject_secrets_and_untrusted_webviews() {
-        for field in ["url", "cookie", "token", "message", "stack", "title"] {
+        for field in ["url", "cookie", "token", "stack", "title"] {
             let data = serde_json::json!({ "event":"ui_error", "level":"error", "details": { field: "secret" } });
             assert!(serde_json::from_value::<Input>(data).is_err());
         }
         assert!(serde_json::from_value::<Input>(serde_json::json!({"event":"ui_error","level":"error","details":{"code":"https://secret"}})).is_err());
         assert!(require_main("sniffer-1").is_err());
         assert!(require_main("main").is_ok());
+    }
+
+    #[test]
+    fn error_messages_are_useful_redacted_and_byte_bounded() {
+        let raw = "manifestLoadError HTTP 403 https://user:pass@cdn.example/path?token=SECRET\nAuthorization: Bearer AUTH_SECRET\nCookie: session=COOKIE_SECRET; other=OTHER_SECRET\ncaused by: connection reset at /Users/private/movie and C:\\Users\\private\\movie user@example.com";
+        let safe = sanitize_message(raw);
+        assert!(safe.contains("manifestLoadError HTTP 403"));
+        assert!(safe.contains("caused by: connection reset"));
+        for private in [
+            "SECRET",
+            "private",
+            "cdn.example",
+            "user@example",
+            "user:pass",
+        ] {
+            assert!(!safe.contains(private), "{safe}");
+        }
+        assert!(!safe.contains('\n'));
+        assert!(sanitize_message(&"异常".repeat(2048)).len() <= 1024);
+        let mut b = Buffer::default();
+        for i in 0..2000 {
+            let mut entry = input(i);
+            entry.details.message = Some("decoder returned an invalid sample; ".repeat(100));
+            b.push(entry, i);
+        }
+        assert!(b.bytes <= MAX_BYTES);
+        assert!(
+            b.entries.len() < MAX_ENTRIES,
+            "long errors must exercise the byte cap"
+        );
+        assert_eq!(
+            b.bytes,
+            b.entries
+                .iter()
+                .map(|(entry, _)| serde_json::to_vec(entry).unwrap().len())
+                .sum::<usize>()
+        );
+        let mut entry = input(9000);
+        entry.details.message = Some(raw.into());
+        b.push(entry, 9000);
+        assert_eq!(
+            b.entries.back().unwrap().0.input.details.message.as_deref(),
+            Some(safe.as_str())
+        );
     }
 }

@@ -3,6 +3,7 @@ import type Artplayer from "artplayer";
 import { gestureTime, playerGesture, type GestureChange } from "@/lib/player-gestures";
 import { mobileControl, type PlayerLevels } from "@/lib/mobile-player";
 import { isMobileApp } from "@/lib/platform";
+import { diagnose } from "@/lib/diagnostics";
 
 export function usePlayerGestures(art: Artplayer | null, language: string) {
   const [feedback, setFeedback] = useState<{ kind: string; text: string } | null>(null);
@@ -95,7 +96,7 @@ export function usePlayerGestures(art: Artplayer | null, language: string) {
     const click = (event: MouseEvent) => {
       if (suppressClick) { event.preventDefault(); event.stopImmediatePropagation(); suppressClick = false; }
     };
-    const background = () => { cancel(); pending = null; ready = false; art.pause(); void control("finish").catch(() => {}); };
+    const background = () => { diagnose("player_background", "info", { message: document.hidden ? "Document became hidden; pausing playback" : "Native lifecycle interruption; pausing playback" }); cancel(); pending = null; ready = false; art.pause(); void control("finish").catch(() => {}); };
     const visibility = () => { if (document.hidden) background(); };
     const playing = () => { void control("prepare").then((value) => { levels = value; ready = true; }).catch(() => {}); };
     const pause = () => { void control("pause").catch(() => {}); };

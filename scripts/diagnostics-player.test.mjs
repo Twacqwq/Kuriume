@@ -37,7 +37,7 @@ test("player diagnostics do not flood progress or change playback callbacks, and
     "@/lib/playback-selection": data("export const subtitleLanguage=()=>'';"),
     "@/components/art-player-icons": data("export const playerIcons={};"),
     "@/components/art-player-accessibility": data("export const bindPlayerAccessibility=()=>()=>{};"),
-    "@/lib/diagnostics": data("export const diagnose=(...args)=>globalThis.__playerDiag.records.push(args);"),
+    "@/lib/diagnostics": data("export const diagnose=(...args)=>globalThis.__playerDiag.records.push(args);export const diagnosticMessage=error=>String(error);"),
     "lucide-react": data("export const Sun=()=>{}, Volume2=Sun, MoveHorizontal=Sun, CircleAlert=Sun;"),
   };
   const source = await readFile(new URL("../src/components/art-player-surface.tsx", import.meta.url), "utf8");
@@ -64,10 +64,13 @@ test("player diagnostics do not flood progress or change playback callbacks, and
     art.emit("video:playing");
     assert.equal(records.filter(([event]) => event === "player_buffering").length, 2);
     art.emit("video:seeked");
-    art.video.error = { code: 3, message: "Original error with secret URL" };
+    art.video.error = { code: 3, message: "Decoder returned an invalid sample" };
     art.emit("video:error");
-    assert.equal(callbacks.at(-1)[1], "Original error with secret URL", "UI error behavior is unchanged");
+    assert.equal(callbacks.at(-1)[1], "Decoder returned an invalid sample", "UI error behavior is unchanged");
     assert.equal(records.at(-1)[2].code, "decode");
+    assert.equal(records.at(-1)[2].message, "Decoder returned an invalid sample");
+    art.emit("video:play"); art.emit("video:pause");
+    assert.deepEqual(records.slice(-2).map(([event]) => event), ["player_play", "player_pause"]);
     art.emit("video:ended");
     assert.equal(callbacks.at(-1)[0], "ended");
     assert(!JSON.stringify(records).includes("secret"));

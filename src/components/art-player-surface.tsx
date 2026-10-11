@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { playerIcons } from "@/components/art-player-icons";
 import { bindPlayerAccessibility } from "@/components/art-player-accessibility";
 import "@/components/art-player-skin.css";
-import { diagnose, type DiagnosticCode } from "@/lib/diagnostics";
+import { diagnose, diagnosticMessage, type DiagnosticCode } from "@/lib/diagnostics";
 
 const KURIUME = "#904840";
 // Fullscreen belongs to the desktop page, including the double-click shortcut.
@@ -144,7 +144,7 @@ export function ArtPlayerSurface({
             const Hls = (await import("hls.js")).default;
             if (disposed) return;
             if (!Hls.isSupported()) {
-              diagnose("player_error", "error", { operation, code: "unsupported", engine: "hlsjs" });
+              diagnose("player_error", "error", { operation, code: "unsupported", engine: "hlsjs", message: "Hls.isSupported() returned false: WebView lacks the required MediaSource support" });
               callbacksRef.current.onError?.("当前 WebView 不支持 HLS 播放");
               return;
             }
@@ -153,13 +153,14 @@ export function ArtPlayerSurface({
             hls.on(Hls.Events.ERROR, (_event, data) => {
               const detail = data.details.toLowerCase();
               const code: DiagnosticCode = detail.includes("manifest") ? "hls_manifest" : detail.includes("frag") ? "hls_fragment" : detail.includes("key") ? "hls_key" : detail.includes("buffer") ? "hls_buffer" : "decode";
-              diagnose("player_error", data.fatal ? "error" : "warn", { operation, code, engine: "hlsjs", status: data.response?.code });
+              diagnose("player_error", data.fatal ? "error" : "warn", { operation, code, engine: "hlsjs", status: data.response?.code,
+                message: `${data.type}: ${data.details}; fatal=${data.fatal}${data.error ? `; ${diagnosticMessage(data.error)}` : ""}` });
               if (data.fatal) callbacksRef.current.onError?.(`HLS ${data.type}: ${data.details}`);
             });
             hls.loadSource(url);
             hls.attachMedia(video);
           } catch (reason) {
-            if (!disposed) diagnose("player_error", "error", { operation, code: "unsupported", engine: "hlsjs" });
+            if (!disposed) diagnose("player_error", "error", { operation, code: "unsupported", engine: "hlsjs", message: diagnosticMessage(reason) });
             if (!disposed) callbacksRef.current.onError?.(`HLS loading failed: ${String(reason)}`);
           }
         },
@@ -196,6 +197,8 @@ export function ArtPlayerSurface({
       callbacksRef.current.onProgress?.(art.currentTime, art.duration);
     });
     art.on("video:ended", () => callbacksRef.current.onEnded?.());
+    art.on("video:play", () => diagnose("player_play", "info", { operation, position: art.currentTime }));
+    art.on("video:pause", () => { if (!disposed) diagnose("player_pause", "info", { operation, position: art.currentTime }); });
     const qualityDetails = () => ({ width: art.video.videoWidth, height: art.video.videoHeight, droppedFrames: art.video.getVideoPlaybackQuality?.().droppedVideoFrames });
     art.on("video:playing", () => {
       if (firstPlay) {
@@ -220,7 +223,7 @@ export function ArtPlayerSurface({
     art.on("video:error", () => {
       const error = art.video.error;
       const codes: DiagnosticCode[] = ["unknown", "aborted", "network", "decode", "unsupported"];
-      diagnose("player_error", "error", { operation, code: codes[error?.code ?? 0] ?? "unknown", ...qualityDetails() });
+      diagnose("player_error", "error", { operation, code: codes[error?.code ?? 0] ?? "unknown", message: error?.message, ...qualityDetails() });
       callbacksRef.current.onError?.(error?.message || `Media error ${error?.code ?? "unknown"}`);
     });
 
@@ -250,8 +253,8 @@ export function ArtPlayerSurface({
     track.default = true;
     let objectUrl: string | undefined;
     let disposed = false;
-    const failed = () => {
-      diagnose("subtitle_error", "warn", { operation: asset.diagnosticId, code: controller.signal.aborted ? "timeout" : "subtitle" });
+    const failed = (reason?: unknown) => {
+      diagnose("subtitle_error", "warn", { operation: asset.diagnosticId, code: controller.signal.aborted ? "timeout" : "subtitle", message: reason instanceof Error ? diagnosticMessage(reason) : "WebView could not load or parse the subtitle track" });
       callbacksRef.current.onSubtitleError?.(true);
     };
     track.onerror = failed;

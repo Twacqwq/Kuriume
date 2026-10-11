@@ -5,10 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { playbackErrorMessage } from "@/lib/playback-error";
 import { catalogPlaybackTitles, preferredSubtitle, subtitleKey } from "@/lib/playback-selection";
-import {
-  settingsQueryOptions,
-  useDisplayLanguage,
-} from "@/hooks/use-display-language";
+import { useDisplayLanguage } from "@/hooks/use-display-language";
 import { useOnlineSource } from "@/hooks/use-online-source";
 import { usePlayerFullscreen } from "@/hooks/use-player-fullscreen";
 import { playbackRequestKey, usePlaybackResolver } from "@/hooks/use-playback-resolver";
@@ -21,6 +18,7 @@ import { queryClient } from "@/lib/query-client";
 import {
   historyApi,
   mediaApi,
+  settingsQueryOptions,
   sourceBindingApi,
 } from "@/lib/store";
 import { cn } from "@/lib/utils";

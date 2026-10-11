@@ -1,14 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { settingsQueryOptions } from "@/hooks/use-display-language";
 import { refreshCatalogLanguage } from "@/lib/catalog-queries";
-import { isMobileApp } from "@/lib/platform";
 import {
   DEFAULT_DISPLAY_LANGUAGE,
   settingsApi,
+  settingsQueryOptions,
   type DisplayLanguage,
   type Settings,
 } from "@/lib/store";
@@ -18,37 +15,28 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AlertCircle,
   Check,
-  Gauge,
   Languages,
   Loader2,
-  Radio,
   RefreshCw,
-  Volume2,
   ScrollText,
   ChevronRight,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
 });
 
 type Feedback = { kind: "success" | "error"; message: string } | null;
-type SavingKey = "language" | "volume" | "speed" | "auto-next";
 
 function SettingsPage() {
   const queryClient = useQueryClient();
   const { data: settings, isLoading, error, refetch } = useQuery(settingsQueryOptions);
-  const [saving, setSaving] = useState<SavingKey | null>(null);
+  const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [reloading, setReloading] = useState(false);
-  const persistedVolume = useRef<number | null>(null);
   const language = settings?.display_language ?? DEFAULT_DISPLAY_LANGUAGE;
   const zh = language === "zh";
-
-  if (settings && persistedVolume.current === null) {
-    persistedVolume.current = settings.default_volume;
-  }
 
   const updateSettings = (update: (current: Settings) => Settings) => {
     queryClient.setQueryData<Settings>(settingsQueryOptions.queryKey, (current) =>
@@ -60,7 +48,7 @@ function SettingsPage() {
     if (!settings || language === settings.display_language) return;
     const previous = settings.display_language;
     updateSettings((current) => ({ ...current, display_language: language }));
-    setSaving("language");
+    setSaving(true);
     setFeedback(null);
     try {
       await settingsApi.setDisplayLanguage(language);
@@ -70,10 +58,10 @@ function SettingsPage() {
         kind: "error",
         message: toErrorMessage(reason, previous === "zh" ? "无法更新显示语言" : "Could not update the display language"),
       });
-      setSaving(null);
+      setSaving(false);
       return;
     }
-    setSaving(null);
+    setSaving(false);
     await reloadCatalog(language);
   };
 
@@ -87,62 +75,6 @@ function SettingsPage() {
       setFeedback({ kind: "error", message: language === "zh" ? "语言已保存，列表载入失败，请重试" : "Language saved. Could not reload lists; please retry." });
     } finally {
       setReloading(false);
-    }
-  };
-
-  const saveVolume = async (volume: number) => {
-    const previous = persistedVolume.current ?? settings?.default_volume ?? 0.8;
-    setSaving("volume");
-    setFeedback(null);
-    try {
-      await settingsApi.setDefaultVolume(volume);
-      persistedVolume.current = volume;
-    } catch (reason) {
-      updateSettings((current) => ({ ...current, default_volume: previous }));
-      setFeedback({
-        kind: "error",
-        message: toErrorMessage(reason, zh ? "无法保存默认音量" : "Could not save the default volume"),
-      });
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  const saveSpeed = async (speed: number) => {
-    if (!settings || speed === settings.default_speed) return;
-    const previous = settings.default_speed;
-    updateSettings((current) => ({ ...current, default_speed: speed }));
-    setSaving("speed");
-    setFeedback(null);
-    try {
-      await settingsApi.setDefaultSpeed(speed);
-    } catch (reason) {
-      updateSettings((current) => ({ ...current, default_speed: previous }));
-      setFeedback({
-        kind: "error",
-        message: toErrorMessage(reason, zh ? "无法保存默认倍速" : "Could not save the playback speed"),
-      });
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  const saveAutoNext = async (enabled: boolean) => {
-    if (!settings) return;
-    const previous = settings.auto_next;
-    updateSettings((current) => ({ ...current, auto_next: enabled }));
-    setSaving("auto-next");
-    setFeedback(null);
-    try {
-      await settingsApi.setAutoNext(enabled);
-    } catch (reason) {
-      updateSettings((current) => ({ ...current, auto_next: previous }));
-      setFeedback({
-        kind: "error",
-        message: toErrorMessage(reason, zh ? "无法保存自动连播设置" : "Could not save autoplay preferences"),
-      });
-    } finally {
-      setSaving(null);
     }
   };
 
@@ -168,14 +100,14 @@ function SettingsPage() {
       ) : (
         <div className="space-y-8 md:mt-8">
           <SettingsGroup title={zh ? "显示" : "Display"} action={
-              <Button type="button" variant="ghost" size="icon-sm" className="size-12 text-muted-foreground" disabled={reloading || saving === "language"} onClick={() => void reloadCatalog(settings.display_language)} aria-label={zh ? "重新载入动漫列表" : "Reload anime lists"} title={zh ? "重新载入动漫列表" : "Reload anime lists"}>
+              <Button type="button" variant="ghost" size="icon-sm" className="size-12 text-muted-foreground" disabled={reloading || saving} onClick={() => void reloadCatalog(settings.display_language)} aria-label={zh ? "重新载入动漫列表" : "Reload anime lists"} title={zh ? "重新载入动漫列表" : "Reload anime lists"}>
                 {reloading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
               </Button>
             }>
             <SettingRow icon={<Languages />} label={zh ? "显示语言" : "Language"} htmlFor="display-language">
               <Select
                 value={settings.display_language}
-                disabled={saving === "language" || reloading}
+                disabled={saving || reloading}
                 onValueChange={(value) => {
                   if (value === "en" || value === "zh") void saveLanguage(value);
                 }}
@@ -189,69 +121,6 @@ function SettingsPage() {
             </SettingRow>
           </SettingsGroup>
 
-          <SettingsGroup title={zh ? "播放" : "Playback"}>
-            {!isMobileApp && <SettingRow icon={<Volume2 />} label={zh ? "默认音量" : "Default volume"} htmlFor="default-volume" stacked>
-              <div className="flex w-full items-center gap-4 md:w-56">
-                <Slider
-                  id="default-volume"
-                  thumbLabels={[zh ? "默认音量" : "Default volume"]}
-                  formatValue={(value) => `${value}%`}
-                  value={[Math.round(settings.default_volume * 100)]}
-                  min={0}
-                  max={100}
-                  step={5}
-                  disabled={saving === "volume"}
-                  onValueChange={([value]) => {
-                    if (value === undefined) return;
-                    updateSettings((current) => ({
-                      ...current,
-                      default_volume: value / 100,
-                    }));
-                  }}
-                  onValueCommit={([value]) => {
-                    if (value !== undefined) void saveVolume(value / 100);
-                  }}
-                />
-                <output
-                  htmlFor="default-volume"
-                  className="w-10 text-right text-xs tabular-nums text-muted-foreground"
-                >
-                  {Math.round(settings.default_volume * 100)}%
-                </output>
-              </div>
-            </SettingRow>}
-
-            <SettingRow icon={<Gauge />} label={zh ? "默认倍速" : "Playback speed"} htmlFor="default-speed">
-              <Select
-                value={String(settings.default_speed)}
-                disabled={saving === "speed"}
-                onValueChange={(value) => {
-                  if (value) void saveSpeed(Number(value));
-                }}
-              >
-                <SelectTrigger id="default-speed" className="h-12 w-24 shrink-0 border-0 bg-secondary/60"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {[0.75, 1, 1.25, 1.5, 2].map((speed) => (
-                    <SelectItem key={speed} value={String(speed)} className="min-h-12">{speed}×</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </SettingRow>
-
-            <SettingRow
-              icon={<Radio />}
-              label={zh ? "自动播放下一话" : "Autoplay next episode"}
-              htmlFor="auto-next"
-            >
-              <Switch
-                id="auto-next"
-                aria-label={zh ? "自动播放下一话" : "Autoplay next episode"}
-                checked={settings.auto_next}
-                disabled={saving === "auto-next"}
-                onCheckedChange={(checked) => void saveAutoNext(checked)}
-              />
-            </SettingRow>
-          </SettingsGroup>
           <SettingsGroup title={zh ? "诊断" : "Diagnostics"}>
             <Link to="/settings/logs" className="flex min-h-20 items-center gap-3 px-4 py-3 text-sm font-medium outline-none hover:bg-secondary/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-readable">
               <ScrollText className="size-4.5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -314,23 +183,17 @@ function SettingRow({
   label,
   htmlFor,
   children,
-  stacked = false,
 }: {
   icon: React.ReactNode;
   label: string;
-  htmlFor?: string;
+  htmlFor: string;
   children: React.ReactNode;
-  stacked?: boolean;
 }) {
   return (
-    <div className={cn("flex min-h-20 gap-3 px-4 py-3", stacked ? "flex-col md:flex-row md:items-center md:justify-between" : "items-center justify-between")}>
+    <div className="flex min-h-20 items-center justify-between gap-3 px-4 py-3">
       <div className="flex min-w-0 flex-1 items-center gap-3 text-muted-foreground [&_svg]:size-4.5 [&_svg]:shrink-0 [&_svg]:stroke-[1.8]">
         {icon}
-        {htmlFor ? (
-          <Label htmlFor={htmlFor} className="min-w-0 text-sm leading-snug text-foreground">{label}</Label>
-        ) : (
-          <span className="text-sm font-medium text-foreground">{label}</span>
-        )}
+        <Label htmlFor={htmlFor} className="min-w-0 text-sm leading-snug text-foreground">{label}</Label>
       </div>
       {children}
     </div>

@@ -10,16 +10,35 @@ struct AliasSnapshot {
     entries: Vec<(u64, Vec<String>)>,
 }
 
-fn aliases() -> &'static [(u64, Vec<String>)] {
+fn snapshot() -> &'static [(u64, Vec<String>)] {
     static INDEX: OnceLock<Vec<(u64, Vec<String>)>> = OnceLock::new();
     INDEX.get_or_init(|| {
-        let snapshot: AliasSnapshot =
+        let mut snapshot: AliasSnapshot =
             serde_json::from_str(include_str!("../../data/anilist-chinese.json"))
                 .expect("validated bundled AniList aliases");
-        snapshot
-            .entries
-            .into_iter()
-            .map(|(id, titles)| (id, titles.iter().map(|title| alias_key(title)).collect()))
+        snapshot.entries.sort_unstable_by_key(|(id, _)| *id);
+        snapshot.entries
+    })
+}
+
+// Display must use the original alias, not the punctuation/season-normalized
+// search key. ID lookup is exact and works before any network enrichment.
+pub(super) fn chinese_title(id: u64) -> Option<String> {
+    let entries = snapshot();
+    let index = entries.binary_search_by_key(&id, |(id, _)| *id).ok()?;
+    entries[index]
+        .1
+        .iter()
+        .find(|title| is_probably_chinese_title(title))
+        .map(|title| zhconv::zhconv(title.trim(), zhconv::Variant::ZhHans))
+}
+
+fn aliases() -> &'static [(u64, Vec<String>)] {
+    static KEYS: OnceLock<Vec<(u64, Vec<String>)>> = OnceLock::new();
+    KEYS.get_or_init(|| {
+        snapshot()
+            .iter()
+            .map(|(id, titles)| (*id, titles.iter().map(|title| alias_key(title)).collect()))
             .collect()
     })
 }
@@ -160,7 +179,6 @@ impl AniList {
                     None,
                     Some(keyword),
                     "SEARCH_MATCH",
-                    None,
                 )
                 .await;
         }
@@ -297,6 +315,16 @@ mod tests {
         let ids: BTreeSet<_> = aliases().iter().map(|(id, _)| *id).collect();
         assert_eq!(ids.len(), aliases().len());
         assert!(ids.len() > 8000);
+    }
+
+    #[test]
+    fn bundled_display_titles_keep_punctuation_and_skip_latin_only_names() {
+        assert_eq!(chinese_title(154587).as_deref(), Some("葬送的芙莉莲"));
+        assert_eq!(chinese_title(21).as_deref(), Some("海贼王"));
+        assert_eq!(chinese_title(178789).as_deref(), Some("无职转生 III ～到了异世界就拿出真本事"));
+        assert!(chinese_title(182205).unwrap().ends_with("第四季 Part 1&2"));
+        assert!(chinese_title(47).is_none(), "Latin-only alias is not a Chinese title");
+        assert!(chinese_title(u64::MAX).is_none());
     }
 
     #[test]

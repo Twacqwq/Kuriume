@@ -1,6 +1,6 @@
 //! Unified playback-source registry and Tauri command boundary.
 
-use crate::diagnostics::{self, Code, Details, Event, Level};
+use crate::diagnostics::{self, Action, Code, Details, Event, Level};
 use crate::media_proxy::MediaProxyState;
 use crate::store_commands::StoreState;
 use kuriume_provider::{
@@ -253,6 +253,7 @@ pub(crate) async fn playback_source_search(
         Event::SourceSearch,
         provider_id,
         diagnostics::operation(),
+        Some(Action::Search),
         state.provider(provider_id)?.search(query),
     )
     .await
@@ -272,6 +273,7 @@ pub(crate) async fn playback_source_episodes(
         Event::SourceEpisodes,
         provider_id,
         diagnostics::operation(),
+        Some(Action::Episodes),
         state.provider(provider_id)?.episodes(candidate_id),
     )
     .await
@@ -468,6 +470,7 @@ pub(crate) async fn playback_source_resolve(
         Event::SourceResolve,
         provider_id,
         diagnostic_id,
+        None,
         state.provider(provider_id)?.resolve(request),
     )
     .await
@@ -477,6 +480,7 @@ pub(crate) async fn playback_source_resolve(
     let mut last_error = None;
     for source in sources.into_iter().take(3) {
         let sniff = matches!(source.plan, ResolvePlan::Sniff { .. });
+        let action = Some(if sniff { Action::Sniff } else { Action::Direct });
         // A resolved transport need not wait for slower background websites.
         if sniff && !result.is_empty() {
             continue;
@@ -489,6 +493,7 @@ pub(crate) async fn playback_source_resolve(
                 operation: Some(diagnostic_id),
                 provider: Some(diagnostics::provider(provider_id)),
                 code: Some(Code::Start),
+                action,
                 ..Details::default()
             },
         );
@@ -509,6 +514,8 @@ pub(crate) async fn playback_source_resolve(
                     Code::Source
                 }),
                 elapsed_ms: Some(started.elapsed().as_millis() as u64),
+                action,
+                message: prepared.as_ref().err().cloned(),
                 ..Details::default()
             },
         );
@@ -527,6 +534,12 @@ pub(crate) async fn playback_source_resolve(
             Details {
                 operation: Some(diagnostic_id),
                 code: Some(Code::Empty),
+                provider: Some(diagnostics::provider(provider_id)),
+                message: Some(
+                    last_error
+                        .clone()
+                        .unwrap_or_else(|| "No playable sources for this episode".into()),
+                ),
                 ..Details::default()
             },
         );
