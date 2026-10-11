@@ -322,8 +322,7 @@ impl AnimeProvider for AniList {
             SortBy::Rank => "TRENDING_DESC",
             SortBy::Date => "START_DATE_DESC",
         };
-        self.page(page, limit, query.year, None, sort)
-            .await
+        self.page(page, limit, query.year, None, sort).await
     }
 
     async fn get_episodes(&self, query: GetEpisodesQuery) -> Result<Vec<EpisodesInfo>> {
@@ -1400,7 +1399,10 @@ mod tests {
         assert_eq!(info.title_cn.as_deref(), Some(title.as_str()));
         assert_eq!(info.id, "anilist:178789");
         assert_eq!(info.title, "Mushoku Tensei III: Isekai Ittara Honki Dasu");
-        assert_eq!(info.title_en, "Mushoku Tensei: Jobless Reincarnation Season 3");
+        assert_eq!(
+            info.title_en,
+            "Mushoku Tensei: Jobless Reincarnation Season 3"
+        );
         assert_eq!(info.search_titles, aliases);
         assert_eq!(info.studios, vec!["Studio Bind"]);
         // A successful detail-only synopsis request must not rename the title
@@ -1409,7 +1411,8 @@ mod tests {
             title: "另一种中文译名".into(),
             description: "详细的中文简介".into(),
             description_ja: None,
-        }.apply_to(&mut info);
+        }
+        .apply_to(&mut info);
         assert_eq!(info.title_cn.as_deref(), Some(title.as_str()));
         assert_eq!(info.description_cn.as_deref(), Some("详细的中文简介"));
 
@@ -1419,7 +1422,10 @@ mod tests {
         let mut synonym = mushoku_media();
         synonym.id = u64::MAX;
         synonym.synonyms.push("測試動畫 第三季".into());
-        assert_eq!(AnimeInfo::from(synonym).title_cn.as_deref(), Some("测试动画 第三季"));
+        assert_eq!(
+            AnimeInfo::from(synonym).title_cn.as_deref(),
+            Some("测试动画 第三季")
+        );
     }
 
     #[tokio::test]
