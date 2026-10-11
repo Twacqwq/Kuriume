@@ -46,7 +46,7 @@ test("diagnostics stay bounded on a stalled bridge, strip private data and clear
   t.mock.timers.tick(250);
   const entries = calls.at(-1).args.entries;
   assert.equal(entries.length, 2);
-  assert.deepEqual(entries[0].details, {});
+  assert.deepEqual(entries[0].details, { message: "[redacted]" });
   assert.deepEqual(entries[1].details, { code: "http", status: 403, elapsedMs: 12 });
   assert(!JSON.stringify(calls).includes(secret));
   completeWrite();
@@ -63,7 +63,7 @@ test("diagnostics stay bounded on a stalled bridge, strip private data and clear
   delete globalThis.__diagnosticInvoke;
 });
 
-test("runtime errors record categories only and reports include only the current page", async (t) => {
+test("runtime errors retain safe reasons and reports include only the current page", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const windowBefore = globalThis.window;
   globalThis.window = new EventTarget();
@@ -72,7 +72,7 @@ test("runtime errors record categories only and reports include only the current
   const dispose = diagnostics.installErrorDiagnostics();
   try {
     const error = new Event("error");
-    Object.assign(error, { error: new TypeError("Cookie secret"), message: "Cookie secret", filename: "https://secret", lineno: 8, colno: 12 });
+    Object.assign(error, { error: new TypeError("Cannot read properties of undefined\nCookie: secret"), filename: "https://secret", lineno: 8, colno: 12 });
     window.dispatchEvent(error);
     const rejection = new Event("unhandledrejection");
     rejection.reason = "https://secret?token=SECRET";
@@ -80,16 +80,34 @@ test("runtime errors record categories only and reports include only the current
     t.mock.timers.tick(250);
     await settle();
     assert.equal(writes[1].details.code, "type_error");
+    assert.match(writes[1].details.message, /Cannot read properties of undefined/);
     assert.equal(writes[2].details.code, "unhandled_rejection");
     assert(!JSON.stringify(writes).includes("secret"));
     const report = diagnostics.diagnosticReport({ version: "1.0", platform: "android", entries: [{ ...writes[1], id: 2, at: 0, lastAt: 1, repeats: 3 }], total: 1000, evicted: 100 });
     assert.match(report, /1 entries on this page/);
     assert.match(report, /android/);
     assert.match(report, /type_error/);
+    assert.match(report, /\[ERROR\]/);
     assert(!report.includes("app_started"));
   } finally {
     dispose();
     globalThis.window = windowBefore;
     delete globalThis.__diagnosticInvoke;
   }
+});
+
+test("messages preserve failure reasons but remove credentials, paths and forged log lines", () => {
+  const raw = "manifestLoadError HTTP 403 https://user:pass@cdn.example/path?token=SECRET\nAuthorization: Bearer AUTH_SECRET\nCookie: session=COOKIE_SECRET; other=OTHER_SECRET\ncaused by: connection reset at /Users/private/movie and C:\\Users\\private\\movie user@example.com";
+  const safe = diagnostics.diagnosticMessage(raw);
+  assert.match(safe, /manifestLoadError HTTP 403/);
+  assert.match(safe, /caused by: connection reset/);
+  assert.doesNotMatch(safe, /SECRET|private|cdn\.example|user@example|user:pass|\n/);
+  assert(Buffer.byteLength(diagnostics.diagnosticMessage("异常".repeat(2048))) <= 1024);
+  const error = new Error("fetch failed", { cause: new Error("connection refused") });
+  assert.match(diagnostics.diagnosticMessage(error), /fetch failed; caused by: Error: connection refused/);
+  const entry = (id) => ({ id, at:id*1000, lastAt:id*1000, repeats:1, level:"error", event:"catalog_request", details:{provider:"anilist", action:"search", operation:7, code:"http", status:429, message:"Too Many Requests", elapsedMs:123} });
+  const report = diagnostics.diagnosticReport({version:"1",platform:"android",total:2,evicted:0,entries:[entry(2),entry(1)]});
+  assert.match(report, /\[ERROR\] \[anilist\/catalog_request\/search\] #7 HTTP 429 — Too Many Requests/);
+  assert(report.indexOf("00:00:01") < report.indexOf("00:00:02"));
+  assert.match(report, /elapsedMs=123/);
 });

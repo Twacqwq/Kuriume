@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
 import { displayAnimeTitle } from "@/lib/display-language";
 import {
-  currentDisplayLanguage,
+  ensureCatalogSettings,
   CURRENT_YEAR,
   fetchSeason,
   SEASON_PAGE_SIZE,
@@ -19,17 +19,14 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Play } from "lucide-react";
 
 export const Route = createFileRoute("/")({
-  loader: async () => {
-    const language = await currentDisplayLanguage();
-    await queryClient.ensureQueryData(spotlightQuery(language)).catch(() => undefined);
-  },
+  loader: ensureCatalogSettings,
   pendingComponent: HomePageLoading,
   component: HomePage,
 });
 
 function HomePage() {
   const language = useDisplayLanguage();
-  const { data: firstPage, isError, isPending, refetch } = useQuery(spotlightQuery(language));
+  const { data: firstPage, dataUpdatedAt, isError, isPending, refetch } = useQuery(spotlightQuery(language));
   const spotlight = firstPage?.data?.slice(0, 12) ?? [];
   const { data: history = [] } = useQuery({
     queryKey: historyListQueryKey(12, 0),
@@ -148,11 +145,13 @@ function HomePage() {
         </section>
       </div>
 
-      <AnimeGrid
+      {firstPage && <AnimeGrid
         key={language}
         title={language === "zh" ? "今年的动画" : "Explore this year"}
         queryKey={["anime-list", "AniList", CURRENT_YEAR, language]}
-        queryFn={(offset: number) => fetchSeason(offset, language)}
+        queryFn={(offset: number) => offset === 0
+          ? queryClient.fetchQuery(spotlightQuery(language))
+          : fetchSeason(offset, language)}
         initialPageParam={0}
         getNextPageParam={(lastPage) => {
           const next = lastPage.offset + lastPage.limit;
@@ -160,7 +159,8 @@ function HomePage() {
         }}
         pageSize={SEASON_PAGE_SIZE}
         initialPage={firstPage}
-      />
+        initialPageUpdatedAt={dataUpdatedAt}
+      />}
     </div>
   );
 }

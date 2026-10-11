@@ -6,7 +6,6 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex, Semaphore};
-use tokio::task::JoinSet;
 
 use crate::error::{ProviderError, Result};
 use crate::models::{
@@ -20,7 +19,6 @@ mod search;
 const ANILIST_API: &str = "https://graphql.anilist.co";
 const BANGUMI_API: &str = "https://api.bgm.tv";
 const USER_AGENT: &str = "Kuriume/0.1 (https://github.com/Kuriume/Kuriume)";
-const CHINESE_BATCH_BUDGET: Duration = Duration::from_secs(6);
 const CHINESE_REQUEST_TIMEOUT: Duration = Duration::from_secs(4);
 const CHINESE_CACHE_LIMIT: usize = 512;
 
@@ -106,7 +104,6 @@ impl AniList {
         year: Option<u32>,
         search: Option<&str>,
         sort: &str,
-        language: Option<&str>,
     ) -> Result<PagedResult<AnimeInfo>> {
         let query = format!(
             r#"
@@ -144,7 +141,7 @@ impl AniList {
         // flag is authoritative; do not keep requesting empty pages after it.
         let total = catalog_page_total(&data.page, offset, per_page);
         Ok(PagedResult {
-            data: self.localized_list(data.page.media, language).await,
+            data: data.page.media.into_iter().map(AnimeInfo::from).collect(),
             total,
             limit: per_page,
             offset,
@@ -172,38 +169,6 @@ impl AniList {
             metadata.apply_to(&mut info);
         }
         info
-    }
-
-    async fn localized_list(&self, media: Vec<Media>, language: Option<&str>) -> Vec<AnimeInfo> {
-        let mut requests = Vec::new();
-        let mut items: Vec<AnimeInfo> = media
-            .into_iter()
-            .enumerate()
-            .map(|(index, media)| {
-                // AniList already supplies Chinese aliases for many titles. Only
-                // fill gaps; synopsis enrichment is deferred to the detail view.
-                if language == Some("zh") && preferred_chinese_title(&media.synonyms).is_none() {
-                    requests.push((index, LocalizationRequest::from(&media)));
-                }
-                AnimeInfo::from(media)
-            })
-            .collect();
-        let mut pending = JoinSet::new();
-        for (index, request) in requests {
-            let provider = self.clone();
-            pending.spawn(async move { (index, provider.chinese_metadata_for(request).await) });
-        }
-        let deadline = tokio::time::Instant::now() + CHINESE_BATCH_BUDGET;
-        while !pending.is_empty() {
-            match tokio::time::timeout_at(deadline, pending.join_next()).await {
-                Ok(Some(Ok((index, Some(metadata))))) => metadata.apply_to(&mut items[index]),
-                Ok(Some(_)) => {}
-                Ok(None) | Err(_) => break,
-            }
-        }
-        // Dropping the set cancels unfinished lookups. Their cache slots remain
-        // empty so a later refresh can retry; the catalog itself always loads.
-        items
     }
 
     async fn chinese_metadata_for(&self, request: LocalizationRequest) -> Option<ChineseMetadata> {
@@ -238,7 +203,7 @@ impl AniList {
                 value
             }
         };
-        // Per-title lock coalesces concurrent home, search and detail requests.
+        // Per-title lock coalesces concurrent detail requests.
         let mut cached = entry.lock().await;
         if let Some(value) = cached.as_ref().filter(|value| value.is_fresh()) {
             return value.metadata.clone();
@@ -349,7 +314,7 @@ impl AnimeProvider for AniList {
     async fn get_list(
         &self,
         query: GetListQuery,
-        language: Option<&str>,
+        _language: Option<&str>,
     ) -> Result<PagedResult<AnimeInfo>> {
         let limit = query.limit.clamp(1, 50);
         let page = query.offset / limit + 1;
@@ -357,8 +322,7 @@ impl AnimeProvider for AniList {
             SortBy::Rank => "TRENDING_DESC",
             SortBy::Date => "START_DATE_DESC",
         };
-        self.page(page, limit, query.year, None, sort, language)
-            .await
+        self.page(page, limit, query.year, None, sort).await
     }
 
     async fn get_episodes(&self, query: GetEpisodesQuery) -> Result<Vec<EpisodesInfo>> {
@@ -429,7 +393,7 @@ impl AnimeProvider for AniList {
             .collect())
     }
 
-    async fn get_calendar(&self, language: Option<&str>) -> Result<Vec<CalendarEntry>> {
+    async fn get_calendar(&self, _language: Option<&str>) -> Result<Vec<CalendarEntry>> {
         const SHANGHAI_OFFSET: i64 = 8 * 60 * 60;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -478,7 +442,7 @@ impl AnimeProvider for AniList {
             .into_iter()
             .map(|schedule| (schedule.airing_at, schedule.media))
             .unzip();
-        let localized = self.localized_list(media, language).await;
+        let localized = media.into_iter().map(AnimeInfo::from);
         let mut grouped: [Vec<AnimeInfo>; 7] = std::array::from_fn(|_| Vec::new());
         for (airing_at, info) in airing_times.into_iter().zip(localized) {
             let local_day = (airing_at + SHANGHAI_OFFSET).div_euclid(86_400);
@@ -599,7 +563,8 @@ struct ChineseMetadata {
 
 impl ChineseMetadata {
     fn apply_to(self, info: &mut AnimeInfo) {
-        if !self.title.trim().is_empty() {
+        // A remote synopsis lookup must not replace the stable offline title.
+        if info.title_cn.is_none() && !self.title.trim().is_empty() {
             info.title_cn = Some(self.title);
         }
         if !self.description.trim().is_empty() {
@@ -768,7 +733,10 @@ impl From<Media> for AnimeInfo {
             .or_else(|| romaji.clone())
             .or_else(|| native.clone())
             .unwrap_or_else(|| title.clone());
-        let title_cn = preferred_chinese_title(&media.synonyms);
+        let title_cn = search::chinese_title(media.id).or_else(|| {
+            preferred_chinese_title(&media.synonyms)
+                .map(|title| zhconv::zhconv(&title, zhconv::Variant::ZhHans))
+        });
         let air_date = media.start_date.as_ref().and_then(format_fuzzy_date);
         let year = media
             .season_year
@@ -1422,58 +1390,51 @@ mod tests {
         .unwrap()
     }
 
-    #[tokio::test]
-    async fn localized_list_fills_missing_titles_without_changing_matching_identity() {
-        let provider = AniList::new();
-        provider.chinese_metadata.lock().await.insert(
-            178789,
-            ChineseCacheEntry {
-                value: Arc::new(Mutex::new(Some(CachedChineseMetadata::from_result(Ok(
-                    Some(ChineseMetadata {
-                        title: "无职转生 第三季 ～到了异世界就拿出真本事～".into(),
-                        description: String::new(),
-                        description_ja: None,
-                    }),
-                ))))),
-                last_used: Instant::now(),
-            },
+    #[test]
+    fn offline_titles_are_shared_by_lists_search_and_details_without_changing_identity() {
+        let media = mushoku_media();
+        let aliases = media.search_titles();
+        let mut info = AnimeInfo::from(media);
+        let title = search::chinese_title(178789).unwrap();
+        assert_eq!(info.title_cn.as_deref(), Some(title.as_str()));
+        assert_eq!(info.id, "anilist:178789");
+        assert_eq!(info.title, "Mushoku Tensei III: Isekai Ittara Honki Dasu");
+        assert_eq!(
+            info.title_en,
+            "Mushoku Tensei: Jobless Reincarnation Season 3"
         );
-        let english = provider
-            .localized_list(vec![mushoku_media()], Some("en"))
-            .await;
-        let chinese = provider
-            .localized_list(vec![mushoku_media(), mushoku_media()], Some("zh"))
-            .await;
-        assert_eq!(chinese.len(), 2);
-        assert!(english[0].title_cn.is_none());
-        for item in chinese {
-            assert_eq!(item.id, english[0].id);
-            assert_eq!(item.title, english[0].title);
-            assert_eq!(item.title_en, english[0].title_en);
-            assert_eq!(item.search_titles, english[0].search_titles);
-            assert!(item
-                .title_cn
-                .as_deref()
-                .is_some_and(|title| title.contains("第三季")));
-            assert_eq!(item.studios, vec!["Studio Bind"]);
+        assert_eq!(info.search_titles, aliases);
+        assert_eq!(info.studios, vec!["Studio Bind"]);
+        // A successful detail-only synopsis request must not rename the title
+        // between home, calendar, search and detail screens.
+        ChineseMetadata {
+            title: "另一种中文译名".into(),
+            description: "详细的中文简介".into(),
+            description_ja: None,
         }
+        .apply_to(&mut info);
+        assert_eq!(info.title_cn.as_deref(), Some(title.as_str()));
+        assert_eq!(info.description_cn.as_deref(), Some("详细的中文简介"));
+
+        let mut missing = mushoku_media();
+        missing.id = u64::MAX;
+        assert!(AnimeInfo::from(missing).title_cn.is_none());
+        let mut synonym = mushoku_media();
+        synonym.id = u64::MAX;
+        synonym.synonyms.push("測試動畫 第三季".into());
+        assert_eq!(
+            AnimeInfo::from(synonym).title_cn.as_deref(),
+            Some("测试动画 第三季")
+        );
     }
 
     #[tokio::test]
-    #[ignore = "requires the live AniList and Bangumi services"]
-    async fn live_chinese_list_fills_mushoku_tensei_third_season_title() {
+    #[ignore = "requires only the live AniList service"]
+    async fn live_chinese_title_is_local_even_without_anilist_chinese_synonyms() {
         let provider = AniList::new();
-        let result = provider
-            .localized_list(vec![provider.media(178789).await.unwrap()], Some("zh"))
-            .await;
-        let media = result
-            .iter()
-            .find(|media| media.anilist_id == 178789)
-            .unwrap();
-        assert!(media
-            .title_cn
-            .as_deref()
-            .is_some_and(|title| title.contains("第三季")));
+        let media = AnimeInfo::from(provider.media(178789).await.unwrap());
+        assert_eq!(media.title_cn, search::chinese_title(178789));
+        assert!(provider.chinese_metadata.lock().await.is_empty());
         assert!(media
             .search_titles
             .iter()

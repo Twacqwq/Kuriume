@@ -55,7 +55,11 @@ Open **Settings → Logs & diagnostics** after reproducing a problem, then copy
 the relevant page into the report. Logs are process-local: restarting the app
 clears them. They are never written to a file/database or uploaded automatically.
 Clipboard copying happens only on request; WebViews without clipboard support
-offer selectable text instead.
+offer selectable text instead. The viewer presents chronological text lines with
+`[INFO]`, `[WARN]`, and `[ERROR]`, operation IDs, specific actions and error reasons.
+Live mode refreshes the latest bounded page every two seconds; older pages, hidden
+windows, selected text and open dialogs suspend polling. Pause updates freezes
+the viewer, not log collection.
 
 The Rust buffer retains at most **1 MiB of serialized log content and 1,000
 entries**, evicting oldest entries first. Individual records are capped at 4 KiB;
@@ -64,11 +68,15 @@ not a claim about total application RAM: container overhead, a bounded frontend
 queue (32 pending + 8 in-flight records), and one 50-entry UI page also use memory.
 Recording is best-effort and never blocks playback waiting for the log lock.
 
-Use `diagnostics::record` / `diagnose` with the shared event codes and typed fields.
-Do not pass arbitrary messages, stack traces, titles, search terms, device IDs,
-URLs, headers, cookies or tokens. Those fields are rejected at the IPC boundary.
+Use `diagnostics::record` / `diagnose` with the shared event/action codes and typed
+fields. Error messages and bounded cause chains are retained after redaction,
+with a 1 KiB UTF-8 message limit. The frontend queue and Rust storage both redact
+URLs, credential assignments, local paths, emails and opaque tokens, and flatten
+control characters. Never pass response bodies, stack traces, titles, search
+terms, device IDs or headers as messages: pattern redaction cannot identify every
+possible secret in arbitrary text. Separate URL/cookie/token fields remain rejected.
 Capture source/catalog outcomes, media failures, initial playback, sustained
-buffering, seeks and native-control failures—not every timeupdate or successful
+buffering, play/pause/background transitions, seeks and native-control failures—not every timeupdate or successful
 HLS fragment. Resolution operation IDs correlate Rust/media/player events within
 this run; they do not identify a user or survive restart. This is not a persistent
 crash reporter; copy before restarting if the UI remains usable.
@@ -106,6 +114,24 @@ Playback providers implement `search`, `episodes`, and `resolve`. Resolution ret
 Built-in sources must not require an account or user-entered key, or insert playback ads (including ads embedded in the video). Verify actual playback, not just a resolving URL. MX was removed after playback ads were reported; do not reintroduce it without reassessing this requirement.
 
 New pages are auto-registered by creating files under `src/routes/`.
+
+Home and calendar share the query options in `src/lib/catalog-queries.ts`.
+Startup reads the saved display language once, then prefetches both independently.
+Their data stays fresh for 30 minutes and unused caches are collected after one
+hour; settings remain cached for the process lifetime. Warm tab loaders must be
+synchronous, with existing data visible during background refresh. The home grid
+reuses the hero's first-page query and original timestamp. Language reloads
+invalidate localized queries and warm both catalogs, without persisting API data.
+
+Chinese titles are resolved by exact AniList ID from the bundled
+`anilist-chinese.json` snapshot in the common `Media` → `AnimeInfo` conversion.
+Display keeps the original punctuation and converts traditional characters to
+simplified Chinese; search normalization is a separate, lazily built index.
+Missing entries fall back to AniList Chinese aliases, then the existing native
+title display fallback. Lists, calendar and search never wait for Bangumi title
+lookups. Detail-only synopsis enrichment remains optional and cannot override a
+known local title. Update the snapshot with `scripts/update-anilist-aliases.mjs`
+using a reviewed immutable upstream revision; keep its embedded license.
 
 Adding a new Rust command requires:
 1. Declare with `#[tauri::command]` in `src-tauri/src/`
@@ -213,6 +239,9 @@ implementations rather than desktop window APIs:
   edges and multiple fingers are excluded. The normal progress bar remains usable.
 - Brightness is restored on exit/background; volume remains a system preference.
   Backgrounding pauses video and saves progress; returning does not auto-resume.
+- Android WebView owns media audio focus, including interruption handling. The
+  native controls plugin must not request a second audio focus: it can pause the
+  video immediately on Play. Its session only manages brightness and screen wake.
 - Phone fullscreen requests landscape; tablet/multi-window layout stays flexible.
   Android Back dismisses a modal, exits fullscreen, or returns through route history.
 - Isolated native WebViews perform background-only source resolution without the
@@ -394,7 +423,6 @@ Reviewed on 2026-10-11; these are patterns to learn from, not workflows to copy 
 | --- | --- | --- |
 | [Readest](https://github.com/readest/readest/blob/main/.github/workflows/release.yml) | Tauri multi-platform matrix; signed macOS bundles, multiple desktop architectures and APKs | Reuse the matrix/platform-boundary approach; do not adopt its extra CEF, cloud storage or updater infrastructure |
 | [Readest Nightly](https://github.com/readest/readest/blob/main/.github/workflows/nightly.yml) | Scheduled timestamped builds; per-platform metadata assembled before updating the nightly index | Main CI artifacts suffice for now; no extra nightly job or duplicated build recipes |
-| [Kazumi](https://github.com/Predidit/Kazumi/blob/main/.github/workflows/release.yaml) | Flutter platform jobs with versioned desktop packages/APK and a clearly named `no_sign.ipa` | Keep the unsigned IPA distinction; framework migration is unnecessary |
 | [Artcraft](https://github.com/storytold/artcraft/blob/main/.github/workflows/artcraft-macos-publish.yml) | Universal Mac DMG/App archive, Developer ID + notarization; Windows EXE/MSI in a separate workflow | Adopt formats and optional signing, but target Apple Silicon only; keep one reusable build flow and all-platform publish gate |
 
 Readest's [iOS distribution uses App Store/TestFlight lanes](https://github.com/readest/readest/blob/main/fastlane/Fastfile);

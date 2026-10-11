@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { queryClient } from "@/lib/query-client";
-import { DEFAULT_DISPLAY_LANGUAGE, settingsApi, type DisplayLanguage } from "@/lib/store";
+import { DEFAULT_DISPLAY_LANGUAGE, settingsQueryOptions, type DisplayLanguage } from "@/lib/store";
 import type { AnimeInfo, AnimeEpisodes, AnimeCharacters } from "@/lib/types";
 
 export const detailQueryOptions = (
@@ -39,11 +39,7 @@ export const charactersQueryOptions = (id: string) => ({
 
 export const Route = createFileRoute("/anime/$id")({
   loader: async ({ params }) => {
-    const settings = await queryClient.ensureQueryData({
-      queryKey: ["settings"],
-      queryFn: settingsApi.get,
-      staleTime: Infinity,
-    });
+    const settings = await queryClient.ensureQueryData(settingsQueryOptions);
     const language = settings.display_language ?? DEFAULT_DISPLAY_LANGUAGE;
     const cached = queryClient.getQueryData<AnimeInfo>([
       "anime-detail",

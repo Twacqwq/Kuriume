@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { LoadingStatus } from '@/components/page-loading'
 import { useDisplayLanguage } from '@/hooks/use-display-language'
 import { displayAnimeTitle } from '@/lib/display-language'
+import { BROWSE_CACHE } from '@/lib/catalog-queries'
 import type { AnimeInfo, PagedResult } from '@/lib/types'
 
 /* ── Responsive column count (matches Tailwind grid breakpoints) ── */
@@ -44,6 +45,7 @@ interface AnimeGridProps<TPageParam = any> {
   pageSize?: number
   /** Reuse an already-fetched first page instead of requesting it twice. */
   initialPage?: PagedResult<AnimeInfo>
+  initialPageUpdatedAt?: number
 }
 
 export function AnimeGrid<TPageParam>({
@@ -54,13 +56,13 @@ export function AnimeGrid<TPageParam>({
   title,
   pageSize = 30,
   initialPage,
+  initialPageUpdatedAt,
 }: AnimeGridProps<TPageParam>) {
   const language = useDisplayLanguage()
   const containerRef = useRef<HTMLDivElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
   const layoutObserverRef = useRef<ResizeObserver | null>(null)
-  const initialDataUpdatedAtRef = useRef(initialPage ? Date.now() : undefined)
   const [cols, setCols] = useState(5)
 
   const {
@@ -82,8 +84,8 @@ export function AnimeGrid<TPageParam>({
     initialData: initialPage
       ? { pages: [initialPage], pageParams: [initialPageParam] }
       : undefined,
-    initialDataUpdatedAt: initialDataUpdatedAtRef.current,
-    staleTime: initialPage ? 60_000 : undefined,
+    initialDataUpdatedAt: initialPageUpdatedAt,
+    ...(initialPage ? BROWSE_CACHE : {}),
   })
 
   // Flatten all pages into a single list (memoized to avoid re-creating objects)

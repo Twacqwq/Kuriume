@@ -13,6 +13,8 @@ pub(super) struct Server {
     address: SocketAddr,
     // Dropping the media state closes the listener, including in tests.
     _shutdown: oneshot::Sender<()>,
+    #[cfg(test)]
+    task: tokio::task::AbortHandle,
 }
 
 impl MediaProxyState {
@@ -46,7 +48,7 @@ impl MediaProxyState {
             .map_err(|_| "Media address unavailable")?;
         let (shutdown, mut closed) = oneshot::channel();
         let weak = Arc::downgrade(&self.inner);
-        tauri::async_runtime::spawn(async move {
+        let _task = tauri::async_runtime::spawn(async move {
             let Ok(listener) = tokio::net::TcpListener::from_std(listener) else {
                 return;
             };
@@ -97,6 +99,8 @@ impl MediaProxyState {
         *server = Some(Server {
             address,
             _shutdown: shutdown,
+            #[cfg(test)]
+            task: _task.inner().abort_handle(),
         });
         Ok(address)
     }
@@ -171,7 +175,11 @@ mod tests {
         assert_eq!(parsed.path().len(), 33);
         assert!(!url.contains("secret"));
         let address = proxy.loopback_address().unwrap();
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
         assert_eq!(
             client.post(&url).send().await.unwrap().status(),
             StatusCode::METHOD_NOT_ALLOWED
@@ -214,14 +222,35 @@ mod tests {
         assert!(hls.starts_with("kuriume-media:"));
         #[cfg(target_os = "ios")]
         assert!(hls.starts_with("http://127.0.0.1:"));
+        let listener_task = proxy
+            .inner
+            .loopback
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .task
+            .clone();
+        let state = Arc::downgrade(&proxy.inner);
         drop(proxy);
-        // Listener shutdown is asynchronous, but must not keep the state alive.
-        tokio::time::timeout(Duration::from_secs(1), async {
-            while tokio::net::TcpStream::connect(address).await.is_ok() {
-                tokio::task::yield_now().await;
+        // Wait for the task, not a stream of new TCP connections racing its
+        // shutdown. CI scheduling and kernel connect retries are independent.
+        // The handle only observes completion; it must not abort the listener.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !listener_task.is_finished() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
             }
         })
         .await
-        .unwrap();
+        .expect("media listener task did not exit after dropping the proxy");
+        assert!(state.upgrade().is_none(), "media state was retained");
+        let error = tokio::time::timeout(
+            Duration::from_secs(1),
+            tokio::net::TcpStream::connect(address),
+        )
+        .await
+        .expect("closed media port did not respond")
+        .expect_err("media listener still accepts connections after task exit");
+        assert_eq!(error.kind(), std::io::ErrorKind::ConnectionRefused);
     }
 }

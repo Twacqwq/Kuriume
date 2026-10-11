@@ -7,9 +7,13 @@ import { PageLoading } from "@/components/page-loading";
 import { routeTree } from "./routeTree.gen";
 import "./main.css";
 import { installErrorDiagnostics } from "@/lib/diagnostics";
+import { prefetchBrowseData } from "@/lib/catalog-queries";
 
 const removeErrorDiagnostics = installErrorDiagnostics();
 if (import.meta.hot) import.meta.hot.dispose(removeErrorDiagnostics);
+// Start once, outside StrictMode effects. Pages share these queries and own
+// loading/retry UI, so a failed warm-up never blocks the app shell.
+void prefetchBrowseData().catch(() => undefined);
 
 const router = createRouter({
   routeTree,
@@ -21,6 +25,11 @@ const router = createRouter({
   defaultPendingMinMs: 150,
   scrollRestoration: true,
 });
+
+// Data alone is not enough: a cold lazy route can still flash its pending UI.
+// These are bundled local chunks in Tauri, not more catalog/network requests.
+void router.preloadRoute({ to: "/calendar" }).catch(() => undefined);
+void router.preloadRoute({ to: "/settings" }).catch(() => undefined);
 
 declare module "@tanstack/react-router" {
   interface Register {

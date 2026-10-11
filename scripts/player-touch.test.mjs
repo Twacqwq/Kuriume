@@ -13,6 +13,7 @@ const imports = {
   react: data("export const useEffect = globalThis.__touchTest.effect; export const useState = () => [null, () => {}];"),
   "@/lib/mobile-player": data("export const mobileControl = globalThis.__touchTest.control;"),
   "@/lib/platform": data("export const isMobileApp = true;"),
+  "@/lib/diagnostics": data("export const diagnose = () => {};"),
   "@/lib/player-gestures": new URL("../src/lib/player-gestures.ts", import.meta.url).href,
 };
 const source = await readFile(new URL("../src/hooks/use-player-gestures.ts", import.meta.url), "utf8");
@@ -70,12 +71,46 @@ test("touch seeking commits once on release; cancel, controls, edges and multipl
     await new Promise((resolve) => setImmediate(resolve));
     assert.ok(calls.some(([action, value]) => action === "brightness" && value > 0.5));
     assert.equal(art.currentTime, 330, "vertical level gestures must not seek");
+    for (let i = 0; i < 3; i++) {
+      listeners.get("video:playing")();
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.notEqual(art.paused, true, "playing/buffer recovery must not pause the video");
+      assert.equal(calls.at(-1)[0], "prepare");
+      listeners.get("video:pause")();
+      assert.equal(calls.at(-1)[0], "pause", "manual pause only releases the screen wake flag");
+    }
+    const beforeVisible = calls.length;
+    globalThis.document.dispatchEvent(new Event("visibilitychange"));
+    assert.equal(calls.length, beforeVisible, "a visible document is not backgrounding");
     globalThis.document.dispatchEvent(new Event("kuriume-background"));
     assert.equal(art.paused, true);
     assert.ok(calls.some(([action]) => action === "finish"));
+    art.paused = false;
+    listeners.get("video:playing")();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(art.paused, false, "user resume after backgrounding must remain playable");
+    assert.equal(calls.at(-1)[0], "prepare");
+    globalThis.document.hidden = true;
+    globalThis.document.dispatchEvent(new Event("visibilitychange"));
+    assert.equal(art.paused, true, "real backgrounding must still pause");
   } finally {
     cleanup();
     globalThis.document = documentBefore;
   }
   assert.equal(listeners.size, 0);
+});
+
+test("Android leaves audio focus to WebView while retaining lifecycle and device controls", async () => {
+  const plugin = await readFile(new URL("../src-tauri/crates/tauri-plugin-mobile/android/src/main/java/MobilePlugin.kt", import.meta.url), "utf8");
+  const code = plugin.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
+  // A second focus owner pauses Chromium on prepare, or receives focus loss
+  // from Chromium and dispatches a false background event on every Play tap.
+  assert.doesNotMatch(code, /requestAudioFocus|abandonAudioFocus|OnAudioFocusChangeListener|AudioFocusRequest/);
+  assert.match(code, /override fun onPause\(\) \{ background\(\) \}/);
+  assert.match(code, /kuriume-background/);
+  assert.match(code, /"pause" -> if \(args.session == session\) activity.window.clearFlags/);
+  assert.match(code, /"finish" -> if \(args.session == session\)/);
+  assert.match(code, /activity.window.addFlags\(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON\)/);
+  assert.match(code, /audio.setStreamVolume/);
+  assert.match(code, /screenBrightness = original/);
 });

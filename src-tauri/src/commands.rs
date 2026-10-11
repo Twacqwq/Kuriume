@@ -1,4 +1,4 @@
-use crate::diagnostics::{observe, operation, Event};
+use crate::diagnostics::{observe, operation, Action, Event};
 use kuriume_provider::{
     AnimeInfo, AnimeProvider, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery,
     GetListQuery, PagedResult, SearchQuery,
@@ -46,6 +46,7 @@ pub(crate) async fn get_list(
         Event::CatalogRequest,
         provider,
         operation(),
+        Some(Action::List),
         state.get(provider)?.get_list(query, language),
     )
     .await
@@ -63,6 +64,7 @@ pub(crate) async fn search(
         Event::CatalogRequest,
         provider,
         operation(),
+        Some(Action::Search),
         state.get(provider)?.search(query, language),
     )
     .await
@@ -80,6 +82,7 @@ pub(crate) async fn get_detail(
         Event::CatalogRequest,
         provider,
         operation(),
+        Some(Action::Detail),
         state.get(provider)?.get_detail(id, language),
     )
     .await
@@ -96,6 +99,7 @@ pub(crate) async fn get_episodes(
         Event::CatalogRequest,
         provider,
         operation(),
+        Some(Action::Episodes),
         state.get(provider)?.get_episodes(query),
     )
     .await
@@ -112,6 +116,7 @@ pub(crate) async fn get_calendar(
         Event::CatalogRequest,
         provider,
         operation(),
+        Some(Action::Calendar),
         state.get(provider)?.get_calendar(language),
     )
     .await
@@ -128,6 +133,7 @@ pub(crate) async fn get_characters(
         Event::CatalogRequest,
         provider,
         operation(),
+        Some(Action::Characters),
         state.get(provider)?.get_characters(id),
     )
     .await

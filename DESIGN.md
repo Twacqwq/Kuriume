@@ -105,11 +105,11 @@ This is an extraction of the existing implementation, not a new visual direction
 
 The body font stack is shared throughout. Manrope and Noto Sans SC are bundled variable fonts; no runtime font download is needed. Headings and buttons use bold weight (700); setting labels use medium weight (500). The headline role describes desktop settings headings, the title role the mobile top bar, and the body/label roles compact interface text. Supporting metadata uses 12px/16px text; navigation has smaller labels where space requires them.
 
-The logs heading is locally 24px/32px on mobile and uses the headline role from the medium breakpoint. Expanded diagnostic values use the existing Tailwind monospace stack and tabular numbers.
+The logs heading is locally 24px/32px on mobile and uses the headline role from the medium breakpoint. Diagnostic text lines use the existing Tailwind monospace stack at 14px/24px and tabular numbers; timestamps are secondary and severity is bold.
 
 ## Layout
 
-Both settings routes center a container capped at 768px, including horizontal padding: 16px initially, 24px from 768px, and 40px from 1024px. Settings groups are separated by 32px. Rows have an 80px minimum height, 16px horizontal and 12px vertical padding, and 12px gaps. Controls can wrap or stack when the available width requires it.
+Settings centers a container capped at 768px; the diagnostic text stream uses a local 1024px cap to make error messages readable. Both include horizontal padding: 16px initially, 24px from 768px, and 40px from 1024px. Settings groups are separated by 32px. Settings rows have an 80px minimum height, 16px horizontal and 12px vertical padding, and 12px gaps. Controls can wrap or stack when the available width requires it.
 
 The app uses a mobile top bar and four-item bottom navigation below 768px; at 768px the sidebar is 80px wide, expanding to 224px with horizontal labels at 1024px. Mobile chrome respects safe-area insets. Settings controls and diagnostics actions use 48px targets; the shared Button primitive retains its smaller size variants. Coarse-pointer rules expand button/select targets to at least 48px.
 
@@ -129,13 +129,17 @@ Reuse the existing `Button` variants and `Input`. Buttons have bold labels, 8px 
 
 ### Settings groups and navigation
 
-Settings groups place muted section labels above rounded card surfaces. Labels and controls share a row, with the volume row stacking on narrow screens. Active sidebar navigation uses a primary tint with a readable-accent icon; mobile navigation uses the same accent in its icon pill and label. Settings remains active on its child routes.
+Settings groups place muted section labels above rounded card surfaces. Settings exposes display language and diagnostics only; low-use playback defaults are omitted while in-player controls and saved playback behavior remain unchanged. Labels and controls share a row. Active sidebar navigation uses a primary tint with a readable-accent icon; mobile navigation uses the same accent in its icon pill and label. Settings remains active on its child routes.
 
 ### Logs & diagnostics — local behavior
 
-`/settings/logs` uses a bounded list of at most 50 entries per page. Native expandable rows reveal a two-column definition list with wrapping keys and values. Refresh, copy-page, clear, and All/Warnings & errors filters use existing buttons. Clear requires the existing alert-dialog confirmation; clipboard failure exposes selectable report text in that same dialog component.
+`/settings/logs` uses a chronological, selectable text stream of at most 50 entries per page. Each line shows a timestamp, `[INFO]`/`[WARN]`/`[ERROR]`, event/action, operation ID, safe error message and diagnostic fields without an expansion step. Long lines wrap on narrow screens. Refresh, pause/live updates, copy-page, clear, and All/Warnings & errors filters use existing buttons. Clear requires the existing alert-dialog confirmation; clipboard failure exposes selectable report text in a viewport-bounded dialog.
 
-Loading skeletons, retryable errors, and empty/filter-empty states occupy the list surface. Status and severity have text labels as well as color. Loading animations honor reduced motion. Session metadata and the short retention statement stay local to diagnostics; they are not general requirements for app pages.
+Loading skeletons, retryable errors, and empty/filter-empty states occupy the stream surface. Polling replaces the latest page without hiding existing content; scrolling upward stops automatic bottom-follow, and text selection, older pages or dialogs suspend polling. Status and severity have text labels as well as color. Loading animations honor reduced motion. Retention explanations and per-page instruction copy are omitted; counts, capacity and build metadata remain compact diagnostic context.
+
+### Browse navigation — local behavior
+
+Home and calendar use their existing skeletons only when no cached content is available. App startup prefetches both in the saved language; switching between warm tabs renders their cached data immediately. Expired data refreshes in the background without replacing posters or the schedule with a skeleton. Settings reuse the same process-local settings query. Chinese catalog titles use the bundled ID-based dictionary consistently across browsing, search and details, with the existing Japanese-first fallback for missing translations.
 
 ## Do's and Don'ts
 
