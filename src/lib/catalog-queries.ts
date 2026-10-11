@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { queryClient } from "@/lib/query-client";
-import { settingsApi, type DisplayLanguage } from "@/lib/store";
+import { DEFAULT_DISPLAY_LANGUAGE, settingsApi, type DisplayLanguage } from "@/lib/store";
 import type { AnimeInfo, PagedResult } from "@/lib/types";
 
 export const CURRENT_YEAR = new Date().getFullYear();
@@ -12,7 +12,7 @@ export async function currentDisplayLanguage(): Promise<DisplayLanguage> {
     queryFn: settingsApi.get,
     staleTime: Infinity,
   });
-  return settings.display_language ?? "en";
+  return settings.display_language ?? DEFAULT_DISPLAY_LANGUAGE;
 }
 
 export async function fetchSeason(

@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { LibraryControl } from "@/components/library-control";
 import { StoredMediaTitle } from "@/components/stored-media-title";
+import { LibraryListLoading } from "@/components/page-loading";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
 import {
   catalogId,
@@ -78,10 +79,10 @@ function LibraryPage() {
       : entries.filter((entry) => entry.status === view);
 
   return (
-    <div className="mx-auto min-h-full max-w-7xl px-4 pb-8 pt-6 md:px-6 md:pb-16 md:pt-14 lg:px-10">
-      <h1 className="text-2xl font-semibold">{language === "zh" ? "资料库" : "Library"}</h1>
+    <div className="mx-auto min-h-full max-w-7xl px-4 pb-8 pt-4 md:px-6 md:pb-16 md:pt-14 lg:px-10">
+      <h1 className="sr-only text-3xl font-bold tracking-tight md:not-sr-only">{language === "zh" ? "资料库" : "Library"}</h1>
 
-      <nav aria-label={language === "zh" ? "资料库分类" : "Library categories"} className="hide-scrollbar mt-7 flex gap-1 overflow-x-auto whitespace-nowrap border-b border-border/60">
+      <nav aria-label={language === "zh" ? "资料库分类" : "Library categories"} className="hide-scrollbar flex gap-1 overflow-x-auto whitespace-nowrap border-b border-border/60 md:mt-6">
         {VIEWS.map((item) => (
           <button
             key={item.id}
@@ -95,7 +96,7 @@ function LibraryPage() {
               })
             }
             className={cn(
-              "relative flex items-center gap-2 rounded-t-md px-4 py-3 text-sm outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-primary-readable motion-reduce:transition-none",
+              "relative flex min-h-12 flex-1 items-center justify-center gap-2 rounded-t-md px-3 py-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-readable motion-reduce:transition-none sm:flex-none sm:px-4",
               view === item.id
                 ? "text-foreground"
                 : "text-muted-foreground hover:text-foreground",
@@ -120,8 +121,8 @@ function LibraryPage() {
         </p>
       )}
       {activeQuery.isPending ? (
-        <p role="status" className="py-16 text-center text-sm text-muted-foreground">{language === "zh" ? "正在载入…" : "Loading…"}</p>
-      ) : activeQuery.isError ? (
+        <LibraryListLoading />
+      ) : activeQuery.isError && !activeQuery.data ? (
         <div role="alert" className="flex flex-col items-center gap-3 py-16 text-sm text-muted-foreground">
           <p>{language === "zh" ? "资料库读取失败" : "Could not load your library"}</p>
           <Button variant="outline" onClick={() => void activeQuery.refetch()}>{language === "zh" ? "重试" : "Retry"}</Button>
@@ -129,7 +130,7 @@ function LibraryPage() {
       ) : view === "history" ? (
         <HistoryList history={history} />
       ) : filtered.length > 0 ? (
-        <div className="mt-7 grid grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] gap-4">
+        <div className="mt-2 grid grid-cols-1 gap-x-8 lg:grid-cols-2">
           {filtered.map((entry) => (
             <LibraryCard
               key={entry.media_id}
@@ -172,26 +173,27 @@ function LibraryCard({
       ? Math.min(100, (latest.position / latest.duration) * 100)
       : 0;
   return (
-    <article className="group flex min-w-0 gap-4 rounded-xl border border-white/5 bg-card/55 p-3 transition hover:border-white/10 hover:bg-card/75">
+    <article className="flex min-w-0 items-start gap-3 border-b border-border/60 py-5 sm:gap-4">
       <Link
         to="/anime/$id"
         params={{ id: routeId }}
-        className="h-32 w-22 shrink-0 overflow-hidden rounded-lg bg-white/5 outline-none focus-visible:ring-2 focus-visible:ring-primary-readable"
+        className="h-24 w-16 shrink-0 overflow-hidden rounded-lg bg-card outline-none focus-visible:ring-2 focus-visible:ring-primary-readable sm:h-30 sm:w-20"
         aria-label={entry.title}
       >
         {entry.cover && (
           <img
             src={entry.cover}
             alt=""
+            loading="lazy"
             className="h-full w-full object-cover"
           />
         )}
       </Link>
-      <div className="flex min-w-0 flex-1 flex-col py-1">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Link
           to="/anime/$id"
           params={{ id: routeId }}
-          className="line-clamp-2 rounded-sm text-sm font-medium leading-5 outline-none transition-colors hover:text-primary-readable focus-visible:ring-[3px] focus-visible:ring-primary-readable motion-reduce:transition-none"
+          className="line-clamp-2 rounded-sm text-base font-medium leading-snug outline-none transition-colors hover:text-primary-readable focus-visible:ring-2 focus-visible:ring-primary-readable motion-reduce:transition-none"
         >
           <StoredMediaTitle
             provider={entry.provider}
@@ -199,14 +201,14 @@ function LibraryCard({
             fallback={entry.title}
           />
         </Link>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-1.5 text-xs text-muted-foreground">
           {entry.total_episodes > 0
             ? (language === "zh" ? `共 ${entry.total_episodes} 话` : `${entry.total_episodes} episodes`)
             : (language === "zh" ? "集数未定" : "Episodes TBA")}
         </p>
         {latest && (
-          <div className="my-3">
-            <div className="flex justify-between text-[11px] text-muted-foreground">
+          <div className="mt-3">
+            <div className="flex flex-wrap justify-between gap-1 text-xs text-muted-foreground">
               <span>{language === "zh" ? `看到第 ${latest.episode} 话` : `Episode ${latest.episode}`}</span>
               <span>{Math.round(percent)}%</span>
             </div>
@@ -218,8 +220,8 @@ function LibraryCard({
             </div>
           </div>
         )}
-        <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
-          <Button asChild size="sm" className="rounded-full">
+        <div className="mt-3 flex flex-wrap items-center gap-2 [&>button]:min-h-12 [&>button]:rounded-xl [&>button]:bg-transparent [&>button]:px-2 [&>button]:text-xs [&>button]:text-muted-foreground [&>button:hover]:bg-secondary">
+          <Button asChild size="sm" className="min-h-12 rounded-xl px-3">
             <Link
               to="/anime/$id/episode/$ep"
               params={{
@@ -243,7 +245,7 @@ function HistoryList({ history }: { history: WatchHistoryEntry[] }) {
   const language = useDisplayLanguage();
   if (history.length === 0) return <EmptyLibrary view="history" />;
   return (
-    <div className="mt-7 divide-y divide-white/5 overflow-hidden rounded-xl border border-white/5 bg-card/45">
+    <div className="mt-2 divide-y divide-border/60">
       {history.map((entry) => {
         const percent =
           entry.duration > 0
@@ -258,33 +260,34 @@ function HistoryList({ history }: { history: WatchHistoryEntry[] }) {
               ep: String(entry.episode),
             }}
             search={{ t: entry.position }}
-            className="flex items-center gap-4 px-4 py-3 transition hover:bg-white/3"
+            className="group flex min-w-0 items-center gap-3 rounded-lg py-4 outline-none transition-colors hover:bg-card focus-visible:ring-2 focus-visible:ring-primary-readable sm:gap-4 sm:px-2"
           >
-            <div className="h-15 w-10 shrink-0 overflow-hidden rounded bg-white/5">
+            <div className="h-21 w-14 shrink-0 overflow-hidden rounded-lg bg-card">
               {entry.cover && (
                 <img
                   src={entry.cover}
                   alt=""
+                  loading="lazy"
                   className="h-full w-full object-cover"
                 />
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">
+              <p className="line-clamp-2 text-base font-medium leading-snug">
                 <StoredMediaTitle
                   provider={entry.provider}
                   externalId={entry.external_id}
                   fallback={entry.media_title}
                 />
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-2 text-xs text-muted-foreground">
                 {language === "zh" ? `第 ${entry.episode} 话` : `Episode ${entry.episode}`} · {Math.round(percent)}%
               </p>
+              <time className="mt-1.5 block text-xs text-muted-foreground" dateTime={entry.watched_at}>
+                {new Date(entry.watched_at).toLocaleDateString(language === "zh" ? "zh-CN" : "en-US")}
+              </time>
             </div>
-            <time className="text-[11px] text-muted-foreground/55">
-              {new Date(entry.watched_at).toLocaleDateString(language === "zh" ? "zh-CN" : "en-US")}
-            </time>
-            <Play size={14} className="text-primary" />
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/12 text-primary-readable transition-colors group-hover:bg-primary/20"><Play aria-hidden="true" size={18} fill="currentColor" /><span className="sr-only">{language === "zh" ? "继续播放" : "Resume playback"}</span></span>
           </Link>
         );
       })}

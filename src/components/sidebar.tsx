@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { isMobileApp } from "@/lib/platform";
+import { useDisplayLanguage } from "@/hooks/use-display-language";
 import { Button } from "@/components/ui/button";
 import { Link, useMatches } from "@tanstack/react-router";
 import {
@@ -11,9 +12,9 @@ import {
 } from "lucide-react";
 
 const NAVIGATION = [
-  { icon: Home, label: "首页", to: "/" },
-  { icon: CalendarDays, label: "日历", to: "/calendar" },
-  { icon: Library, label: "资料库", to: "/watchlist" },
+  { icon: Home, label: "首页", english: "Home", to: "/" },
+  { icon: CalendarDays, label: "日历", english: "Calendar", to: "/calendar" },
+  { icon: Library, label: "资料库", english: "Library", to: "/watchlist" },
 ] as const;
 
 interface SidebarProps {
@@ -21,6 +22,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onSearchClick }: SidebarProps) {
+  const language = useDisplayLanguage();
   const matches = useMatches();
   const currentPath = matches[matches.length - 1]?.pathname ?? "/";
   const shortcutLabel = navigator.userAgent.includes("Mac") ? "⌘K" : "Ctrl K";
@@ -37,7 +39,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
       >
         <img src="/icon.png" alt="" className="h-10 w-10 rounded-xl" />
         <div className="hidden min-w-0 lg:block">
-          <p className="text-sm font-semibold tracking-[0.08em]">KURIUME</p>
+          <p className="text-sm font-bold tracking-[0.08em]">KURIUME</p>
           <p className="text-[10px] tracking-[0.18em] text-muted-foreground">
             栗梅
           </p>
@@ -55,7 +57,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
         )}
       >
         <Search size={16} />
-        <span className="sr-only flex-1 text-left lg:not-sr-only">搜索动画</span>
+        <span className="sr-only flex-1 text-left lg:not-sr-only">{language === "zh" ? "搜索动画" : "Search anime"}</span>
         <kbd className="hidden rounded border border-white/8 px-1.5 py-0.5 text-[10px] lg:block">
           {shortcutLabel}
         </kbd>
@@ -73,7 +75,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
               to={item.to}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "relative flex h-11 items-center gap-3 rounded-xl px-3 text-sm outline-none transition focus-visible:ring-[3px] focus-visible:ring-primary-readable",
+                "relative flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl px-1 text-[10px] outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-primary-readable lg:min-h-11 lg:flex-row lg:justify-start lg:gap-3 lg:px-3 lg:text-sm",
                 active
                   ? "bg-primary/14 text-foreground"
                   : "text-muted-foreground hover:bg-white/4 hover:text-foreground",
@@ -87,7 +89,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
                 strokeWidth={active ? 2.2 : 1.75}
                 className={active ? "text-primary-readable" : undefined}
               />
-              <span className="sr-only lg:not-sr-only">{item.label}</span>
+              <span>{language === "zh" ? item.label : item.english}</span>
             </Link>
           );
         })}
@@ -98,7 +100,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
           to="/settings"
           aria-current={currentPath === "/settings" ? "page" : undefined}
           className={cn(
-            "flex h-11 items-center gap-3 rounded-xl px-3 text-sm outline-none transition focus-visible:ring-[3px] focus-visible:ring-primary-readable",
+            "flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl px-1 text-[10px] outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-primary-readable lg:min-h-11 lg:flex-row lg:justify-start lg:gap-3 lg:px-3 lg:text-sm",
             currentPath === "/settings"
               ? "bg-primary/14 text-foreground"
               : "text-muted-foreground hover:bg-white/4 hover:text-foreground",
@@ -111,7 +113,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
               currentPath === "/settings" ? "text-primary-readable" : undefined
             }
           />
-          <span className="sr-only lg:not-sr-only">设置</span>
+          <span>{language === "zh" ? "设置" : "Settings"}</span>
         </Link>
       </div>
     </aside>

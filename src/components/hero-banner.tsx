@@ -51,11 +51,11 @@ export function HeroBanner({ items }: HeroBannerProps) {
   if (!media) {
     return (
       <section
-        aria-label="本季推荐"
-        className="h-[clamp(360px,48vh,520px)] overflow-hidden rounded-2xl bg-card"
+        aria-label={language === "zh" ? "本季推荐" : "Season highlights"}
+        className="min-h-96 overflow-hidden rounded-2xl bg-card md:h-[clamp(400px,48vh,520px)]"
       >
         <h1 className="sr-only">Kuriume</h1>
-        <div className="h-full animate-pulse bg-muted/45 motion-reduce:animate-none" />
+        <div className="min-h-96 h-full animate-pulse bg-muted/45 motion-reduce:animate-none" />
       </section>
     );
   }
@@ -73,9 +73,9 @@ export function HeroBanner({ items }: HeroBannerProps) {
   return (
     <section
       aria-roledescription="carousel"
-      aria-label="本季推荐"
+      aria-label={language === "zh" ? "本季推荐" : "Season highlights"}
       aria-labelledby={`hero-title-${media.anilist_id}`}
-      className="relative isolate h-[clamp(360px,48vh,520px)] overflow-hidden rounded-2xl bg-card shadow-[0_24px_72px_-40px_rgba(0,0,0,0.9)]"
+      className="relative isolate flex min-h-96 flex-col overflow-hidden rounded-2xl bg-card md:min-h-[clamp(400px,48vh,520px)]"
     >
       {artwork && (
         <img
@@ -85,44 +85,58 @@ export function HeroBanner({ items }: HeroBannerProps) {
           loading={activeIndex === 0 ? "eager" : "lazy"}
           fetchPriority={activeIndex === 0 ? "high" : "auto"}
           decoding="async"
-          className="hero-media-enter absolute inset-0 h-full w-full object-cover object-center motion-reduce:animate-none"
+          className="hero-media-enter absolute inset-0 h-full w-full object-cover object-top motion-reduce:animate-none md:object-center"
         />
       )}
 
-      <div className="absolute inset-0 bg-linear-to-r from-[#0b090a] via-[#0b090a]/82 to-[#0b090a]/16" />
-      <div className="absolute inset-0 bg-linear-to-t from-[#0b090a]/78 via-transparent to-black/12" />
+      <div className="absolute inset-0 hidden bg-linear-to-r from-[#0b090a] via-[#0b090a]/80 to-[#0b090a]/8 md:block" />
+      <div className="absolute inset-0 bg-linear-to-t from-[#0b090a] via-[#0b090a]/65 to-transparent md:from-[#0b090a]/75 md:via-transparent" />
 
       <div
         key={`${media.id}-content`}
-        className="hero-copy-enter relative z-10 flex h-full max-w-3xl flex-col justify-end px-5 pb-7 pt-10 motion-reduce:animate-none md:px-8 md:pb-10 lg:px-12 lg:pb-12"
+        className="hero-copy-enter relative z-10 flex flex-1 flex-col justify-end px-4 pb-5 pt-36 motion-reduce:animate-none md:max-w-3xl md:px-8 md:pb-10 md:pt-16 lg:px-10"
       >
-        <div className="mb-3 flex flex-wrap items-center gap-x-2 text-xs font-medium text-white/72">
-          {media.year && <span>{media.year}</span>}
-          {media.format && <span>· {formatMediaFormat(media.format)}</span>}
-          {media.score && <span>· {media.score.toFixed(1)}</span>}
-          {media.total_episodes > 0 && <span>· {media.total_episodes} 话</span>}
+        <div className="flex items-end gap-4">
+          {media.cover && <img key={`${media.id}-compact-poster`} src={media.cover} alt="" decoding="async" className="aspect-2/3 w-20 shrink-0 rounded-xl object-cover shadow-[0_8px_24px_-8px_rgba(0,0,0,0.6)] md:hidden" />}
+          <div className="min-w-0">
+            <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-white/75 md:mb-3">
+              {media.year && <span>{media.year}</span>}
+              {media.format && <span>· {formatMediaFormat(media.format, language)}</span>}
+              {media.score && <span>· {media.score.toFixed(1)}</span>}
+            </div>
+            <h1
+              id={`hero-title-${media.anilist_id}`}
+              className="line-clamp-3 max-w-2xl text-balance text-[1.625rem] font-bold leading-[1.2] tracking-[-0.025em] text-white md:text-4xl xl:text-5xl"
+            >
+              {title}
+            </h1>
+          </div>
         </div>
 
-        <h1
-          id={`hero-title-${media.anilist_id}`}
-          className="max-w-2xl text-balance text-2xl font-semibold leading-tight tracking-[-0.025em] text-white md:text-4xl xl:text-5xl"
-        >
-          {title}
-        </h1>
-
         {description && (
-          <p className="mt-4 line-clamp-2 max-w-xl text-sm leading-6 text-white/72">
+          <p className="mt-4 hidden max-w-xl text-sm leading-6 text-white/75 md:line-clamp-2">
             {description}
           </p>
         )}
 
-        <div className="mt-7">
-          <Button asChild size="lg" className="shadow-md shadow-black/20">
+        <div className="mt-5 flex items-center justify-between gap-3 md:mt-7 md:justify-start">
+          <Button asChild size="lg" className="min-h-12 rounded-xl px-4 md:px-5">
             <Link to="/anime/$id" params={{ id: media.id }}>
-              查看详情
-              <ArrowRight aria-hidden="true" />
+              {language === "zh" ? "查看详情" : "View details"}
+              <ArrowRight aria-hidden="true" className="hidden md:block" />
             </Link>
           </Button>
+          {hasNavigation && (
+            <div className="flex shrink-0 items-center gap-1 text-white md:ml-3">
+              <Button type="button" variant="ghost" size="icon-lg" onClick={() => move(-1)} aria-label={language === "zh" ? "上一部作品" : "Previous anime"} className="size-12 rounded-xl text-white/80 hover:bg-white/12 hover:text-white">
+                <ChevronLeft aria-hidden="true" />
+              </Button>
+              <span className="hidden text-xs tabular-nums text-white/75 min-[360px]:block">{activeIndex + 1} / {items.length}</span>
+              <Button type="button" variant="ghost" size="icon-lg" onClick={() => move(1)} aria-label={language === "zh" ? "下一部作品" : "Next anime"} className="size-12 rounded-xl text-white/80 hover:bg-white/12 hover:text-white">
+                <ChevronRight aria-hidden="true" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -139,42 +153,15 @@ export function HeroBanner({ items }: HeroBannerProps) {
         </div>
       )}
 
-      {hasNavigation && (
-        <div className="absolute right-6 top-6 z-20 flex items-center gap-1 rounded-lg bg-black/44 p-1 text-white shadow-md shadow-black/20">
-          <span className="min-w-14 px-2 text-center text-xs tabular-nums text-white/72">
-            {String(activeIndex + 1).padStart(2, "0")} / {String(items.length).padStart(2, "0")}
-          </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-lg"
-            onClick={() => move(-1)}
-            aria-label="上一部作品"
-            className="text-white/78 hover:bg-white/12 hover:text-white"
-          >
-            <ChevronLeft aria-hidden="true" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-lg"
-            onClick={() => move(1)}
-            aria-label="下一部作品"
-            className="text-white/78 hover:bg-white/12 hover:text-white"
-          >
-            <ChevronRight aria-hidden="true" />
-          </Button>
-        </div>
-      )}
-
       <p className="sr-only" aria-live="polite" aria-atomic="true">
-        {title}，第 {activeIndex + 1} 部，共 {items.length} 部
+        {language === "zh" ? `${title}，第 ${activeIndex + 1} 部，共 ${items.length} 部` : `${title}, ${activeIndex + 1} of ${items.length}`}
       </p>
     </section>
   );
 }
 
-function formatMediaFormat(format: string) {
+function formatMediaFormat(format: string, language: "en" | "zh") {
+  if (language === "en") return ({ TV_SHORT: "Short", MOVIE: "Movie", SPECIAL: "Special" }[format] ?? format);
   return (
     {
       TV: "TV",

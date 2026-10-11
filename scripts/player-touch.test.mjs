@@ -49,8 +49,8 @@ test("touch seeking commits once on release; cancel, controls, edges and multipl
     surface.dispatchEvent(click);
     assert.equal(click.defaultPrevented, true);
 
-    for (const scenario of ["cancel", "multi", "edge", "control"]) {
-      surface.closest = () => scenario === "control" ? {} : null;
+    for (const scenario of ["cancel", "multi", "edge", "control", "progress"]) {
+      surface.closest = (selector) => scenario === "control" || (scenario === "progress" && selector.includes(".art-progress")) ? {} : null;
       touch("touchstart", [[scenario === "edge" ? 10 : 100, 100]]);
       touch("touchmove", [[200, 100]]);
       if (scenario === "multi") touch("touchmove", [[200, 100], [240, 100]]);

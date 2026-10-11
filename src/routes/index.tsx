@@ -1,5 +1,6 @@
 import { AnimeGrid } from "@/components/anime-grid";
 import { HeroBanner } from "@/components/hero-banner";
+import { HomePageLoading } from "@/components/page-loading";
 import { StoredMediaTitle } from "@/components/stored-media-title";
 import { Button } from "@/components/ui/button";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
@@ -22,34 +23,40 @@ export const Route = createFileRoute("/")({
     const language = await currentDisplayLanguage();
     await queryClient.ensureQueryData(spotlightQuery(language)).catch(() => undefined);
   },
+  pendingComponent: HomePageLoading,
   component: HomePage,
 });
 
 function HomePage() {
   const language = useDisplayLanguage();
-  const { data: firstPage, isError, isLoading, refetch } = useQuery(spotlightQuery(language));
+  const { data: firstPage, isError, isPending, refetch } = useQuery(spotlightQuery(language));
   const spotlight = firstPage?.data?.slice(0, 12) ?? [];
   const { data: history = [] } = useQuery({
     queryKey: historyListQueryKey(12, 0),
     queryFn: () => historyApi.list(12, 0),
   });
 
+  // Also covers a language change after the route has already mounted. Wait
+  // before mounting AnimeGrid so its first page reuses the spotlight response.
+  if (isPending) return <HomePageLoading />;
+
   return (
-    <div className="min-h-full pb-16">
-      <div className="mx-auto max-w-7xl px-4 pt-4 md:px-6 md:pt-12 lg:px-10">
-        {!isLoading && spotlight.length === 0 ? (
+    <div className="min-h-full pb-8 md:pb-16">
+      <div className="mx-auto max-w-7xl px-4 pt-3 md:px-6 md:pt-10 lg:px-10">
+        {spotlight.length === 0 ? (
           <section className="flex min-h-72 flex-col items-center justify-center gap-4 rounded-2xl bg-card px-6 text-center">
-            <h1 className="text-lg font-semibold">{isError ? "动漫列表暂时无法载入" : "暂无推荐作品"}</h1>
-            <Button variant="secondary" size="sm" onClick={() => void refetch()}>重新载入</Button>
+            <h1 className="text-lg font-bold">{language === "zh" ? (isError ? "动漫列表暂时无法载入" : "暂无推荐作品") : (isError ? "Could not load anime" : "No highlights yet")}</h1>
+            <Button variant="secondary" onClick={() => void refetch()}>{language === "zh" ? "重新载入" : "Reload"}</Button>
           </section>
         ) : <HeroBanner items={spotlight.slice(0, 5)} />}
 
         {history.length > 0 && (
-          <section className="mt-11" aria-labelledby="continue-watching-title">
-            <h2 id="continue-watching-title" className="text-lg font-semibold tracking-tight">
-              继续观看
-            </h2>
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <section className="mt-8 md:mt-10" aria-labelledby="continue-watching-title">
+            <div className="flex items-center justify-between gap-4">
+              <h2 id="continue-watching-title" className="text-lg font-bold tracking-tight">{language === "zh" ? "继续观看" : "Continue watching"}</h2>
+              <Link to="/watchlist" search={{ view: "history" }} className="flex min-h-11 items-center rounded-lg px-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary-readable">{language === "zh" ? "全部" : "View all"}</Link>
+            </div>
+            <div className="hide-scrollbar -mx-4 mt-3 grid auto-cols-[min(84%,20rem)] grid-flow-col snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 sm:auto-cols-[min(65%,22rem)] md:mx-0 md:px-0 lg:grid-flow-row lg:auto-cols-auto lg:grid-cols-3">
               {history.slice(0, 6).map((entry) => {
                 const percent =
                   entry.duration > 0
@@ -64,9 +71,9 @@ function HomePage() {
                       ep: String(entry.episode),
                     }}
                     search={{ t: entry.position }}
-                    className="group relative flex min-w-0 gap-4 overflow-hidden rounded-xl border border-border/75 bg-card p-3 outline-none transition-colors hover:border-primary/45 focus-visible:border-primary-readable focus-visible:ring-[3px] focus-visible:ring-primary-readable motion-reduce:transition-none"
+                    className="group relative flex min-w-0 snap-start gap-3 overflow-hidden rounded-xl bg-card p-3 outline-none transition-colors hover:bg-secondary focus-visible:ring-[3px] focus-visible:ring-primary-readable motion-reduce:transition-none"
                   >
-                    <div className="h-24 w-17 shrink-0 overflow-hidden rounded-lg bg-white/5">
+                    <div className="h-22 w-15 shrink-0 overflow-hidden rounded-lg bg-white/5">
                       {entry.cover && (
                         <img
                           src={entry.cover}
@@ -77,14 +84,14 @@ function HomePage() {
                         />
                       )}
                     </div>
-                    <div className="min-w-0 flex-1 py-1">
-                      <p className="truncate text-sm font-medium">
+                    <div className="flex min-w-0 flex-1 flex-col py-0.5">
+                      <p className="line-clamp-2 text-sm font-medium leading-5">
                         <StoredMediaTitle provider={entry.provider} externalId={entry.external_id} fallback={entry.media_title} />
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        第 {entry.episode} 话
+                        {language === "zh" ? `第 ${entry.episode} 话` : `Episode ${entry.episode}`}
                       </p>
-                      <div className="mt-5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <div className="mt-auto flex items-center gap-2 pt-2 text-xs tabular-nums text-muted-foreground">
                         <Play size={11} fill="currentColor" aria-hidden="true" />
                         {formatTime(entry.position)} / {formatTime(entry.duration)}
                       </div>
@@ -102,17 +109,17 @@ function HomePage() {
           </section>
         )}
 
-        <section className="mt-11" aria-labelledby="season-focus-title">
-          <h2 id="season-focus-title" className="text-lg font-semibold tracking-tight">
-            本季焦点
+        <section className="mt-8 md:mt-10" aria-labelledby="season-focus-title">
+          <h2 id="season-focus-title" className="text-lg font-bold tracking-tight">
+            {language === "zh" ? "本季焦点" : "Season picks"}
           </h2>
-          <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+          <div className="hide-scrollbar -mx-4 mt-4 grid auto-cols-[42%] grid-flow-col snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 min-[480px]:auto-cols-[30%] sm:auto-cols-[23%] md:mx-0 md:px-0 lg:grid-flow-row lg:auto-cols-auto lg:grid-cols-4 lg:gap-4 xl:grid-cols-7">
             {spotlight.slice(5, 12).map((media) => (
               <Link
                 key={media.id}
                 to="/anime/$id"
                 params={{ id: media.id }}
-                className="group min-w-0 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-primary-readable"
+                className="group min-w-0 snap-start rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-primary-readable"
               >
                 <div className="aspect-2/3 overflow-hidden rounded-xl bg-card">
                   {media.cover && (
@@ -121,16 +128,16 @@ function HomePage() {
                       alt=""
                       loading="lazy"
                       decoding="async"
-                      className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.025] motion-reduce:transition-none"
+                      className="h-full w-full object-cover"
                     />
                   )}
                 </div>
-                <p className="mt-2 truncate text-xs font-medium text-foreground/82 transition-colors group-hover:text-primary-readable motion-reduce:transition-none">
+                <p className="mt-2 line-clamp-2 min-h-10 text-sm font-medium leading-5 text-foreground/90 transition-colors group-hover:text-primary-readable motion-reduce:transition-none">
                   {displayAnimeTitle(media, language)}
                 </p>
-                <p className="mt-1 text-[10px] text-muted-foreground">
+                <p className="mt-1 text-xs text-muted-foreground">
                   {media.format
-                    ? formatMediaFormat(media.format)
+                    ? formatMediaFormat(media.format, language)
                     : (media.year ?? 0) > 0
                       ? media.year
                       : null}
@@ -143,7 +150,7 @@ function HomePage() {
 
       <AnimeGrid
         key={language}
-        title="今年的动画"
+        title={language === "zh" ? "今年的动画" : "Explore this year"}
         queryKey={["anime-list", "AniList", CURRENT_YEAR, language]}
         queryFn={(offset: number) => fetchSeason(offset, language)}
         initialPageParam={0}
@@ -165,7 +172,8 @@ function formatTime(seconds: number) {
   return `${minutes}:${rest.toString().padStart(2, "0")}`;
 }
 
-function formatMediaFormat(format: string) {
+function formatMediaFormat(format: string, language: "en" | "zh") {
+  if (language === "en") return ({ TV_SHORT: "Short", MOVIE: "Movie", SPECIAL: "Special" }[format] ?? format);
   return (
     {
       TV: "TV",

@@ -1,4 +1,4 @@
-import { settingsApi, type DisplayLanguage } from "@/lib/store";
+import { DEFAULT_DISPLAY_LANGUAGE, settingsApi, type DisplayLanguage } from "@/lib/store";
 import { useQuery } from "@tanstack/react-query";
 
 export const settingsQueryOptions = {
@@ -9,5 +9,5 @@ export const settingsQueryOptions = {
 
 export function useDisplayLanguage(): DisplayLanguage {
   const { data } = useQuery(settingsQueryOptions);
-  return data?.display_language ?? "en";
+  return data?.display_language ?? DEFAULT_DISPLAY_LANGUAGE;
 }

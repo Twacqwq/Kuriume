@@ -35,6 +35,11 @@ function RootComponent() {
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
         return;
       }
+      const playerSettings = document.querySelector(".art-setting-show .art-settings");
+      if (playerSettings) {
+        playerSettings.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+        return;
+      }
       const event = new Event("kuriume-back", { cancelable: true });
       if (!window.dispatchEvent(event)) return;
       if (canGoBack) router.history.back();

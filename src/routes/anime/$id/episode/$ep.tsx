@@ -265,17 +265,31 @@ function EpisodePage() {
   );
 
   const status = useMemo(() => {
-    if (resolver.phase === "resolving") return "正在准备播放…";
-    if (onlineSource.loadingEpisodes) return "正在读取选集…";
-    if (onlineSource.searching) return "正在匹配作品…";
-    if (onlineSource.sourcesLoading) return "正在载入播放源…";
+    if (resolver.phase === "resolving") return language === "zh" ? "正在准备播放…" : "Preparing playback…";
+    if (onlineSource.loadingEpisodes) return language === "zh" ? "正在读取选集…" : "Loading episodes…";
+    if (onlineSource.searching) return language === "zh" ? "正在匹配作品…" : "Finding your anime…";
+    if (onlineSource.sourcesLoading) return language === "zh" ? "正在载入播放源…" : "Loading sources…";
     return null;
   }, [
     onlineSource.loadingEpisodes,
     onlineSource.searching,
     onlineSource.sourcesLoading,
     resolver.phase,
+    language,
   ]);
+
+  const sourcePanel = <SourcePanel
+    source={onlineSource}
+    resolver={resolver}
+    assetIsCurrent={assetIsCurrent}
+    episodeNumber={episodeNumber}
+    onSelectAnime={onlineSource.selectAnime}
+    onSelectRoad={onlineSource.selectRoad}
+    onSelectEpisode={navigateToEpisode}
+    subtitleControl={assetIsCurrent && !!subtitles?.length ? (
+      <PlaybackSubtitles tracks={subtitles} value={subtitlePreference} onChange={setSubtitlePreference} failed={subtitleFailed} />
+    ) : null}
+  />;
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background">
@@ -284,12 +298,12 @@ function EpisodePage() {
           type="button"
           onClick={goBack}
           className="grid size-12 shrink-0 place-items-center rounded-full text-foreground/65 outline-none transition-colors hover:bg-white/6 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-primary-readable"
-          aria-label="返回详情"
+          aria-label={language === "zh" ? "返回详情" : "Back to details"}
         >
           <ArrowLeft size={18} />
         </button>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-sm font-semibold">{mediaTitle}</h1>
+          <h1 className="truncate text-sm font-bold">{mediaTitle}</h1>
           <p className="truncate text-xs text-muted-foreground">
             {title}
             {onlineSource.selectedProvider
@@ -334,19 +348,8 @@ function EpisodePage() {
           )}
         </main>
 
-        <aside inert={isFullscreen} aria-hidden={isFullscreen} aria-label="播放与选集" className={cn("player-options min-h-0 min-w-0 overflow-hidden border-white/6 bg-card/35", isFullscreen && "invisible")}>
-          <SourcePanel
-            source={onlineSource}
-            resolver={resolver}
-            assetIsCurrent={assetIsCurrent}
-            episodeNumber={episodeNumber}
-            onSelectAnime={onlineSource.selectAnime}
-            onSelectRoad={onlineSource.selectRoad}
-            onSelectEpisode={navigateToEpisode}
-            subtitleControl={assetIsCurrent && !!subtitles?.length ? (
-              <PlaybackSubtitles tracks={subtitles} value={subtitlePreference} onChange={setSubtitlePreference} failed={subtitleFailed} />
-            ) : null}
-          />
+        <aside inert={isFullscreen} aria-hidden={isFullscreen} aria-label={language === "zh" ? "播放与选集" : "Episodes and playback"} className={cn("player-options min-h-0 min-w-0 overflow-hidden border-white/6 bg-card/35", isFullscreen && "invisible")}>
+          {sourcePanel}
         </aside>
       </div>
     </div>
@@ -364,6 +367,7 @@ function PlaybackEmptyState({
   hasSelection: boolean;
   onRetry: () => void;
 }) {
+  const language = useDisplayLanguage();
   if (status) {
     return (
       <div
@@ -376,7 +380,7 @@ function PlaybackEmptyState({
     );
   }
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
+    <div className="hide-scrollbar flex h-full flex-col items-center gap-3 overflow-y-auto px-5 py-5 text-center before:mt-auto after:mb-auto">
       {error ? (
         <TriangleAlert className="h-9 w-9 text-destructive-readable" />
       ) : (
@@ -385,16 +389,16 @@ function PlaybackEmptyState({
       <div className="max-w-md">
         <p className="text-sm font-medium text-white/78">
           {error
-            ? "当前来源无法播放"
+            ? (language === "zh" ? "当前来源无法播放" : "This source is unavailable")
             : hasSelection
-              ? "当前线路没有这一话"
-              : "请选择匹配作品"}
+              ? (language === "zh" ? "当前线路没有这一话" : "Episode unavailable on this server")
+              : (language === "zh" ? "请选择匹配作品" : "Choose a matching title")}
         </p>
         {error && (
           <>
             <p role="alert" className="mt-2 text-sm leading-6 text-muted-foreground">{playbackErrorMessage(error)}</p>
             <details className="mt-3 text-left text-xs text-muted-foreground">
-              <summary className="mx-auto w-fit cursor-pointer rounded px-2 py-1 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary-readable">错误详情</summary>
+              <summary className="mx-auto w-fit cursor-pointer rounded px-2 py-1 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary-readable">{language === "zh" ? "错误详情" : "Error details"}</summary>
               <p className="mt-2 max-h-32 overflow-auto break-all rounded-lg bg-white/5 p-3 leading-5">{error}</p>
             </details>
           </>
@@ -403,7 +407,7 @@ function PlaybackEmptyState({
       {error && (
         <Button variant="secondary" size="sm" onClick={onRetry}>
           <RefreshCw size={14} />
-          重试
+          {language === "zh" ? "重试" : "Retry"}
         </Button>
       )}
     </div>
@@ -433,7 +437,20 @@ function SourcePanel({
   const isHiAnime = source.selectedSource === "builtin:hianime";
   const [matchingOpen, setMatchingOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const episodes = source.roads[source.selectedRoadIndex]?.episodes ?? [];
+  const selectedRoad = source.roads[source.selectedRoadIndex];
+  const episodes = selectedRoad?.episodes ?? [];
+  const episodeGrid = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const grid = episodeGrid.current;
+    const active = grid?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (grid && active) grid.scrollTop = Math.max(0, active.offsetTop - grid.clientHeight / 2 + active.offsetHeight / 2);
+  }, [episodeNumber, selectedRoad]);
+  const roadLabel = isHiAnime && selectedRoad?.id === "sub"
+    ? (language === "zh" ? "原声 · Sub" : "Original · Sub")
+    : isHiAnime && selectedRoad?.id === "dub"
+      ? (language === "zh" ? "配音 · Dub" : "Dubbed · Dub")
+      : selectedRoad?.label;
+  const optionsNeedAttention = !source.selectedAnime || source.sourcesLoading || source.searching || source.loadingEpisodes || Boolean(source.error) || resolver.phase === "error";
   const showCandidates = matchingOpen || !source.selectedAnime;
   const selectCandidate = async (candidate: PlaybackCandidate) => {
     if (await onSelectAnime(candidate)) setMatchingOpen(false);
@@ -441,20 +458,64 @@ function SourcePanel({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
-      <div className="flex h-14 shrink-0 items-center border-b border-border/60 px-5">
-        <h2 className="text-sm font-semibold">播放与选集</h2>
+      <div className="flex min-h-16 shrink-0 items-center border-b border-border/60 px-4">
+        <h2 className="text-base font-bold">{language === "zh" ? "选集与播放" : "Episodes & playback"}</h2>
       </div>
 
-      <div className="hide-scrollbar min-h-0 min-w-0 flex-1 space-y-7 overflow-x-hidden overflow-y-auto p-5">
+      <div className="hide-scrollbar min-h-0 min-w-0 flex-1 space-y-6 overflow-x-hidden overflow-y-auto p-4">
         <section>
-          <PanelLabel>播放源</PanelLabel>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-bold">{language === "zh" ? "剧集" : "Episodes"}</h3>
+            {episodes.length > 0 && <span className="text-xs tabular-nums text-muted-foreground">{language === "zh" ? `${episodes.length} 话` : `${episodes.length} episodes`}</span>}
+          </div>
+          {source.loadingEpisodes ? (
+            <LoadingLine>{language === "zh" ? "正在读取剧集…" : "Loading episodes…"}</LoadingLine>
+          ) : !source.selectedAnime ? (
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">{language === "zh" ? "匹配作品后显示剧集" : "Match an anime below to see episodes"}</p>
+          ) : episodes.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">{language === "zh" ? "暂无可用剧集" : "No episodes available"}</p>
+          ) : (
+            <div ref={episodeGrid} className="hide-scrollbar relative mt-4 grid max-h-72 grid-cols-5 gap-2 overflow-y-auto overscroll-contain p-0.5">
+              {episodes.map((episode) => {
+                const number = episode.episodeNumber;
+                const navigable = number !== null && Number.isInteger(number) && number > 0;
+                return (
+                  <button key={episode.id} type="button" disabled={!navigable}
+                    onClick={() => { if (navigable) onSelectEpisode(number); }}
+                    aria-current={number === episodeNumber ? "true" : undefined}
+                    aria-label={episode.label}
+                    title={episode.label}
+                    className={cn(
+                      "min-h-12 min-w-0 rounded-xl px-1 py-2 text-sm tabular-nums outline-none transition-colors [overflow-wrap:anywhere] focus-visible:ring-2 focus-visible:ring-primary-readable disabled:opacity-40 motion-reduce:transition-none",
+                      number === episodeNumber
+                        ? "bg-primary font-bold text-primary-foreground"
+                        : "bg-secondary/65 text-foreground/80 hover:bg-accent hover:text-foreground",
+                    )}>
+                    {number ?? episode.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <details open={optionsNeedAttention} className="min-w-0 border-t border-border/60 pt-1">
+          <summary className="cursor-pointer rounded-lg py-4 text-sm font-bold outline-none marker:text-primary-readable focus-visible:ring-2 focus-visible:ring-primary-readable">
+            {language === "zh" ? "播放选项" : "Playback options"}
+            <span className="mt-1 block pl-4 text-xs font-normal leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+              {[source.selectedProvider?.displayName, roadLabel].filter(Boolean).join(" · ") || (language === "zh" ? "选择播放源" : "Choose a source")}
+            </span>
+          </summary>
+          <div className="min-w-0 space-y-6 pb-2">
+        <section>
+          <PanelLabel>{language === "zh" ? "播放源" : "Source"}</PanelLabel>
           {source.sourcesLoading ? (
-            <LoadingLine>正在加载播放源…</LoadingLine>
+            <LoadingLine>{language === "zh" ? "正在加载播放源…" : "Loading sources…"}</LoadingLine>
           ) : (
             <ToggleGroup
               type="single"
               spacing={2}
-              aria-label="播放源"
+              aria-label={language === "zh" ? "播放源" : "Source"}
               value={source.selectedSource ?? ""}
               onValueChange={(value) => {
                 if (value) {
@@ -467,7 +528,7 @@ function SourcePanel({
             >
               {source.providers.map((provider) => (
                 <ToggleGroupItem key={provider.id} value={provider.id}
-                  className="h-auto min-h-10 min-w-0 rounded-lg border border-border/70 px-3 py-2 text-xs whitespace-normal [overflow-wrap:anywhere] data-[state=on]:border-primary/50 data-[state=on]:bg-primary/16 data-[state=on]:text-primary-readable">
+                  className="h-auto min-h-12 min-w-0 rounded-xl border border-border/70 px-3 py-2 text-sm whitespace-normal [overflow-wrap:anywhere] data-[state=on]:border-primary/50 data-[state=on]:bg-primary/16 data-[state=on]:text-primary-readable">
                   {provider.displayName}
                 </ToggleGroupItem>
               ))}
@@ -477,10 +538,10 @@ function SourcePanel({
 
         <section>
           <div className="flex items-center justify-between gap-3">
-            <PanelLabel>作品</PanelLabel>
+            <PanelLabel>{language === "zh" ? "作品" : "Anime"}</PanelLabel>
             {source.selectedAnime && (
               <Button variant="ghost" size="xs" onClick={() => setMatchingOpen((open) => !open)} aria-expanded={showCandidates}>
-                {matchingOpen ? "收起" : "重新匹配"}
+                {language === "zh" ? (matchingOpen ? "收起" : "重新匹配") : (matchingOpen ? "Close" : "Rematch")}
               </Button>
             )}
           </div>
@@ -488,7 +549,7 @@ function SourcePanel({
             <div className="mt-3 flex items-start gap-2.5">
               <Check size={15} className="mt-0.5 shrink-0 text-primary-readable" aria-hidden="true" />
               <div className="min-w-0">
-                <p className="text-sm font-medium leading-6">{source.selectedAnime.title}</p>
+                <p className="text-sm font-medium leading-6 [overflow-wrap:anywhere]">{source.selectedAnime.title}</p>
                 <CandidateMetadata candidate={source.selectedAnime} />
               </div>
             </div>
@@ -500,16 +561,16 @@ function SourcePanel({
                 source.search(searchTerm);
               }}>
                 <Input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)}
-                  aria-label="在当前播放源搜索作品" placeholder="输入作品名称" className="min-w-0 text-xs" />
-                <Button type="submit" variant="secondary" size="icon" disabled={!searchTerm.trim() || source.searching} aria-label="搜索作品">
+                  aria-label={language === "zh" ? "在当前播放源搜索作品" : "Search this source"} placeholder={language === "zh" ? "输入作品名称" : "Anime title"} className="min-h-12 min-w-0 text-base" />
+                <Button type="submit" variant="secondary" size="icon" className="size-12 shrink-0 rounded-xl" disabled={!searchTerm.trim() || source.searching} aria-label={language === "zh" ? "搜索作品" : "Search anime"}>
                   <Search size={15} aria-hidden="true" />
                 </Button>
               </form>
               {source.searching ? (
-                <LoadingLine>正在匹配作品…</LoadingLine>
+                <LoadingLine>{language === "zh" ? "正在匹配作品…" : "Matching anime…"}</LoadingLine>
               ) : source.searchResults.length === 0 ? (
                 <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                  {source.error ? "搜索未完成，请重试或切换播放源。" : "未找到匹配作品，可换个名称搜索。"}
+                  {language === "zh" ? (source.error ? "搜索未完成，请重试或切换播放源。" : "未找到匹配作品，可换个名称搜索。") : (source.error ? "Search failed. Retry or choose another source." : "No match found. Try another title.")}
                 </p>
               ) : (
                 <div className="mt-3 space-y-1">
@@ -530,10 +591,10 @@ function SourcePanel({
                           {selected ? <Check size={14} /> : <Play size={14} />}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block text-xs font-medium leading-5">{candidate.title}</span>
+                          <span className="block text-sm font-medium leading-5 [overflow-wrap:anywhere]">{candidate.title}</span>
                           <CandidateMetadata candidate={candidate} />
                         </span>
-                        {candidate.exactMatch && <span className="mt-1 shrink-0 text-[10px] text-primary-readable">匹配</span>}
+                        {candidate.exactMatch && <span className="mt-1 shrink-0 text-xs text-primary-readable">{language === "zh" ? "匹配" : "Match"}</span>}
                       </button>
                     );
                   })}
@@ -545,14 +606,14 @@ function SourcePanel({
 
         {assetIsCurrent && resolver.sources.length > 1 && (
           <section>
-            <PanelLabel>播放线路</PanelLabel>
-            <ToggleGroup type="single" spacing={2} aria-label="播放线路"
+            <PanelLabel>{language === "zh" ? "播放线路" : "Stream"}</PanelLabel>
+            <ToggleGroup type="single" spacing={2} aria-label={language === "zh" ? "播放线路" : "Stream"}
               value={resolver.selectedSource?.name ?? ""}
               onValueChange={(name) => { if (name) resolver.selectSource(name); }}
               className="mt-3 flex w-full flex-wrap justify-start gap-2">
               {resolver.sources.map((item) => (
                 <ToggleGroupItem key={item.name} value={item.name}
-                  className="h-auto min-h-9 max-w-full rounded-lg border border-border/70 px-3 py-1.5 text-xs whitespace-normal [overflow-wrap:anywhere] data-[state=on]:border-primary/50 data-[state=on]:bg-primary/16 data-[state=on]:text-primary-readable">
+                  className="h-auto min-h-12 max-w-full rounded-xl border border-border/70 px-3 py-2 text-sm whitespace-normal [overflow-wrap:anywhere] data-[state=on]:border-primary/50 data-[state=on]:bg-primary/16 data-[state=on]:text-primary-readable">
                   {item.name}
                 </ToggleGroupItem>
               ))}
@@ -568,7 +629,7 @@ function SourcePanel({
               onValueChange={(value) => { if (value) onSelectRoad(Number(value)); }}
               className="mt-3 w-full flex-wrap justify-start gap-2">
               {source.roads.map((road, index) => (
-                <ToggleGroupItem key={road.id} value={String(index)} size="sm" className="h-auto min-h-9 max-w-full rounded-lg px-3 py-1.5 text-xs whitespace-normal [overflow-wrap:anywhere]">
+                <ToggleGroupItem key={road.id} value={String(index)} size="sm" className="h-auto min-h-12 max-w-full rounded-xl px-3 py-2 text-sm whitespace-normal [overflow-wrap:anywhere]">
                   {isHiAnime && road.id === "sub" ? (language === "zh" ? "原声 · Sub" : "Original · Sub")
                     : isHiAnime && road.id === "dub" ? (language === "zh" ? "配音 · Dub" : "Dubbed · Dub") : road.label}
                 </ToggleGroupItem>
@@ -579,68 +640,33 @@ function SourcePanel({
 
         {subtitleControl}
 
-        {source.selectedAnime && (
-          <section>
-            <div className="flex items-center justify-between">
-              <PanelLabel>剧集</PanelLabel>
-              {episodes.length > 0 && <span className="text-xs tabular-nums text-muted-foreground">{episodes.length} 话</span>}
-            </div>
-            {source.loadingEpisodes ? (
-              <LoadingLine>正在读取剧集…</LoadingLine>
-            ) : source.roads.length === 0 ? (
-              <p className="mt-3 text-xs text-muted-foreground">暂无可用剧集</p>
-            ) : (
-              <>
-                <div className="mt-4 grid grid-cols-5 gap-2">
-                  {episodes.map((episode) => {
-                    const number = episode.episodeNumber;
-                    const navigable = number !== null && Number.isInteger(number) && number > 0;
-                    return (
-                      <button key={episode.id} type="button" disabled={!navigable}
-                        onClick={() => { if (navigable) onSelectEpisode(number); }}
-                        aria-current={number === episodeNumber ? "true" : undefined}
-                        aria-label={episode.label}
-                        title={episode.label}
-                        className={cn(
-                          "min-h-10 rounded-lg px-1 text-xs tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-readable disabled:opacity-40",
-                          number === episodeNumber
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-secondary/65 text-muted-foreground hover:bg-accent hover:text-foreground",
-                        )}>
-                        {number ?? episode.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </section>
-        )}
-
         {source.error && (
           <div role="alert" className="text-xs leading-5 text-destructive-readable">
             <p>{playbackErrorMessage(source.error)}</p>
             <Button variant="ghost" size="xs" className="mt-2 -ml-2" onClick={source.retry}>
-              <RefreshCw size={12} />重试
+              <RefreshCw size={12} />{language === "zh" ? "重试" : "Retry"}
             </Button>
           </div>
         )}
+          </div>
+        </details>
       </div>
     </div>
   );
 }
 
 function CandidateMetadata({ candidate }: { candidate: PlaybackCandidate }) {
+  const language = useDisplayLanguage();
   if (!candidate.year && !candidate.episodeCount) return null;
   return (
     <span className="mt-1 block text-xs tabular-nums text-muted-foreground">
-      {[candidate.year, candidate.episodeCount && `${candidate.episodeCount} 话已上线`].filter(Boolean).join(" · ")}
+      {[candidate.year, candidate.episodeCount && (language === "zh" ? `${candidate.episodeCount} 话已上线` : `${candidate.episodeCount} episodes available`)].filter(Boolean).join(" · ")}
     </span>
   );
 }
 
 function PanelLabel({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-xs font-medium text-muted-foreground">{children}</h2>;
+  return <h3 className="text-xs font-medium text-muted-foreground">{children}</h3>;
 }
 
 function LoadingLine({ children }: { children: React.ReactNode }) {

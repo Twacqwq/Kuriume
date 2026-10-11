@@ -1,12 +1,12 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { queryClient } from "@/lib/query-client";
-import { settingsApi, type DisplayLanguage } from "@/lib/store";
+import { DEFAULT_DISPLAY_LANGUAGE, settingsApi, type DisplayLanguage } from "@/lib/store";
 import type { AnimeInfo, AnimeEpisodes, AnimeCharacters } from "@/lib/types";
 
 export const detailQueryOptions = (
   id: string,
-  language: DisplayLanguage = "en",
+  language: DisplayLanguage = DEFAULT_DISPLAY_LANGUAGE,
 ) => ({
   queryKey: ["anime-detail", id, language],
   // Tauri requests cannot be aborted. Consuming a query signal here lets an
@@ -44,7 +44,7 @@ export const Route = createFileRoute("/anime/$id")({
       queryFn: settingsApi.get,
       staleTime: Infinity,
     });
-    const language = settings.display_language ?? "en";
+    const language = settings.display_language ?? DEFAULT_DISPLAY_LANGUAGE;
     const cached = queryClient.getQueryData<AnimeInfo>([
       "anime-detail",
       params.id,

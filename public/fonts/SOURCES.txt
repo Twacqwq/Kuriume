@@ -1,0 +1,28 @@
+Kuriume bundled fonts
+
+Upstream: https://github.com/google/fonts
+Revision: bd8f81ddb5c74d5c8897b36ad88b440266245103
+
+manrope-vf.woff2
+  Source: ofl/manrope/Manrope[wght].ttf
+  Family: Manrope; variable weight 200-800
+  License: Manrope-OFL.txt (SIL Open Font License 1.1)
+  SHA-256: 30b83738add8c9edd9e3450b98036a9a8fb5668d0cbd4eb0ce5fe6761197f21f
+
+noto-sans-sc-vf.woff2
+  Source: ofl/notosanssc/NotoSansSC[wght].ttf
+  Family: Noto Sans SC; variable weight 100-900
+  License: NotoSansSC-OFL.txt (SIL Open Font License 1.1)
+  SHA-256: aef8c34277afad81ecd0227138a830263c0caea65b7aea66d1195395f097b55a
+
+Both upstream fonts were converted to WOFF2 using fonttools 4.60.1 and
+brotli 1.2.0, without subsetting glyphs or changing family names:
+  python -m fontTools.ttLib.woff2 compress <source.ttf> -o <output.woff2>
+
+These committed assets are copied from public/fonts into the frontend bundle
+by Vite and embedded by Tauri on every platform. Neither application startup
+nor CI needs to download or convert fonts. Keep both licenses with the fonts.
+
+Typography: Manrope for Latin text/numerals, Noto Sans SC for Chinese text;
+system fonts cover glyphs outside these fonts. Headings and primary controls
+use Bold (700); descriptions stay Regular (400), secondary labels Medium (500).

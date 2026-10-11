@@ -50,7 +50,7 @@ export function usePlayerGestures(art: Artplayer | null, language: string) {
       suppressClick = false;
       move = null;
       change = null;
-      if (event.touches.length !== 1 || (event.target as Element).closest("button, input, select, a, [role=slider], .art-controls, .art-settings")) { cancel(); return; }
+      if (event.touches.length !== 1 || (event.target as Element).closest("button, input, select, a, [role=slider], .art-controls, .art-progress, .art-settings")) { cancel(); return; }
       const rect = container.getBoundingClientRect();
       const touch = event.touches[0];
       // Leave the top/bottom control strips and OS edges untouched.

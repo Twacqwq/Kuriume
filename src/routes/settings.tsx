@@ -2,11 +2,12 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { settingsQueryOptions } from "@/hooks/use-display-language";
 import { refreshCatalogLanguage } from "@/lib/catalog-queries";
 import { isMobileApp } from "@/lib/platform";
 import {
+  DEFAULT_DISPLAY_LANGUAGE,
   settingsApi,
   type DisplayLanguage,
   type Settings,
@@ -40,6 +41,8 @@ function SettingsPage() {
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [reloading, setReloading] = useState(false);
   const persistedVolume = useRef<number | null>(null);
+  const language = settings?.display_language ?? DEFAULT_DISPLAY_LANGUAGE;
+  const zh = language === "zh";
 
   if (settings && persistedVolume.current === null) {
     persistedVolume.current = settings.default_volume;
@@ -63,7 +66,7 @@ function SettingsPage() {
       updateSettings((current) => ({ ...current, display_language: previous }));
       setFeedback({
         kind: "error",
-        message: toErrorMessage(reason, "无法更新显示语言"),
+        message: toErrorMessage(reason, previous === "zh" ? "无法更新显示语言" : "Could not update the display language"),
       });
       setSaving(null);
       return;
@@ -74,12 +77,12 @@ function SettingsPage() {
 
   const reloadCatalog = async (language: DisplayLanguage) => {
     setReloading(true);
-    setFeedback({ kind: "success", message: "正在重新载入动漫列表…" });
+    setFeedback({ kind: "success", message: language === "zh" ? "正在重新载入动漫列表…" : "Reloading anime lists…" });
     try {
       await refreshCatalogLanguage(language);
-      setFeedback({ kind: "success", message: "语言已更新，动漫列表已重新载入" });
+      setFeedback({ kind: "success", message: language === "zh" ? "动漫列表已重新载入" : "Anime lists reloaded" });
     } catch {
-      setFeedback({ kind: "error", message: "语言已保存，列表载入失败，请重试" });
+      setFeedback({ kind: "error", message: language === "zh" ? "语言已保存，列表载入失败，请重试" : "Language saved. Could not reload lists; please retry." });
     } finally {
       setReloading(false);
     }
@@ -96,7 +99,7 @@ function SettingsPage() {
       updateSettings((current) => ({ ...current, default_volume: previous }));
       setFeedback({
         kind: "error",
-        message: toErrorMessage(reason, "无法保存默认音量"),
+        message: toErrorMessage(reason, zh ? "无法保存默认音量" : "Could not save the default volume"),
       });
     } finally {
       setSaving(null);
@@ -115,7 +118,7 @@ function SettingsPage() {
       updateSettings((current) => ({ ...current, default_speed: previous }));
       setFeedback({
         kind: "error",
-        message: toErrorMessage(reason, "无法保存默认倍速"),
+        message: toErrorMessage(reason, zh ? "无法保存默认倍速" : "Could not save the playback speed"),
       });
     } finally {
       setSaving(null);
@@ -134,7 +137,7 @@ function SettingsPage() {
       updateSettings((current) => ({ ...current, auto_next: previous }));
       setFeedback({
         kind: "error",
-        message: toErrorMessage(reason, "无法保存自动连播设置"),
+        message: toErrorMessage(reason, zh ? "无法保存自动连播设置" : "Could not save autoplay preferences"),
       });
     } finally {
       setSaving(null);
@@ -142,55 +145,54 @@ function SettingsPage() {
   };
 
   return (
-    <div className="mx-auto min-h-full max-w-4xl px-4 pb-8 pt-6 md:px-6 md:pb-24 md:pt-14 lg:px-10">
-      <div className="flex min-h-9 items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold tracking-[-0.02em]">设置</h1>
+    <div className="mx-auto min-h-full max-w-3xl px-4 pb-8 pt-4 md:px-6 md:pb-24 md:pt-14 lg:px-10">
+      <div className="flex flex-col gap-3">
+        <h1 className="sr-only text-3xl font-bold tracking-tight md:not-sr-only">{zh ? "设置" : "Settings"}</h1>
         {feedback && <SettingsFeedback feedback={feedback} />}
       </div>
 
       {isLoading ? (
-        <div className="mt-10 overflow-hidden rounded-xl border border-border bg-card">
-          <LoadingSettings />
+        <div className="mt-6 overflow-hidden rounded-xl bg-card md:mt-8">
+          <LoadingSettings language={language} />
         </div>
       ) : !settings ? (
-        <div className="mt-10 overflow-hidden rounded-xl border border-border bg-card">
+        <div className="mt-6 overflow-hidden rounded-xl bg-card md:mt-8">
           <SettingsLoadError
-            message={toErrorMessage(error, "无法读取设置")}
+            message={toErrorMessage(error, zh ? "无法读取设置" : "Could not load settings")}
+            language={language}
             onRetry={() => void refetch()}
           />
         </div>
       ) : (
-        <div className="mt-10 space-y-10">
-          <SettingsGroup title="显示">
-            <SettingRow icon={<Languages />} label="显示语言">
-              <div className="flex items-center gap-3">
-              <Button type="button" variant="ghost" size="icon-sm" disabled={reloading || saving === "language"} onClick={() => void reloadCatalog(settings.display_language)} aria-label="重新载入动漫列表" title="重新载入动漫列表">
+        <div className="space-y-8 md:mt-8">
+          <SettingsGroup title={zh ? "显示" : "Display"} action={
+              <Button type="button" variant="ghost" size="icon-sm" className="size-12 text-muted-foreground" disabled={reloading || saving === "language"} onClick={() => void reloadCatalog(settings.display_language)} aria-label={zh ? "重新载入动漫列表" : "Reload anime lists"} title={zh ? "重新载入动漫列表" : "Reload anime lists"}>
                 {reloading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
               </Button>
-              <ToggleGroup
-                type="single"
-                size="sm"
-                variant="outline"
-                aria-label="显示语言"
+            }>
+            <SettingRow icon={<Languages />} label={zh ? "显示语言" : "Language"} htmlFor="display-language">
+              <Select
                 value={settings.display_language}
                 disabled={saving === "language" || reloading}
                 onValueChange={(value) => {
                   if (value === "en" || value === "zh") void saveLanguage(value);
                 }}
               >
-                <ToggleGroupItem value="en">English</ToggleGroupItem>
-                <ToggleGroupItem value="zh">中文</ToggleGroupItem>
-              </ToggleGroup>
-              </div>
+                <SelectTrigger id="display-language" className="h-12 w-32 shrink-0 border-0 bg-secondary/60"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="en" className="min-h-12">English</SelectItem>
+                  <SelectItem value="zh" className="min-h-12">中文</SelectItem>
+                </SelectContent>
+              </Select>
             </SettingRow>
           </SettingsGroup>
 
-          <SettingsGroup title="播放">
-            {!isMobileApp && <SettingRow icon={<Volume2 />} label="默认音量">
-              <div className="flex w-full items-center gap-4 md:w-64">
+          <SettingsGroup title={zh ? "播放" : "Playback"}>
+            {!isMobileApp && <SettingRow icon={<Volume2 />} label={zh ? "默认音量" : "Default volume"} htmlFor="default-volume" stacked>
+              <div className="flex w-full items-center gap-4 md:w-56">
                 <Slider
                   id="default-volume"
-                  thumbLabels={["默认音量"]}
+                  thumbLabels={[zh ? "默认音量" : "Default volume"]}
                   formatValue={(value) => `${value}%`}
                   value={[Math.round(settings.default_volume * 100)]}
                   min={0}
@@ -217,35 +219,31 @@ function SettingsPage() {
               </div>
             </SettingRow>}
 
-            <SettingRow icon={<Gauge />} label="默认倍速">
-              <ToggleGroup
-                type="single"
-                size="sm"
-                variant="outline"
-                aria-label="默认倍速"
+            <SettingRow icon={<Gauge />} label={zh ? "默认倍速" : "Playback speed"} htmlFor="default-speed">
+              <Select
                 value={String(settings.default_speed)}
                 disabled={saving === "speed"}
                 onValueChange={(value) => {
                   if (value) void saveSpeed(Number(value));
                 }}
-                className="flex-wrap justify-end"
               >
-                {[0.75, 1, 1.25, 1.5, 2].map((speed) => (
-                  <ToggleGroupItem key={speed} value={String(speed)}>
-                    {speed}×
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+                <SelectTrigger id="default-speed" className="h-12 w-24 shrink-0 border-0 bg-secondary/60"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[0.75, 1, 1.25, 1.5, 2].map((speed) => (
+                    <SelectItem key={speed} value={String(speed)} className="min-h-12">{speed}×</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </SettingRow>
 
             <SettingRow
               icon={<Radio />}
-              label="自动播放下一话"
+              label={zh ? "自动播放下一话" : "Autoplay next episode"}
               htmlFor="auto-next"
             >
               <Switch
                 id="auto-next"
-                aria-label="自动播放下一话"
+                aria-label={zh ? "自动播放下一话" : "Autoplay next episode"}
                 checked={settings.auto_next}
                 disabled={saving === "auto-next"}
                 onCheckedChange={(checked) => void saveAutoNext(checked)}
@@ -263,7 +261,7 @@ function SettingsFeedback({ feedback }: { feedback: NonNullable<Feedback> }) {
     <p
       role={feedback.kind === "error" ? "alert" : "status"}
       className={cn(
-        "flex min-w-0 items-center gap-2 text-xs",
+        "flex min-w-0 items-start gap-2 py-2 text-sm leading-relaxed",
         feedback.kind === "error"
           ? "text-destructive-readable"
           : "text-muted-foreground",
@@ -274,7 +272,7 @@ function SettingsFeedback({ feedback }: { feedback: NonNullable<Feedback> }) {
       ) : (
         <Check aria-hidden="true" size={14} className="shrink-0" />
       )}
-      <span className="truncate">{feedback.message}</span>
+      <span className="min-w-0 break-words">{feedback.message}</span>
     </p>
   );
 }
@@ -282,17 +280,20 @@ function SettingsFeedback({ feedback }: { feedback: NonNullable<Feedback> }) {
 function SettingsGroup({
   title,
   children,
+  action,
 }: {
   title: string;
   children: React.ReactNode;
+  action?: React.ReactNode;
 }) {
   const id = `settings-${title}`;
   return (
     <section aria-labelledby={id}>
-      <h2 id={id} className="mb-3 text-base font-semibold">
-        {title}
-      </h2>
-      <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+      <div className="mb-2 flex min-h-12 items-center justify-between gap-3 pl-1">
+        <h2 id={id} className="text-sm font-medium text-muted-foreground">{title}</h2>
+        {action}
+      </div>
+      <div className="divide-y divide-border/60 overflow-hidden rounded-2xl bg-card">
         {children}
       </div>
     </section>
@@ -304,18 +305,20 @@ function SettingRow({
   label,
   htmlFor,
   children,
+  stacked = false,
 }: {
   icon: React.ReactNode;
   label: string;
   htmlFor?: string;
   children: React.ReactNode;
+  stacked?: boolean;
 }) {
   return (
-    <div className="flex min-h-17 flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between">
-      <div className="flex shrink-0 items-center gap-3 text-muted-foreground [&_svg]:size-4.5 [&_svg]:stroke-[1.8]">
+    <div className={cn("flex min-h-20 gap-3 px-4 py-3", stacked ? "flex-col md:flex-row md:items-center md:justify-between" : "items-center justify-between")}>
+      <div className="flex min-w-0 flex-1 items-center gap-3 text-muted-foreground [&_svg]:size-4.5 [&_svg]:shrink-0 [&_svg]:stroke-[1.8]">
         {icon}
         {htmlFor ? (
-          <Label htmlFor={htmlFor}>{label}</Label>
+          <Label htmlFor={htmlFor} className="min-w-0 text-sm leading-snug text-foreground">{label}</Label>
         ) : (
           <span className="text-sm font-medium text-foreground">{label}</span>
         )}
@@ -325,14 +328,14 @@ function SettingRow({
   );
 }
 
-function LoadingSettings() {
+function LoadingSettings({ language }: { language: DisplayLanguage }) {
   return (
     <div
       role="status"
       className="flex items-center gap-2 px-4 py-6 text-xs text-muted-foreground"
     >
       <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-      正在读取…
+      {language === "zh" ? "正在读取…" : "Loading…"}
     </div>
   );
 }
@@ -340,21 +343,23 @@ function LoadingSettings() {
 function SettingsLoadError({
   message,
   onRetry,
+  language,
 }: {
   message: string;
   onRetry: () => void;
+  language: DisplayLanguage;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-5">
+    <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-5">
       <p
         role="alert"
-        className="flex min-w-0 items-center gap-2 text-xs text-destructive-readable"
+        className="flex min-w-0 flex-1 items-start gap-2 text-sm text-destructive-readable"
       >
         <AlertCircle size={14} aria-hidden="true" className="shrink-0" />
-        <span className="truncate">{message}</span>
+        <span className="min-w-0 break-words">{message}</span>
       </p>
-      <Button type="button" variant="outline" size="xs" onClick={onRetry}>
-        重试
+      <Button type="button" variant="outline" className="min-h-12" onClick={onRetry}>
+        {language === "zh" ? "重试" : "Retry"}
       </Button>
     </div>
   );
