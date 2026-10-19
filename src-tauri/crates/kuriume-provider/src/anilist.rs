@@ -9,8 +9,8 @@ use tokio::sync::{Mutex, Semaphore};
 
 use crate::error::{ProviderError, Result};
 use crate::models::{
-    AnimeInfo, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery,
-    PagedResult, SearchQuery, SortBy, Weekday,
+    AiringSlot, AnimeInfo, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery,
+    GetListQuery, PagedResult, SearchQuery, SortBy, Weekday,
 };
 use crate::provider::AnimeProvider;
 
@@ -38,7 +38,7 @@ const MEDIA_FIELDS: &str = r#"
   description(asHtml: false)
   status
   format
-  nextAiringEpisode { episode }
+  nextAiringEpisode { episode airingAt }
   studios(isMain: true) { nodes { name } }
 "#;
 
@@ -420,6 +420,7 @@ impl AnimeProvider for AniList {
                       sort: TIME
                     ) {{
                       airingAt
+                      episode
                       media {{
                         {MEDIA_FIELDS}
                       }}
@@ -440,11 +441,12 @@ impl AnimeProvider for AniList {
 
         let (airing_times, media): (Vec<_>, Vec<_>) = schedules
             .into_iter()
-            .map(|schedule| (schedule.airing_at, schedule.media))
+            .map(|schedule| ((schedule.airing_at, schedule.episode), schedule.media))
             .unzip();
         let localized = media.into_iter().map(AnimeInfo::from);
         let mut grouped: [Vec<AnimeInfo>; 7] = std::array::from_fn(|_| Vec::new());
-        for (airing_at, info) in airing_times.into_iter().zip(localized) {
+        for ((airing_at, episode), mut info) in airing_times.into_iter().zip(localized) {
+            info.schedule = episode.map(|episode| AiringSlot { episode, airing_at });
             let local_day = (airing_at + SHANGHAI_OFFSET).div_euclid(86_400);
             let day_id = (local_day + 3).rem_euclid(7) as usize;
             if !grouped[day_id].iter().any(|item| item.id == info.id) {
@@ -683,8 +685,11 @@ struct FuzzyDate {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct NextAiringEpisode {
     episode: u32,
+    #[serde(default)]
+    airing_at: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -741,9 +746,20 @@ impl From<Media> for AnimeInfo {
         let year = media
             .season_year
             .or_else(|| media.start_date.as_ref().and_then(|date| date.year));
+        let next_airing = media.next_airing_episode.as_ref().and_then(|next| {
+            next.airing_at.map(|airing_at| AiringSlot {
+                episode: next.episode,
+                airing_at,
+            })
+        });
+        let aired_episodes = aired_episode_count(
+            media.next_airing_episode.as_ref().map(|next| next.episode),
+            media.status.as_deref(),
+            media.episodes,
+        );
         let total_episodes = media
             .episodes
-            .or_else(|| media.next_airing_episode.map(|next| next.episode))
+            .or_else(|| media.next_airing_episode.as_ref().map(|next| next.episode))
             .unwrap_or(0);
         let description = media.description.map(|text| strip_html(&text));
         let (description_cn, description_ja) =
@@ -781,7 +797,24 @@ impl From<Media> for AnimeInfo {
                         .collect()
                 })
                 .unwrap_or_default(),
+            next_airing,
+            aired_episodes,
+            schedule: None,
         }
+    }
+}
+
+/// Broadcast episodes: everything before the next airing, or all of a
+/// finished work. Unknown for works that have not aired or report nothing.
+fn aired_episode_count(
+    next: Option<u32>,
+    status: Option<&str>,
+    episodes: Option<u32>,
+) -> Option<u32> {
+    match (next, status) {
+        (Some(next), _) => Some(next.saturating_sub(1)),
+        (None, Some("FINISHED")) => episodes,
+        _ => None,
     }
 }
 
@@ -1049,6 +1082,8 @@ struct AiringPage {
 #[serde(rename_all = "camelCase")]
 struct AiringSchedule {
     airing_at: i64,
+    #[serde(default)]
+    episode: Option<u32>,
     media: Media,
 }
 
@@ -1372,6 +1407,42 @@ mod tests {
         );
         assert!(info.description_cn.is_none());
         assert!(!is_probably_japanese("冒险者再次踏上了寻找魔法的旅途。"));
+    }
+
+    #[test]
+    fn airing_progress_comes_from_the_next_broadcast_or_a_finished_count() {
+        let airing: Media = serde_json::from_value(json!({
+            "id": 1,
+            "title": {"romaji": "Airing"},
+            "synonyms": [],
+            "episodes": 12,
+            "status": "RELEASING",
+            "nextAiringEpisode": {"episode": 6, "airingAt": 1_800_000_000},
+        }))
+        .unwrap();
+        let info = AnimeInfo::from(airing);
+        assert_eq!(info.aired_episodes, Some(5));
+        assert_eq!(
+            info.next_airing,
+            Some(AiringSlot {
+                episode: 6,
+                airing_at: 1_800_000_000
+            })
+        );
+        assert_eq!(info.total_episodes, 12);
+        assert_eq!(info.schedule, None);
+        assert_eq!(
+            aired_episode_count(None, Some("FINISHED"), Some(24)),
+            Some(24)
+        );
+        assert_eq!(
+            aired_episode_count(None, Some("NOT_YET_RELEASED"), Some(12)),
+            None
+        );
+        assert_eq!(
+            aired_episode_count(Some(1), Some("RELEASING"), None),
+            Some(0)
+        );
     }
 
     fn mushoku_media() -> Media {

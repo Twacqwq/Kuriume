@@ -2,6 +2,6 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/me")({
   beforeLoad: () => {
-    throw redirect({ to: "/watchlist", search: { view: "following" } });
+    throw redirect({ to: "/settings" });
   },
 });

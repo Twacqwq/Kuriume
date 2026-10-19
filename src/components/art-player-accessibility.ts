@@ -54,7 +54,11 @@ export function bindPlayerAccessibility(art: Artplayer, language: string) {
   art.on("mask", updateProgress);
   art.on("loading", updateProgress);
   art.on("setting", updateSettings);
-  art.proxy($player, "focusin", () => { art.controls.show = true; });
+  // Only keyboard focus reveals controls; a tapped control keeps DOM focus,
+  // which must not pin the bottom bar open on touch screens.
+  art.proxy($player, "focusin", (event) => {
+    if ((event.target as Element | null)?.matches?.(":focus-visible")) art.controls.show = true;
+  });
   // Pointer activation of the library's div control need not move DOM focus
   // into the player. Escape must also work when its target is still the body.
   art.proxy(document, "keydown", (event) => {

@@ -14,7 +14,10 @@ import {
   type WatchHistoryEntry,
 } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { detailQueryOptions } from "@/routes/anime/$id";
+import { airedEpisodes, airingClock, latestEntry, watchedThrough } from "@/lib/tracking";
+import type { AiringSlot } from "@/lib/types";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import {
   Check,
@@ -73,14 +76,42 @@ function LibraryPage() {
     mutationFn: (mediaId: string) => libraryApi.remove(mediaId),
     onSuccess: refreshLibrary,
   });
+  // Airing progress for followed works: cached catalog details, refreshed every 30 min.
+  const following = entries.filter((entry) => entry.status === "following" && entry.provider === "anilist");
+  const details = useQueries({
+    queries: following.map((entry) => ({
+      ...detailQueryOptions(catalogId(entry.provider, entry.external_id), language),
+      staleTime: 30 * 60 * 1000,
+      enabled: view === "following",
+    })),
+  });
+  const progress = new Map<string, { aired: number | null; through: number; next: AiringSlot | null }>();
+  following.forEach((entry, index) => {
+    const media = details[index]?.data;
+    progress.set(entry.media_id, {
+      aired: media ? airedEpisodes(media) : null,
+      through: watchedThrough(history, entry.external_id),
+      next: media?.next_airing ?? null,
+    });
+  });
+  const unwatched = (entry: LibraryEntry) => {
+    const item = progress.get(entry.media_id);
+    return item?.aired != null ? Math.max(0, item.aired - item.through) : 0;
+  };
+  const lastWatched = (entry: LibraryEntry) => latestEntry(history, entry.external_id)?.watched_at ?? "";
   const filtered =
     view === "history"
       ? []
-      : entries.filter((entry) => entry.status === view);
+      : entries
+        .filter((entry) => entry.status === view)
+        // New episodes first, then what was watched most recently.
+        .sort((a, b) => Number(unwatched(b) > 0) - Number(unwatched(a) > 0)
+          || lastWatched(b).localeCompare(lastWatched(a))
+          || b.added_at.localeCompare(a.added_at));
 
   return (
     <div className="mx-auto min-h-full max-w-7xl px-4 pb-8 pt-4 md:px-6 md:pb-16 md:pt-14 lg:px-10">
-      <h1 className="sr-only text-3xl font-bold tracking-tight md:not-sr-only">{language === "zh" ? "资料库" : "Library"}</h1>
+      <h1 className="sr-only text-3xl font-bold tracking-tight md:not-sr-only">{language === "zh" ? "追番" : "Following"}</h1>
 
       <nav aria-label={language === "zh" ? "资料库分类" : "Library categories"} className="hide-scrollbar flex gap-1 overflow-x-auto whitespace-nowrap border-b border-border/60 md:mt-6">
         {VIEWS.map((item) => (
@@ -139,6 +170,7 @@ function LibraryPage() {
               latest={history.find(
                 (item) => item.media_id === entry.media_id,
               )}
+              progress={view === "following" ? progress.get(entry.media_id) : undefined}
               onSetStatus={(status) =>
                 setStatus.mutate({ mediaId: entry.media_id, status })
               }
@@ -157,12 +189,14 @@ function LibraryCard({
   entry,
   pending,
   latest,
+  progress,
   onSetStatus,
   onRemove,
 }: {
   entry: LibraryEntry;
   pending: boolean;
   latest?: WatchHistoryEntry;
+  progress?: { aired: number | null; through: number; next: AiringSlot | null };
   onSetStatus: (status: LibraryStatus) => void;
   onRemove: () => void;
 }) {
@@ -172,12 +206,17 @@ function LibraryCard({
     latest && latest.duration > 0
       ? Math.min(100, (latest.position / latest.duration) * 100)
       : 0;
+  const newCount = progress?.aired != null ? Math.max(0, progress.aired - progress.through) : 0;
+  // With unwatched episodes, the main action is the first one not yet seen.
+  const nextUnseen = newCount > 0 && progress ? progress.through + 1 : null;
+  const playEpisode = nextUnseen ?? latest?.episode ?? 1;
+  const resume = nextUnseen === null || nextUnseen === latest?.episode ? latest?.position : undefined;
   return (
     <article className="flex min-w-0 items-start gap-3 border-b border-border/60 py-5 sm:gap-4">
       <Link
         to="/anime/$id"
         params={{ id: routeId }}
-        className="h-24 w-16 shrink-0 overflow-hidden rounded-lg bg-card outline-none focus-visible:ring-2 focus-visible:ring-primary-readable sm:h-30 sm:w-20"
+        className="press h-24 w-16 shrink-0 overflow-hidden rounded-lg bg-card outline-none focus-visible:ring-2 focus-visible:ring-primary-readable sm:h-30 sm:w-20"
         aria-label={entry.title}
       >
         {entry.cover && (
@@ -201,10 +240,20 @@ function LibraryCard({
             fallback={entry.title}
           />
         </Link>
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          {entry.total_episodes > 0
-            ? (language === "zh" ? `共 ${entry.total_episodes} 话` : `${entry.total_episodes} episodes`)
-            : (language === "zh" ? "集数未定" : "Episodes TBA")}
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tabular-nums text-muted-foreground">
+          {newCount > 0 && (
+            <span className="rounded-full bg-primary/18 px-2 py-0.5 font-bold text-primary-readable">{language === "zh" ? `${newCount} 话未看` : `${newCount} new`}</span>
+          )}
+          <span>
+            {progress?.aired != null && progress.aired < entry.total_episodes
+              ? (language === "zh" ? `更新至 ${progress.aired} / ${entry.total_episodes} 话` : `${progress.aired} of ${entry.total_episodes} out`)
+              : entry.total_episodes > 0
+                ? (language === "zh" ? `共 ${entry.total_episodes} 话` : `${entry.total_episodes} episodes`)
+                : (language === "zh" ? "集数未定" : "Episodes TBA")}
+          </span>
+          {progress?.next && (
+            <span>· {language === "zh" ? `${weekdayLabel(progress.next.airing_at, language)} ${airingClock(progress.next.airing_at, language)} 更新` : `next ${weekdayLabel(progress.next.airing_at, language)} ${airingClock(progress.next.airing_at, language)}`}</span>
+          )}
         </p>
         {latest && (
           <div className="mt-3">
@@ -226,12 +275,14 @@ function LibraryCard({
               to="/anime/$id/episode/$ep"
               params={{
                 id: routeId,
-                ep: String(latest?.episode ?? 1),
+                ep: String(playEpisode),
               }}
-              search={{ t: latest?.position }}
+              search={{ t: resume }}
             >
               <Play size={13} fill="currentColor" />
-              {language === "zh" ? (latest ? "继续" : "播放") : (latest ? "Resume" : "Play")}
+              {nextUnseen !== null
+                ? (language === "zh" ? `看第 ${nextUnseen} 话` : `Play episode ${nextUnseen}`)
+                : language === "zh" ? (latest ? "继续" : "播放") : (latest ? "Resume" : "Play")}
             </Link>
           </Button>
           <LibraryControl entry={entry} compact disabled={pending} onSetStatus={onSetStatus} onRemove={onRemove} />
@@ -239,6 +290,14 @@ function LibraryCard({
       </div>
     </article>
   );
+}
+
+function weekdayLabel(airingAt: number, language: string) {
+  const date = new Date(airingAt * 1000);
+  const days = Math.round((new Date(date).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86_400_000);
+  if (days === 0) return language === "zh" ? "今天" : "today";
+  if (days === 1) return language === "zh" ? "明天" : "tomorrow";
+  return date.toLocaleDateString(language === "zh" ? "zh-CN" : "en-US", { weekday: "short" });
 }
 
 function HistoryList({ history }: { history: WatchHistoryEntry[] }) {
@@ -260,7 +319,7 @@ function HistoryList({ history }: { history: WatchHistoryEntry[] }) {
               ep: String(entry.episode),
             }}
             search={{ t: entry.position }}
-            className="group flex min-w-0 items-center gap-3 rounded-lg py-4 outline-none transition-colors hover:bg-card focus-visible:ring-2 focus-visible:ring-primary-readable sm:gap-4 sm:px-2"
+            className="press group flex min-w-0 items-center gap-3 rounded-lg py-4 outline-none transition-colors hover:bg-card active:bg-card focus-visible:ring-2 focus-visible:ring-primary-readable sm:gap-4 sm:px-2"
           >
             <div className="h-21 w-14 shrink-0 overflow-hidden rounded-lg bg-card">
               {entry.cover && (

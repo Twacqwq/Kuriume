@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { CalendarDays, Home, Library, Search, Settings } from "lucide-react";
+import { CalendarDays, CircleUserRound, Home, Library, Search } from "lucide-react";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
 import { cn } from "@/lib/utils";
 
@@ -9,8 +9,8 @@ export function MobileNavigation({ onSearch }: { onSearch: () => void }) {
   const items = [
     { to: "/", icon: Home, label: language === "zh" ? "首页" : "Home" },
     { to: "/calendar", icon: CalendarDays, label: language === "zh" ? "日历" : "Calendar" },
-    { to: "/watchlist", icon: Library, label: language === "zh" ? "资料库" : "Library" },
-    { to: "/settings", icon: Settings, label: language === "zh" ? "设置" : "Settings" },
+    { to: "/watchlist", icon: Library, label: language === "zh" ? "追番" : "Following" },
+    { to: "/settings", icon: CircleUserRound, label: language === "zh" ? "我的" : "Me" },
   ] as const;
   // Detail has its own back navigation; keep browsing chrome on root screens.
   if (path.startsWith("/anime/")) return null;

@@ -7,14 +7,14 @@ import {
   CalendarDays,
   Home,
   Library,
+  CircleUserRound,
   Search,
-  Settings,
 } from "lucide-react";
 
 const NAVIGATION = [
   { icon: Home, label: "首页", english: "Home", to: "/" },
   { icon: CalendarDays, label: "日历", english: "Calendar", to: "/calendar" },
-  { icon: Library, label: "资料库", english: "Library", to: "/watchlist" },
+  { icon: Library, label: "追番", english: "Following", to: "/watchlist" },
 ] as const;
 
 interface SidebarProps {
@@ -107,14 +107,14 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
               : "text-muted-foreground hover:bg-white/4 hover:text-foreground",
           )}
         >
-          <Settings
+          <CircleUserRound
             size={18}
             strokeWidth={settingsActive ? 2.2 : 1.75}
             className={
               settingsActive ? "text-primary-readable" : undefined
             }
           />
-          <span>{language === "zh" ? "设置" : "Settings"}</span>
+          <span>{language === "zh" ? "我的" : "Me"}</span>
         </Link>
       </div>
     </aside>

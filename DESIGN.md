@@ -129,7 +129,7 @@ Reuse the existing `Button` variants and `Input`. Buttons have bold labels, 8px 
 
 ### Settings groups and navigation
 
-Settings groups place muted section labels above rounded card surfaces. Settings exposes display language and diagnostics only; low-use playback defaults are omitted while in-player controls and saved playback behavior remain unchanged. Labels and controls share a row. Active sidebar navigation uses a primary tint with a readable-accent icon; mobile navigation uses the same accent in its icon pill and label. Settings remains active on its child routes.
+Settings groups place muted section labels above rounded card surfaces. The "Me" page (`/settings`) groups watch history, display language and diagnostics; low-use playback defaults are omitted while in-player controls and saved playback behavior remain unchanged. Labels and controls share a row. Active sidebar navigation uses a primary tint with a readable-accent icon; mobile navigation uses the same accent in its icon pill and label. Settings remains active on its child routes.
 
 ### Logs & diagnostics — local behavior
 
@@ -142,6 +142,10 @@ Loading skeletons, retryable errors, and empty/filter-empty states occupy the st
 Home and calendar use their existing skeletons only when no cached content is available. App startup prefetches both in the saved language; switching between warm tabs renders their cached data immediately. Expired data refreshes in the background without replacing posters or the schedule with a skeleton. Settings reuse the same process-local settings query. Chinese catalog titles use the bundled ID-based dictionary consistently across browsing, search and details, with the existing Japanese-first fallback for missing translations.
 
 ## Do's and Don'ts
+
+### Touch interaction
+
+Touch screens follow "reveal before act": anything hidden only by opacity (player bars, overlays) must also drop `pointer-events`, so the first tap reveals and only a later tap acts. Drags preview and commit once on release (player seeking, swipe gestures). Cards and rows that only had `hover:` styles use the `press` utility or an `active:` state so taps are acknowledged. Pickers that do not fit beside their content open as bottom sheets on phones and side panels in landscape/desktop players. Android back closes the topmost sheet, then unlocks/exits fullscreen, then returns to the previous page.
 
 ### Do:
 

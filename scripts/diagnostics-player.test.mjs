@@ -37,8 +37,9 @@ test("player diagnostics do not flood progress or change playback callbacks, and
     "@/lib/playback-selection": data("export const subtitleLanguage=()=>'';"),
     "@/components/art-player-icons": data("export const playerIcons={};"),
     "@/components/art-player-accessibility": data("export const bindPlayerAccessibility=()=>()=>{};"),
+    "@/components/art-player-progress": data("export const bindTouchProgress=()=>()=>{};"),
+    "@/components/player-chrome": data("export const PLAYBACK_RATES=[1];export const PlayerChrome=()=>null;"),
     "@/lib/diagnostics": data("export const diagnose=(...args)=>globalThis.__playerDiag.records.push(args);export const diagnosticMessage=error=>String(error);"),
-    "lucide-react": data("export const Sun=()=>{}, Volume2=Sun, MoveHorizontal=Sun, CircleAlert=Sun;"),
   };
   const source = await readFile(new URL("../src/components/art-player-surface.tsx", import.meta.url), "utf8");
   const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;

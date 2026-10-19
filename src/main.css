@@ -81,8 +81,12 @@ body,
 .mobile-topbar { padding-top: env(safe-area-inset-top, 0px); }
 .media-detail { padding-bottom: max(2.5rem, env(safe-area-inset-bottom, 0px)); }
 @media (max-width: 767px) {
-  .media-detail { padding-top: env(safe-area-inset-top, 0px); }
+  .media-detail { padding-top: env(safe-area-inset-top, 0px); padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px)); }
 }
+@media (max-width: 639px) {
+  .search-panel { padding-top: max(0.5rem, env(safe-area-inset-top, 0px)); }
+}
+.detail-sticky-cta { padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px)); }
 .mobile-tabbar { padding-bottom: env(safe-area-inset-bottom, 0px); }
 .app-shell[data-mobile="true"] .app-sidebar { padding-top: max(1rem, env(safe-area-inset-top, 0px)); }
 .player-header { min-height: 64px; padding-top: env(safe-area-inset-top, 0px); }
@@ -195,4 +199,37 @@ code {
 }
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/* Touch feedback for cards and rows: hover styles never fire on phones. */
+@utility press {
+  -webkit-tap-highlight-color: transparent;
+  transition-property: transform, background-color, color;
+  transition-duration: 140ms;
+  transition-timing-function: ease-out;
+  &:active {
+    transform: scale(0.975);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &:active {
+      transform: none;
+    }
+  }
+}
+
+/* List → details: the tapped poster flies into the cover (see lib/view-transition). */
+::view-transition-group(kuriume-poster) {
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
 }

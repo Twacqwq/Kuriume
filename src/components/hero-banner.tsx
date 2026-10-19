@@ -9,7 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface HeroBannerProps {
   items: readonly AnimeInfo[];
@@ -69,14 +69,35 @@ export function HeroBanner({ items }: HeroBannerProps) {
   const move = (offset: number) => {
     setCurrent((index) => (index + offset + items.length) % items.length);
   };
+  // Phones: a horizontal swipe changes the highlight; a tap opens it.
+  const swipe = useRef<{ x: number; y: number } | null>(null);
+  const onTouchStart = (event: React.TouchEvent) => {
+    const touch = event.touches[0];
+    swipe.current = event.touches.length === 1 ? { x: touch.clientX, y: touch.clientY } : null;
+  };
+  const onTouchEnd = (event: React.TouchEvent) => {
+    const start = swipe.current;
+    swipe.current = null;
+    const touch = event.changedTouches[0];
+    if (!start || !touch || !hasNavigation) return;
+    const dx = touch.clientX - start.x, dy = touch.clientY - start.y;
+    if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (event.cancelable) event.preventDefault();
+      move(dx < 0 ? 1 : -1);
+    }
+  };
 
   return (
     <section
       aria-roledescription="carousel"
       aria-label={language === "zh" ? "本季推荐" : "Season highlights"}
       aria-labelledby={`hero-title-${media.anilist_id}`}
-      className="relative isolate flex min-h-96 flex-col overflow-hidden rounded-2xl bg-card md:min-h-[clamp(400px,48vh,520px)]"
+      className="relative isolate flex aspect-[16/10] flex-col overflow-hidden rounded-2xl bg-card min-[480px]:aspect-[16/8] md:aspect-auto md:min-h-[clamp(400px,48vh,520px)]"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
     >
+      <Link to="/anime/$id" params={{ id: media.id }} aria-labelledby={`hero-title-${media.anilist_id}`}
+        className="absolute inset-0 z-20 rounded-2xl outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-primary-readable md:hidden" />
       {artwork && (
         <img
           key={`${media.id}-backdrop`}
@@ -94,10 +115,9 @@ export function HeroBanner({ items }: HeroBannerProps) {
 
       <div
         key={`${media.id}-content`}
-        className="hero-copy-enter relative z-10 flex flex-1 flex-col justify-end px-4 pb-5 pt-36 motion-reduce:animate-none md:max-w-3xl md:px-8 md:pb-10 md:pt-16 lg:px-10"
+        className="hero-copy-enter relative z-10 flex flex-1 flex-col justify-end px-4 pb-4 motion-reduce:animate-none md:max-w-3xl md:px-8 md:pb-10 md:pt-16 lg:px-10"
       >
         <div className="flex items-end gap-4">
-          {media.cover && <img key={`${media.id}-compact-poster`} src={media.cover} alt="" decoding="async" className="aspect-2/3 w-20 shrink-0 rounded-xl object-cover shadow-[0_8px_24px_-8px_rgba(0,0,0,0.6)] md:hidden" />}
           <div className="min-w-0">
             <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-white/75 md:mb-3">
               {media.year && <span>{media.year}</span>}
@@ -106,7 +126,7 @@ export function HeroBanner({ items }: HeroBannerProps) {
             </div>
             <h1
               id={`hero-title-${media.anilist_id}`}
-              className="line-clamp-3 max-w-2xl text-balance text-[1.625rem] font-bold leading-[1.2] tracking-[-0.025em] text-white md:text-4xl xl:text-5xl"
+              className="line-clamp-2 max-w-2xl text-balance text-[1.375rem] font-bold leading-[1.2] tracking-[-0.025em] text-white md:line-clamp-3 md:text-4xl xl:text-5xl"
             >
               {title}
             </h1>
@@ -119,7 +139,15 @@ export function HeroBanner({ items }: HeroBannerProps) {
           </p>
         )}
 
-        <div className="mt-5 flex items-center justify-between gap-3 md:mt-7 md:justify-start">
+        {hasNavigation && (
+          <div className="mt-3 flex gap-1.5 md:hidden" aria-hidden="true">
+            {items.map((item, index) => (
+              <span key={item.id} className={`h-1 rounded-full transition-all duration-200 motion-reduce:transition-none ${index === activeIndex ? "w-5 bg-white" : "w-1.5 bg-white/40"}`} />
+            ))}
+          </div>
+        )}
+
+        <div className="mt-5 hidden items-center gap-3 md:mt-7 md:flex">
           <Button asChild size="lg" className="min-h-12 rounded-xl px-4 md:px-5">
             <Link to="/anime/$id" params={{ id: media.id }}>
               {language === "zh" ? "查看详情" : "View details"}

@@ -17,13 +17,22 @@ import type {
   AnimeInfo,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { SHARED_POSTER_NAME } from "@/lib/view-transition";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Clock3,
+  LayoutGrid,
+  List,
   Play,
   Star,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+
+const EPISODE_VIEW_KEY = "kuriume:detail-episode-view";
+function readEpisodeView(): "grid" | "list" {
+  try { return localStorage.getItem(EPISODE_VIEW_KEY) === "list" ? "list" : "grid"; } catch { return "grid"; }
+}
 
 interface MediaDetailProps {
   media: AnimeInfo;
@@ -80,6 +89,25 @@ export function MediaDetail({
     latest && !latestComplete && playEpisode === latest.episode
       ? latest.position
       : undefined;
+  const [episodeView, setEpisodeView] = useState(readEpisodeView);
+  const chooseEpisodeView = (view: "grid" | "list") => {
+    setEpisodeView(view);
+    try { localStorage.setItem(EPISODE_VIEW_KEY, view); } catch { /* per-device preference only */ }
+  };
+  // Phones: once the hero's play button scrolls away, keep it reachable at the bottom.
+  const actions = useRef<HTMLDivElement>(null);
+  const [actionsVisible, setActionsVisible] = useState(true);
+  useEffect(() => {
+    const element = actions.current;
+    if (!element || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(([entry]) => setActionsVisible(entry.isIntersecting));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const progressFor = (episode: number) => {
+    const entry = history.find((item) => item.provider === "anilist" && item.external_id === String(media.anilist_id) && item.episode === episode);
+    return entry && entry.duration > 0 ? Math.min(100, (entry.position / entry.duration) * 100) : 0;
+  };
 
   return (
     <div className="media-detail min-h-full pb-10 md:pb-16">
@@ -90,8 +118,8 @@ export function MediaDetail({
             type="button"
             onClick={onBack}
             className="grid size-12 place-items-center rounded-full bg-black/45 text-white transition-colors hover:bg-black/65 focus-visible:outline-2 focus-visible:outline-primary-readable motion-reduce:transition-none"
-            aria-label={language === "zh" ? "返回首页" : "Back to home"}
-            title={language === "zh" ? "返回首页" : "Back to home"}
+            aria-label={language === "zh" ? "返回" : "Back"}
+            title={language === "zh" ? "返回" : "Back"}
           >
             <ArrowLeft size={18} />
           </button>
@@ -104,6 +132,7 @@ export function MediaDetail({
                 src={media.cover}
                 alt=""
                 decoding="async"
+                style={{ viewTransitionName: SHARED_POSTER_NAME }}
                 className="aspect-2/3 w-full object-cover"
               />
             )}
@@ -132,7 +161,7 @@ export function MediaDetail({
               {title}
             </h1>
           </div>
-          <div className="col-span-2 lg:col-span-1 lg:col-start-2">
+          <div ref={actions} className="col-span-2 lg:col-span-1 lg:col-start-2">
             <div className="flex flex-wrap items-center gap-3 [&>button]:min-h-12 [&>button]:rounded-xl">
               <Button asChild size="lg" className="min-h-12 flex-1 gap-2 rounded-xl px-5 sm:flex-none">
                 <Link
@@ -173,35 +202,65 @@ export function MediaDetail({
           </section>
         )}
         <section>
-          <SectionHeading
-            title={language === "zh" ? "剧集" : "Episodes"}
-            aside={media.total_episodes ? (language === "zh" ? `共 ${media.total_episodes} 话` : `${media.total_episodes} episodes`) : undefined}
-          />
-          {episodes.length > 0 ? (
-            <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-bold tracking-tight">{language === "zh" ? "剧集" : "Episodes"}</h2>
+            <div className="flex items-center gap-1">
+              {media.total_episodes > 0 && <p className="mr-2 text-xs text-muted-foreground">{language === "zh" ? `共 ${media.total_episodes} 话` : `${media.total_episodes} episodes`}</p>}
+              {episodes.length > 0 && (
+                <div role="radiogroup" aria-label={language === "zh" ? "剧集显示方式" : "Episode layout"} className="flex rounded-xl bg-card p-0.5">
+                  {([["grid", LayoutGrid, language === "zh" ? "网格" : "Grid"], ["list", List, language === "zh" ? "列表" : "List"]] as const).map(([view, Icon, label]) => (
+                    <button key={view} type="button" role="radio" aria-checked={episodeView === view} aria-label={label} title={label}
+                      onClick={() => chooseEpisodeView(view)}
+                      className={cn("grid size-11 place-items-center rounded-[10px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-readable motion-reduce:transition-none",
+                        episodeView === view ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground")}>
+                      <Icon size={16} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          {episodes.length === 0 ? (
+            <p className="mt-5 rounded-xl border border-white/5 bg-card/50 p-6 text-sm text-muted-foreground">
+              {language === "zh" ? "暂无剧集信息" : "No episode information yet"}
+            </p>
+          ) : episodeView === "grid" ? (
+            <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(3.5rem,1fr))] gap-2">
               {episodes.map((episode) => {
-                const progress = history.find(
-                  (entry) =>
-                    entry.provider === "anilist" &&
-                    entry.external_id === String(media.anilist_id) &&
-                    entry.episode === episode.ep,
-                );
-                const percent =
-                  progress && progress.duration > 0
-                    ? Math.min(100, (progress.position / progress.duration) * 100)
-                    : 0;
+                const percent = progressFor(episode.ep);
+                const watched = percent >= 92;
                 return (
                   <Link
                     key={episode.id}
                     to="/anime/$id/episode/$ep"
                     params={{ id: media.id, ep: String(episode.ep) }}
-                    search={{
-                      t:
-                        percent > 2 && percent < 92
-                          ? progress?.position
-                          : undefined,
-                    }}
-                    className="group relative overflow-hidden rounded-xl bg-card px-4 py-3.5 transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-primary-readable motion-reduce:transition-none"
+                    search={{ t: percent > 2 && percent < 92 ? history.find((item) => item.external_id === String(media.anilist_id) && item.episode === episode.ep)?.position : undefined }}
+                    aria-label={displayEpisodeTitle(episode, episode.ep, language)}
+                    title={displayEpisodeTitle(episode, episode.ep, language)}
+                    className={cn("press relative grid min-h-12 place-items-center overflow-hidden rounded-xl text-sm tabular-nums outline-none hover:bg-secondary active:bg-secondary focus-visible:outline-2 focus-visible:outline-primary-readable",
+                      watched ? "bg-card/60 text-foreground/45" : "bg-card text-foreground/85", playEpisode === episode.ep && "font-bold text-primary-readable ring-1 ring-inset ring-primary/45")}
+                  >
+                    {episode.ep}
+                    {percent > 2 && !watched && (
+                      <span aria-hidden="true" className="absolute inset-x-2 bottom-1.5 h-0.5 overflow-hidden rounded-full bg-white/10">
+                        <span className="block h-full bg-primary" style={{ width: `${percent}%` }} />
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+              {episodes.map((episode) => {
+                const percent = progressFor(episode.ep);
+                return (
+                  <Link
+                    key={episode.id}
+                    to="/anime/$id/episode/$ep"
+                    params={{ id: media.id, ep: String(episode.ep) }}
+                    search={{ t: percent > 2 && percent < 92 ? history.find((item) => item.external_id === String(media.anilist_id) && item.episode === episode.ep)?.position : undefined }}
+                    className="press group relative overflow-hidden rounded-xl bg-card px-4 py-3.5 transition-colors hover:bg-secondary active:bg-secondary focus-visible:outline-2 focus-visible:outline-primary-readable motion-reduce:transition-none"
                   >
                     <div className="flex items-center gap-3">
                       <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-secondary text-sm font-bold tabular-nums text-foreground/80">
@@ -209,11 +268,7 @@ export function MediaDetail({
                       </span>
                       <div className="min-w-0">
                         <p className="line-clamp-2 text-sm font-medium leading-5">
-                          {displayEpisodeTitle(
-                            episode,
-                            episode.ep,
-                            language,
-                          )}
+                          {displayEpisodeTitle(episode, episode.ep, language)}
                         </p>
                         {episode.duration && (
                           <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
@@ -225,20 +280,13 @@ export function MediaDetail({
                     </div>
                     {percent > 0 && (
                       <span className="absolute inset-x-0 bottom-0 h-0.5 bg-white/6">
-                        <span
-                          className="block h-full bg-primary"
-                          style={{ width: `${percent}%` }}
-                        />
+                        <span className="block h-full bg-primary" style={{ width: `${percent}%` }} />
                       </span>
                     )}
                   </Link>
                 );
               })}
             </div>
-          ) : (
-            <p className="mt-5 rounded-xl border border-white/5 bg-card/50 p-6 text-sm text-muted-foreground">
-              {language === "zh" ? "暂无剧集信息" : "No episode information yet"}
-            </p>
           )}
         </section>
 
@@ -308,6 +356,20 @@ export function MediaDetail({
             </div>
           </section>
         )}
+      </div>
+
+      <div aria-hidden={actionsVisible} inert={actionsVisible}
+        className={cn("detail-sticky-cta fixed inset-x-0 bottom-0 z-30 border-t border-white/6 bg-background/92 px-4 pt-3 backdrop-blur-md transition-transform duration-200 motion-reduce:transition-none md:hidden",
+          actionsVisible ? "translate-y-full" : "translate-y-0")}>
+        <div className="flex items-center gap-3">
+          <Button asChild size="lg" className="min-h-12 flex-1 gap-2 rounded-xl px-5">
+            <Link to="/anime/$id/episode/$ep" params={{ id: media.id, ep: String(playEpisode) }} search={{ t: resumeTime }}>
+              <Play size={17} fill="currentColor" />
+              {playLabel}
+            </Link>
+          </Button>
+          <LibraryControl compact entry={libraryEntry} disabled={libraryPending} onSetStatus={onSetLibraryStatus} onRemove={onRemoveFromLibrary} />
+        </div>
       </div>
     </div>
   );

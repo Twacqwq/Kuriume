@@ -98,7 +98,10 @@ function AnimeDetailPage() {
           ? (language === "zh" ? "资料库更新失败，请重试。" : "Could not update your library. Please retry.")
           : null}
       history={history}
-      onBack={() => router.navigate({ to: "/", replace: true })}
+      onBack={() => {
+        if (router.history.canGoBack()) router.history.back();
+        else void router.navigate({ to: "/", replace: true });
+      }}
       onSetLibraryStatus={(status) => setStatus.mutate(status)}
       onRemoveFromLibrary={() => remove.mutate()}
     />

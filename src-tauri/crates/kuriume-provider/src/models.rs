@@ -46,6 +46,23 @@ pub struct AnimeInfo {
     pub format: Option<String>,
     /// Animation studios.
     pub studios: Vec<String>,
+    /// The next scheduled broadcast while the work is airing.
+    #[serde(default)]
+    pub next_airing: Option<AiringSlot>,
+    /// Episodes already broadcast, when the catalog knows it: `next - 1` while
+    /// airing, the full count once finished, unknown otherwise.
+    #[serde(default)]
+    pub aired_episodes: Option<u32>,
+    /// Calendar entries only: the broadcast this entry stands for.
+    #[serde(default)]
+    pub schedule: Option<AiringSlot>,
+}
+
+/// One broadcast: an episode number and its Unix airing time in seconds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AiringSlot {
+    pub episode: u32,
+    pub airing_at: i64,
 }
 
 /// Search request parameters.

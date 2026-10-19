@@ -42,12 +42,30 @@
   background-image: linear-gradient(to top, rgb(0 0 0 / 88%), rgb(0 0 0 / 42%) 58%, transparent);
 }
 
-.artplayer-app .art-video-player:focus-within .art-bottom {
+/* Keyboard focus reveals the controls; a tap that leaves focus behind does not. */
+.artplayer-app .art-video-player:has(:focus-visible) .art-bottom {
   opacity: 1;
 }
 
-.artplayer-app .art-video-player:focus-within .art-bottom :is(.art-controls, .art-progress) {
+.artplayer-app .art-video-player:has(:focus-visible) .art-bottom :is(.art-controls, .art-progress) {
   transform: translateY(0);
+}
+
+/* Hidden means untouchable: ArtPlayer only fades the bottom bar, so without
+   this a tap on the invisible progress bar seeks and a corner tap goes fullscreen.
+   `data-arming` also swallows the tap that revealed the controls. */
+.artplayer-app .art-video-player:not(.art-control-show):not(.art-hover):not(:has(:focus-visible)) .art-bottom :is(.art-progress, .art-controls),
+.artplayer-app .art-video-player.art-mobile:not(.art-control-show) .art-bottom :is(.art-progress, .art-controls),
+.artplayer-app .art-video-player[data-arming] .art-bottom :is(.art-progress, .art-controls) {
+  pointer-events: none;
+}
+
+.artplayer-app .art-video-player[data-scrubbing] .art-progress .art-progress-indicator {
+  --art-indicator-scale: 1.35;
+}
+
+.artplayer-app .art-video-player[data-scrubbing] .art-progress .art-control-progress-inner {
+  height: 100%;
 }
 
 .artplayer-app .art-video-player .art-controls {
@@ -298,4 +316,56 @@
   .artplayer-app .art-control-volume > .art-icon {
     transition: none;
   }
+}
+
+/* Kuriume controls added to ArtPlayer's bar: text buttons for speed/episodes. */
+.artplayer-app .kuriume-player-button.kuriume-player-text-button {
+  width: auto;
+  min-width: 48px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Locked fullscreen: no bars, no gestures; only the unlock button can appear. */
+.artplayer-app[data-locked="true"] .art-bottom,
+.artplayer-app[data-locked="true"] .art-mask {
+  display: none;
+}
+
+/* Prompts sit above the bottom bar in every player size. */
+.player-chrome-toast,
+.player-chrome-next {
+  bottom: 120px;
+}
+
+.artplayer-app[data-mobile="true"] ~ [data-player-chrome] :is(.player-chrome-toast, .player-chrome-next) {
+  bottom: 96px;
+}
+
+/* The inline phone player is short: prompts go to the top, clear of the bar. */
+.artplayer-app[data-mobile="true"][data-fullscreen="false"] ~ [data-player-chrome] .player-chrome-toast,
+.artplayer-app[data-mobile="true"][data-fullscreen="false"] ~ [data-player-chrome] .player-chrome-next {
+  top: 12px;
+  bottom: auto;
+}
+
+.player-chrome-top {
+  padding-top: max(4px, env(safe-area-inset-top, 0px));
+}
+
+.player-skip {
+  background: radial-gradient(circle at center, rgb(255 255 255 / 16%), rgb(255 255 255 / 6%) 60%, transparent 72%);
+  animation: player-skip-in 160ms ease-out both;
+}
+
+@keyframes player-skip-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-skip { animation: none; }
 }
