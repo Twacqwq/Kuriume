@@ -64,12 +64,22 @@ impl AniList {
     }
 
     async fn graphql<T: DeserializeOwned>(&self, query: String, variables: Value) -> Result<T> {
-        let response = self
-            .client
-            .post(ANILIST_API)
-            .json(&json!({ "query": query, "variables": variables }))
-            .send()
-            .await?;
+        let body = json!({ "query": query, "variables": variables });
+        let mut response = self.client.post(ANILIST_API).json(&body).send().await?;
+        // AniList rate-limits bursts (HTTP 429 + Retry-After). One short wait
+        // keeps a page navigation from failing on a transient limit.
+        if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            let wait = rate_limit_wait(
+                response
+                    .headers()
+                    .get(reqwest::header::RETRY_AFTER)
+                    .and_then(|value| value.to_str().ok()),
+            );
+            if let Some(wait) = wait {
+                tokio::time::sleep(wait).await;
+                response = self.client.post(ANILIST_API).json(&body).send().await?;
+            }
+        }
 
         if !response.status().is_success() {
             return Err(ProviderError::Source(format!(
@@ -804,6 +814,16 @@ impl From<Media> for AnimeInfo {
     }
 }
 
+/// How long to wait before retrying a rate-limited request: the server's
+/// `Retry-After` seconds (2 s when absent), but never longer than 5 s; a longer
+/// limit is reported to the caller instead of blocking the page.
+fn rate_limit_wait(retry_after: Option<&str>) -> Option<Duration> {
+    let seconds = retry_after
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .unwrap_or(2);
+    (seconds <= 5).then(|| Duration::from_secs(seconds.max(1)))
+}
+
 /// Broadcast episodes: everything before the next airing, or all of a
 /// finished work. Unknown for works that have not aired or report nothing.
 fn aired_episode_count(
@@ -1407,6 +1427,15 @@ mod tests {
         );
         assert!(info.description_cn.is_none());
         assert!(!is_probably_japanese("冒险者再次踏上了寻找魔法的旅途。"));
+    }
+
+    #[test]
+    fn rate_limits_wait_briefly_or_give_up() {
+        assert_eq!(rate_limit_wait(None), Some(Duration::from_secs(2)));
+        assert_eq!(rate_limit_wait(Some("3")), Some(Duration::from_secs(3)));
+        assert_eq!(rate_limit_wait(Some("0")), Some(Duration::from_secs(1)));
+        assert_eq!(rate_limit_wait(Some("60")), None);
+        assert_eq!(rate_limit_wait(Some("soon")), Some(Duration::from_secs(2)));
     }
 
     #[test]

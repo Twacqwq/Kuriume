@@ -14,10 +14,10 @@ import {
   type WatchHistoryEntry,
 } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { detailQueryOptions } from "@/routes/anime/$id";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { calendarQueryOptions } from "@/lib/catalog-queries";
 import { airedEpisodes, airingClock, latestEntry, watchedThrough } from "@/lib/tracking";
-import type { AiringSlot } from "@/lib/types";
+import type { AiringSlot, AnimeInfo } from "@/lib/types";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import {
   Check,
@@ -76,24 +76,34 @@ function LibraryPage() {
     mutationFn: (mediaId: string) => libraryApi.remove(mediaId),
     onSuccess: refreshLibrary,
   });
-  // Airing progress for followed works: cached catalog details, refreshed every 30 min.
-  const following = entries.filter((entry) => entry.status === "following" && entry.provider === "anilist");
-  const details = useQueries({
-    queries: following.map((entry) => ({
-      ...detailQueryOptions(catalogId(entry.provider, entry.external_id), language),
-      staleTime: 30 * 60 * 1000,
-      enabled: view === "following",
-    })),
-  });
+  // Airing progress comes from this week's schedule, which the app already
+  // loads once for the calendar: no extra AniList request per followed work
+  // (AniList rate-limits, and a burst of detail lookups starves navigation).
+  const { data: calendar = [] } = useQuery({ ...calendarQueryOptions(language), enabled: view === "following" });
+  const now = Date.now() / 1000;
+  const airing = new Map<string, AnimeInfo>();
+  for (const day of calendar) {
+    for (const media of day.items) {
+      const known = airing.get(String(media.anilist_id));
+      // Keep the latest broadcast of the week for each work.
+      if (!known || (media.schedule?.airing_at ?? 0) > (known.schedule?.airing_at ?? 0)) airing.set(String(media.anilist_id), media);
+    }
+  }
   const progress = new Map<string, { aired: number | null; through: number; next: AiringSlot | null }>();
-  following.forEach((entry, index) => {
-    const media = details[index]?.data;
+  for (const entry of entries) {
+    if (entry.status !== "following" || entry.provider !== "anilist") continue;
+    const media = airing.get(entry.external_id);
+    const slot = media?.schedule ?? null;
+    const total = media?.total_episodes || entry.total_episodes;
+    const next = slot
+      ? (slot.airing_at > now ? slot : (!total || slot.episode < total ? { episode: slot.episode + 1, airing_at: slot.airing_at + 7 * 86_400 } : null))
+      : null;
     progress.set(entry.media_id, {
-      aired: media ? airedEpisodes(media) : null,
+      aired: media ? airedEpisodes(media, now) : null,
       through: watchedThrough(history, entry.external_id),
-      next: media?.next_airing ?? null,
+      next,
     });
-  });
+  }
   const unwatched = (entry: LibraryEntry) => {
     const item = progress.get(entry.media_id);
     return item?.aired != null ? Math.max(0, item.aired - item.through) : 0;
