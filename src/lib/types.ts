@@ -20,6 +20,17 @@ export interface AnimeInfo {
   status: string | null;
   format: string | null;
   studios: string[];
+  /** Next scheduled broadcast while airing (Unix seconds). */
+  next_airing?: AiringSlot | null;
+  /** Episodes already broadcast, when known. */
+  aired_episodes?: number | null;
+  /** Calendar entries only: the broadcast this entry stands for. */
+  schedule?: AiringSlot | null;
+}
+
+export interface AiringSlot {
+  episode: number;
+  airing_at: number;
 }
 
 export interface PagedResult<T> {

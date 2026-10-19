@@ -1,8 +1,7 @@
 import type { DirectMediaAsset, PlaybackSubtitle } from "@/lib/playback";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
-import { usePlayerGestures } from "@/hooks/use-player-gestures";
+import { usePlayerGestures, type GestureOptions } from "@/hooks/use-player-gestures";
 import { isMobileApp } from "@/lib/platform";
-import { Sun, Volume2, MoveHorizontal, CircleAlert } from "lucide-react";
 import { subtitleLanguage } from "@/lib/playback-selection";
 import type { usePlayerFullscreen } from "@/hooks/use-player-fullscreen";
 import Artplayer from "artplayer";
@@ -10,6 +9,8 @@ import type Hls from "hls.js";
 import { useEffect, useRef, useState } from "react";
 import { playerIcons } from "@/components/art-player-icons";
 import { bindPlayerAccessibility } from "@/components/art-player-accessibility";
+import { bindTouchProgress } from "@/components/art-player-progress";
+import { PLAYBACK_RATES, PlayerChrome, type PlayerEpisode, type PlayerNext, type PlayerSheet } from "@/components/player-chrome";
 import "@/components/art-player-skin.css";
 import { diagnose, diagnosticMessage, type DiagnosticCode } from "@/lib/diagnostics";
 
@@ -17,6 +18,9 @@ const KURIUME = "#904840";
 // Fullscreen belongs to the desktop page, including the double-click shortcut.
 Artplayer.DBCLICK_FULLSCREEN = false;
 Artplayer.SETTING_ITEM_HEIGHT = 48;
+// A speed picked in the player carries over to the next episode of this session.
+let sessionRate: number | undefined;
+const NEXT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg>';
 
 export interface ArtPlayerSurfaceProps {
   asset: DirectMediaAsset;
@@ -32,6 +36,20 @@ export interface ArtPlayerSurfaceProps {
   onProgress?: (position: number, duration: number) => void;
   onPlaying?: () => void;
   onError?: (message: string) => void;
+  /** "第 3 话": the fullscreen top bar replaces the page header. */
+  title?: string;
+  mediaTitle?: string;
+  next?: PlayerNext | null;
+  autoNext?: boolean;
+  episodes?: PlayerEpisode[];
+  currentEpisode?: number;
+  onSelectEpisode?: (episode: number) => void;
+  /** Source/server pickers shown in the fullscreen sheet. */
+  options?: React.ReactNode;
+  /** Inline player: open the page's own source picker instead of a cramped sheet. */
+  onOpenOptions?: () => void;
+  /** Start position restored from history; shows the "resumed" prompt. */
+  resumeFrom?: number;
 }
 
 export function ArtPlayerSurface({
@@ -48,6 +66,16 @@ export function ArtPlayerSurface({
   onProgress,
   onPlaying,
   onError,
+  title,
+  mediaTitle,
+  next,
+  autoNext,
+  episodes,
+  currentEpisode,
+  onSelectEpisode,
+  options,
+  onOpenOptions,
+  resumeFrom,
 }: ArtPlayerSurfaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const artRef = useRef<Artplayer | null>(null);
@@ -55,7 +83,15 @@ export function ArtPlayerSurface({
   fullscreenRef.current = fullscreen;
   const language = useDisplayLanguage();
   const [gesturePlayer, setGesturePlayer] = useState<Artplayer | null>(null);
-  const gesture = usePlayerGestures(gesturePlayer, language);
+  const [sheet, setSheet] = useState<PlayerSheet | null>(null);
+  const [locked, setLocked] = useState(false);
+  const [lockFlash, setLockFlash] = useState(0);
+  const isFullscreen = fullscreen.mode !== "normal";
+  const gestureOptions = useRef<GestureOptions>({});
+  gestureOptions.current = { levels: isFullscreen, locked, onLockedTap: () => setLockFlash(Date.now()) };
+  const gesture = usePlayerGestures(gesturePlayer, language, gestureOptions);
+  const actionsRef = useRef({ setSheet, next });
+  actionsRef.current = { setSheet, next };
   const callbacksRef = useRef({ onEnded, onProgress, onError, onPlaying, onSubtitleError });
   callbacksRef.current = { onEnded, onProgress, onError, onPlaying, onSubtitleError };
   const initialOptionsRef = useRef({ poster, startTime, autoPlay, defaultVolume, defaultSpeed, language });
@@ -106,22 +142,42 @@ export function ArtPlayerSurface({
       pip: false,
       fullscreen: false,
       fullscreenWeb: false,
-      controls: (isMobileApp ? ["system"] as const : ["app", "system"] as const).map((mode) => {
-        const button = controlButton(mode === "app" ? playerIcons.fullscreenWebOn : playerIcons.fullscreenOn);
-        return {
-          name: `kuriume-${mode}-fullscreen`,
-          position: "right" as const,
-          index: mode === "app" ? 60 : 70,
-          html: button,
-          mounted(this: Artplayer) {
-            this.proxy(button, "click", () => fullscreenRef.current.toggle(mode));
-          },
-        };
-      }),
-      playbackRate: true,
-      aspectRatio: true,
+      controls: [
+        ...(isMobileApp ? ["system"] as const : ["app", "system"] as const).map((mode) => {
+          const button = controlButton(mode === "app" ? playerIcons.fullscreenWebOn : playerIcons.fullscreenOn);
+          return {
+            name: `kuriume-${mode}-fullscreen`,
+            position: "right" as const,
+            index: mode === "app" ? 60 : 70,
+            html: button,
+            mounted(this: Artplayer) {
+              this.proxy(button, "click", () => fullscreenRef.current.toggle(mode));
+            },
+          };
+        }),
+        ...([
+          ["next", "left", 15, NEXT_ICON, () => actionsRef.current.next?.onPlay()],
+          ["speed", "right", 40, "", () => actionsRef.current.setSheet("speed")],
+          ["episodes", "right", 45, "", () => actionsRef.current.setSheet("episodes")],
+        ] as const).map(([name, position, index, icon, action]) => {
+          const button = controlButton(icon);
+          if (!icon) button.className += " kuriume-player-text-button";
+          return {
+            name: `kuriume-${name}`,
+            position,
+            index,
+            html: button,
+            mounted(this: Artplayer) {
+              this.proxy(button, "click", action);
+            },
+          };
+        }),
+      ],
+      // Speed lives in Kuriume's own sheet; desktop keeps the gear for aspect ratio.
+      playbackRate: false,
+      aspectRatio: !isMobileApp,
       screenshot: false,
-      setting: true,
+      setting: !isMobileApp,
       backdrop: false,
       gesture: false,
       fastForward: false,
@@ -175,6 +231,10 @@ export function ArtPlayerSurface({
     // Some browsers expose native PiP even when its ArtPlayer control is off.
     art.video.disablePictureInPicture = true;
     const unbindAccessibility = bindPlayerAccessibility(art, language);
+    // Touch screens emit compatibility mousemove events after a tap. ArtPlayer
+    // reads those as "hovering the bottom bar" and then never auto-hides it.
+    if (isMobileApp) Object.defineProperty(art.controls, "isHover", { get: () => false, set: () => {}, configurable: true });
+    const unbindProgress = isMobileApp ? bindTouchProgress(art) : () => {};
     artRef.current = art;
     setGesturePlayer(art);
     if (!isMobileApp) art.on("dblclick", () => fullscreenRef.current.toggle("system"));
@@ -188,7 +248,7 @@ export function ArtPlayerSurface({
 
     art.on("ready", () => {
       window.clearTimeout(startupTimer);
-      art.playbackRate = defaultSpeed;
+      art.playbackRate = sessionRate ?? defaultSpeed;
       if (startTime > 0 && Number.isFinite(startTime)) {
         art.currentTime = art.duration > 0 ? Math.min(startTime, Math.max(0, art.duration - 1)) : startTime;
       }
@@ -233,6 +293,7 @@ export function ArtPlayerSurface({
       clearTimeout(waitingTimer);
       hls?.destroy();
       unbindAccessibility();
+      unbindProgress();
       art.destroy(false);
       artRef.current = null;
       setGesturePlayer(null);
@@ -310,15 +371,118 @@ export function ArtPlayerSurface({
     }
   }, [asset, fullscreen.mode, fullscreen.pending, language]);
 
+  // Next / speed / episodes buttons: what each mode has room and use for.
+  const hasNext = Boolean(next);
+  const episodeCount = episodes?.length ?? 0;
+  useEffect(() => {
+    const art = gesturePlayer;
+    if (!art) return;
+    const zh = language === "zh";
+    const find = (name: string) => art.controls[`kuriume-${name}`] as HTMLElement | undefined;
+    const set = (name: string, visible: boolean, label: string) => {
+      const control = find(name);
+      if (!control) return;
+      control.style.display = visible ? "" : "none";
+      const button = control.querySelector("button");
+      button?.setAttribute("aria-label", label);
+      if (button) button.title = label;
+    };
+    set("next", hasNext && (isFullscreen || !isMobileApp), zh ? "下一集" : "Next episode");
+    set("episodes", isFullscreen && episodeCount > 1, zh ? "选集" : "Episodes");
+    const episodesButton = find("episodes")?.querySelector("button");
+    if (episodesButton) episodesButton.textContent = zh ? "选集" : "Episodes";
+    const speed = () => {
+      const button = find("speed")?.querySelector("button");
+      if (!button) return;
+      const rate = art.playbackRate || 1;
+      button.textContent = rate === 1 ? (zh ? "倍速" : "Speed") : `${rate}×`;
+      button.setAttribute("aria-label", zh ? `播放速度 ${rate}×` : `Playback speed ${rate}×`);
+    };
+    speed();
+    art.on("video:ratechange", speed);
+    return () => { art.off("video:ratechange", speed); };
+  }, [gesturePlayer, hasNext, isFullscreen, episodeCount, language]);
+
+  // Desktop: keyboard shortcuts beyond ArtPlayer's own (space, arrows), and wheel volume.
+  useEffect(() => {
+    const art = gesturePlayer;
+    if (!art || isMobileApp) return;
+    const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+    const keydown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || typing(event.target)) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      const step = (direction: number) => {
+        const index = PLAYBACK_RATES.findIndex((rate) => rate >= (art.playbackRate || 1));
+        const nextRate = PLAYBACK_RATES[Math.min(PLAYBACK_RATES.length - 1, Math.max(0, (index < 0 ? PLAYBACK_RATES.length - 1 : index) + direction))];
+        art.playbackRate = nextRate;
+        sessionRate = nextRate;
+        art.notice.show = `${nextRate}×`;
+      };
+      let handled = true;
+      if (event.shiftKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+        if (Number.isFinite(art.duration) && art.duration > 0) {
+          art.currentTime = Math.min(Math.max(0, art.currentTime + (event.key === "ArrowRight" ? 85 : -85)), art.duration - 0.1);
+        }
+      } else if (event.key === "f" || event.key === "F") fullscreenRef.current.toggle("system");
+      else if (event.key === "n" || event.key === "N") actionsRef.current.next?.onPlay();
+      else if (event.key === "[") step(-1);
+      else if (event.key === "]") step(1);
+      else if (event.key === "?") actionsRef.current.setSheet("shortcuts");
+      else handled = false;
+      if (handled) { event.preventDefault(); event.stopPropagation(); }
+    };
+    const wheel = (event: WheelEvent) => {
+      if (event.ctrlKey || Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
+      if ((event.target as Element | null)?.closest?.(".art-settings")) return;
+      event.preventDefault();
+      art.muted = false;
+      art.volume = Math.min(1, Math.max(0, art.volume + (event.deltaY < 0 ? 0.05 : -0.05)));
+      art.notice.show = `${language === "zh" ? "音量" : "Volume"} ${Math.round(art.volume * 100)}%`;
+    };
+    // Capture: run before ArtPlayer's own hotkeys see Shift+arrows.
+    window.addEventListener("keydown", keydown, true);
+    art.template.$player.addEventListener("wheel", wheel, { passive: false });
+    return () => {
+      window.removeEventListener("keydown", keydown, true);
+      art.template.$player.removeEventListener("wheel", wheel);
+    };
+  }, [gesturePlayer, language]);
+
+  // Android back while the screen is locked unlocks first: the page's back
+  // handler sees `data-player-locked` and asks the player to unlock.
+  useEffect(() => {
+    const unlock = () => setLocked(false);
+    window.addEventListener("kuriume-player-unlock", unlock);
+    return () => window.removeEventListener("kuriume-player-unlock", unlock);
+  }, []);
+  useEffect(() => { if (!isFullscreen) setSheet((current) => (current === "episodes" || current === "options" ? null : current)); }, [isFullscreen]);
+
   return (
-    <div className="relative h-full w-full overflow-hidden bg-black">
-      <div ref={containerRef} className="artplayer-app h-full w-full overflow-hidden bg-black" data-mobile={isMobileApp} data-fullscreen={fullscreen.mode !== "normal"} data-testid="art-player-surface" />
-      {gesture && <div role="status" aria-live="polite" className="pointer-events-none absolute inset-0 z-30 grid place-items-center">
-        <div className="kuriume-gesture-feedback">
-          {gesture.kind === "brightness" ? <Sun size={22} /> : gesture.kind === "volume" ? <Volume2 size={22} /> : gesture.kind === "seek" ? <MoveHorizontal size={22} /> : <CircleAlert size={22} />}
-          {gesture.text}
-        </div>
-      </div>}
+    <div className="relative h-full w-full overflow-hidden bg-black" data-player-locked={locked ? "" : undefined}>
+      <div ref={containerRef} className="artplayer-app h-full w-full overflow-hidden bg-black" data-mobile={isMobileApp} data-fullscreen={fullscreen.mode !== "normal"} data-locked={locked} data-testid="art-player-surface" />
+      <PlayerChrome
+        art={gesturePlayer}
+        language={language}
+        fullscreen={isFullscreen}
+        title={title}
+        mediaTitle={mediaTitle}
+        onExitFullscreen={fullscreen.close}
+        sheet={sheet}
+        onSheet={setSheet}
+        locked={locked}
+        onLocked={setLocked}
+        lockFlash={lockFlash}
+        gesture={gesture}
+        next={next}
+        autoNext={autoNext}
+        episodes={episodes}
+        currentEpisode={currentEpisode}
+        onSelectEpisode={onSelectEpisode}
+        options={options}
+        onOpenOptions={onOpenOptions}
+        resumeFrom={resumeFrom}
+        onRateChosen={(rate) => { sessionRate = rate; }}
+      />
     </div>
   );
 }

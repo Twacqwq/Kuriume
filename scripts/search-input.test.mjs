@@ -13,6 +13,7 @@ const imports = {
   "lucide-react": moduleUrl("export const Search = () => null; export const X = () => null"),
   "@/components/ui/dialog": moduleUrl("export const Dialog = () => null; export const DialogContent = () => null; export const DialogTitle = () => null;"),
   "@/hooks/use-display-language": moduleUrl("export const useDisplayLanguage = () => 'zh'"),
+  "@/components/search-suggestions": moduleUrl("export const SearchSuggestions = () => null; export const rememberSearch = () => {};"),
   "react": moduleUrl(`export const useState = () => ["葬送的芙莉莲", () => {}];
     export const useRef = () => ({current: null}); export const useEffect = () => {};`),
   "react/jsx-runtime": import.meta.resolve("react/jsx-runtime"),
@@ -74,6 +75,7 @@ test("search is a results-only route: empty legacy URLs return home without addi
     "@tanstack/react-router": import.meta.resolve("@tanstack/react-router"),
     "@/components/anime-grid": moduleUrl("export const AnimeGrid = () => null"),
     "@/hooks/use-display-language": moduleUrl("export const useDisplayLanguage = () => 'zh'"),
+  "@/components/search-suggestions": moduleUrl("export const SearchSuggestions = () => null; export const rememberSearch = () => {};"),
     "@tauri-apps/api/core": moduleUrl("export const invoke = () => { throw new Error('Unexpected search request'); }"),
     "react/jsx-runtime": import.meta.resolve("react/jsx-runtime"),
   };

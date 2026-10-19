@@ -4,6 +4,7 @@ import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/query-client";
 import { PageLoading } from "@/components/page-loading";
+import { RouteError } from "@/components/route-error";
 import { routeTree } from "./routeTree.gen";
 import "./main.css";
 import { installErrorDiagnostics } from "@/lib/diagnostics";
@@ -21,6 +22,8 @@ const router = createRouter({
   // Commit the destination shell immediately instead of waiting silently for
   // its loader. Query cache hits still render without a loading detour.
   defaultPendingComponent: PageLoading,
+  // Tauri commands reject with strings; show them readably with retry/back.
+  defaultErrorComponent: RouteError,
   defaultPendingMs: 0,
   defaultPendingMinMs: 150,
   scrollRestoration: true,

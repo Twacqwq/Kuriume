@@ -22,10 +22,9 @@ export function HomePageLoading() {
   const language = useDisplayLanguage();
   return (
     <div data-loading-page="home" className="mx-auto max-w-7xl px-4 pb-8 pt-3 md:px-6 md:pt-10 lg:px-10">
-      <div className="relative flex min-h-96 flex-col justify-end overflow-hidden rounded-2xl bg-card p-4 pb-5 md:min-h-[clamp(400px,48vh,520px)] md:p-8 md:pb-10 lg:p-10">
+      <div className="relative flex aspect-[16/10] flex-col justify-end overflow-hidden rounded-2xl bg-card p-4 min-[480px]:aspect-[16/8] md:aspect-auto md:min-h-[clamp(400px,48vh,520px)] md:p-8 md:pb-10 lg:p-10">
         <LoadingStatus className="absolute left-4 top-5 md:left-8 lg:left-10" />
         <div aria-hidden="true" className="flex items-end gap-4">
-          <Skeleton className="aspect-2/3 w-20 shrink-0 rounded-xl md:hidden" />
           <div className="w-full max-w-xl space-y-3">
             <Skeleton className="h-3 w-24" />
             <Skeleton className="h-7 w-5/6 md:h-10" />
@@ -36,7 +35,7 @@ export function HomePageLoading() {
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-4/5" />
         </div>
-        <Skeleton className="mt-5 h-12 w-32 rounded-xl md:mt-7" />
+        <Skeleton className="mt-5 hidden h-12 w-32 rounded-xl md:mt-7 md:block" />
       </div>
       <section className="mt-8 md:mt-10">
         <h2 className="text-lg font-bold tracking-tight">{language === "zh" ? "本季焦点" : "Season picks"}</h2>

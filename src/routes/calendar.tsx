@@ -7,9 +7,19 @@ import { Link } from "@tanstack/react-router";
 import { Star, Film } from "lucide-react";
 import { memo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { sharePoster } from "@/lib/view-transition";
+import { libraryApi } from "@/lib/store";
+import { airingClock, followedExternalIds } from "@/lib/tracking";
+import { Bookmark } from "lucide-react";
+
+const ONLY_FOLLOWED_KEY = "kuriume:calendar-only-following";
+function readOnlyFollowed() {
+  try { return localStorage.getItem(ONLY_FOLLOWED_KEY) === "1"; } catch { return false; }
+}
 import type { AnimeInfo, CalendarEntry } from "@/lib/types";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { CalendarPageLoading } from "@/components/page-loading";
+import { PullToRefresh } from "@/components/pull-to-refresh";
 
 const WEEKDAY_SHORT = ["日", "一", "二", "三", "四", "五", "六"];
 const WEEKDAY_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -27,7 +37,25 @@ export const Route = createFileRoute("/calendar")({
 
 function CalendarPage() {
   const language = useDisplayLanguage();
-  const { data: calendar = [], isPending, isError, refetch } = useQuery(calendarQueryOptions(language));
+  const { data: rawCalendar = [], isPending, isError, refetch } = useQuery(calendarQueryOptions(language));
+  const { data: library = [] } = useQuery({ queryKey: ["library-list"], queryFn: () => libraryApi.list() });
+  const followed = followedExternalIds(library);
+  const [onlyFollowed, setOnlyFollowed] = useState(readOnlyFollowed);
+  const filterFollowed = onlyFollowed && followed.size > 0;
+  const toggleOnlyFollowed = () => {
+    setOnlyFollowed((value) => {
+      try { localStorage.setItem(ONLY_FOLLOWED_KEY, value ? "0" : "1"); } catch { /* per-device preference */ }
+      return !value;
+    });
+  };
+  // Followed works lead each day, in broadcast order; optionally only them.
+  const isFollowed = (item: AnimeInfo) => followed.has(String(item.anilist_id));
+  const calendar = rawCalendar.map((entry) => ({
+    ...entry,
+    items: entry.items
+      .filter((item) => !filterFollowed || isFollowed(item))
+      .sort((a, b) => Number(isFollowed(b)) - Number(isFollowed(a)) || (a.schedule?.airing_at ?? 0) - (b.schedule?.airing_at ?? 0)),
+  }));
   const todayId = getTodayWeekdayId();
   const reordered = reorderFromToday(calendar, todayId);
   const [selectedDay, setSelectedDay] = useState(todayId);
@@ -37,7 +65,7 @@ function CalendarPage() {
 
   if (isPending) return <CalendarPageLoading />;
 
-  if (calendar.length === 0) {
+  if (rawCalendar.length === 0) {
     return (
       <div className="flex min-h-72 flex-col items-center justify-center gap-4 text-sm text-muted-foreground">
         <p role={isError ? "alert" : "status"}>{isError
@@ -50,7 +78,17 @@ function CalendarPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-8 pt-4 md:px-6 md:pb-16 md:pt-14 lg:px-10">
-      <h1 className="sr-only text-3xl font-bold tracking-tight text-foreground md:not-sr-only">{language === "zh" ? "每周放送" : "Weekly schedule"}</h1>
+      <PullToRefresh onRefresh={() => refetch()} />
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="sr-only text-3xl font-bold tracking-tight text-foreground md:not-sr-only">{language === "zh" ? "每周放送" : "Weekly schedule"}</h1>
+        {followed.size > 0 && (
+          <button type="button" aria-pressed={onlyFollowed} onClick={toggleOnlyFollowed}
+            className={cn("ml-auto hidden lg:flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-readable active:bg-accent motion-reduce:transition-none",
+              onlyFollowed ? "border-primary/50 bg-primary/16 text-primary-readable" : "border-border/80 text-muted-foreground hover:text-foreground")}>
+            <Bookmark size={14} fill={onlyFollowed ? "currentColor" : "none"} />{language === "zh" ? "只看追番" : "Following only"}
+          </button>
+        )}
+      </div>
 
       <div className="hide-scrollbar -mx-4 overflow-x-auto px-4 pb-2 md:mt-6 lg:hidden">
         <ToggleGroup type="single" value={String(activeDay)} aria-label={language === "zh" ? "选择放送日期" : "Choose a schedule day"}
@@ -108,11 +146,20 @@ function CalendarPage() {
                 <span className="ml-auto text-sm tabular-nums text-muted-foreground lg:ml-0">
                   {entry.items.length} {language === "zh" ? "部" : "anime"}
                 </span>
+                {followed.size > 0 && (
+                  <button type="button" aria-pressed={onlyFollowed} onClick={toggleOnlyFollowed}
+                    className={cn("-my-1 flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-readable active:bg-accent motion-reduce:transition-none lg:hidden",
+                      onlyFollowed ? "border-primary/50 bg-primary/16 text-primary-readable" : "border-border/80 text-muted-foreground")}>
+                    <Bookmark size={14} fill={onlyFollowed ? "currentColor" : "none"} />{language === "zh" ? "只看追番" : "Following"}
+                  </button>
+                )}
               </div>
-              {entry.items.length === 0 && <p className="py-12 text-center text-sm text-muted-foreground">{language === "zh" ? "今天暂无放送安排" : "No anime scheduled for this day"}</p>}
+              {entry.items.length === 0 && <p className="py-12 text-center text-sm text-muted-foreground">{filterFollowed
+                ? (language === "zh" ? "这一天没有在追的番" : "Nothing you follow airs this day")
+                : (language === "zh" ? "今天暂无放送安排" : "No anime scheduled for this day")}</p>}
               <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2 lg:grid-cols-4 lg:gap-y-6 xl:grid-cols-5 2xl:grid-cols-6">
                 {entry.items.map((item) => (
-                  <CalendarCard key={item.id} item={item} />
+                  <CalendarCard key={item.id} item={item} followed={isFollowed(item)} />
                 ))}
               </div>
             </section>
@@ -123,7 +170,7 @@ function CalendarPage() {
   );
 }
 
-const CalendarCard = memo(function CalendarCard({ item }: { item: AnimeInfo }) {
+const CalendarCard = memo(function CalendarCard({ item, followed }: { item: AnimeInfo; followed: boolean }) {
   const language = useDisplayLanguage();
   const title = displayAnimeTitle(item, language);
   const [imgFailed, setImgFailed] = useState(false);
@@ -133,9 +180,11 @@ const CalendarCard = memo(function CalendarCard({ item }: { item: AnimeInfo }) {
     <Link
       to="/anime/$id"
       params={{ id: item.id }}
-      className="group flex min-w-0 items-center gap-4 rounded-lg py-3 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-readable active:bg-card lg:block lg:py-0"
+      viewTransition
+      onClick={sharePoster}
+      className="press group flex min-w-0 items-center gap-4 rounded-lg py-3 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-readable active:bg-card lg:block lg:py-0"
     >
-      <div className="relative aspect-2/3 w-16 shrink-0 overflow-hidden rounded-lg bg-card lg:w-full">
+      <div className={cn("relative aspect-2/3 w-16 shrink-0 overflow-hidden rounded-lg bg-card lg:w-full", followed && "ring-2 ring-primary/70")}>
         {hasCover ? (
           <img
             src={item.cover!}
@@ -158,7 +207,21 @@ const CalendarCard = memo(function CalendarCard({ item }: { item: AnimeInfo }) {
         <h3 className="line-clamp-2 text-base font-medium leading-snug text-foreground transition-colors group-hover:text-primary-readable lg:text-sm">
           {title}
         </h3>
-        {item.total_episodes > 0 && (
+        {(followed || item.schedule) && (
+          <p className="flex flex-wrap items-center gap-1.5 text-sm tabular-nums text-muted-foreground lg:text-xs">
+            {followed && <span className="rounded-full bg-primary/18 px-1.5 py-0.5 text-xs font-bold text-primary-readable">{language === "zh" ? "追番中" : "Following"}</span>}
+            {item.schedule && (
+              <span>
+                {language === "zh" ? `第 ${item.schedule.episode} 话` : `Ep ${item.schedule.episode}`}
+                {" · "}
+                {item.schedule.airing_at <= Date.now() / 1000
+                  ? (language === "zh" ? "已更新" : "out")
+                  : airingClock(item.schedule.airing_at, language)}
+              </span>
+            )}
+          </p>
+        )}
+        {!item.schedule && item.total_episodes > 0 && (
           <p className="text-sm text-muted-foreground lg:text-xs">{language === "zh" ? `共 ${item.total_episodes} 话` : `${item.total_episodes} episodes`}</p>
         )}
         {item.score != null && item.score > 0 && <p className="flex items-center gap-1.5 text-xs text-muted-foreground lg:hidden"><Star aria-hidden="true" size={12} className="text-yellow-300" />{item.score}</p>}

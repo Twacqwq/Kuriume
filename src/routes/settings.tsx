@@ -20,6 +20,7 @@ import {
   RefreshCw,
   ScrollText,
   ChevronRight,
+  History,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -81,7 +82,7 @@ function SettingsPage() {
   return (
     <div className="mx-auto min-h-full max-w-3xl px-4 pb-8 pt-4 md:px-6 md:pb-24 md:pt-14 lg:px-10">
       <div className="flex flex-col gap-3">
-        <h1 className="sr-only text-3xl font-bold tracking-tight md:not-sr-only">{zh ? "设置" : "Settings"}</h1>
+        <h1 className="sr-only text-3xl font-bold tracking-tight md:not-sr-only">{zh ? "我的" : "Me"}</h1>
         {feedback && <SettingsFeedback feedback={feedback} />}
       </div>
 
@@ -99,6 +100,10 @@ function SettingsPage() {
         </div>
       ) : (
         <div className="space-y-8 md:mt-8">
+          <SettingsGroup title={zh ? "观看" : "Watching"}>
+            <LinkRow to="/watchlist" search={{ view: "history" }} icon={<History />} label={zh ? "观看历史" : "Watch history"} />
+          </SettingsGroup>
+
           <SettingsGroup title={zh ? "显示" : "Display"} action={
               <Button type="button" variant="ghost" size="icon-sm" className="size-12 text-muted-foreground" disabled={reloading || saving} onClick={() => void reloadCatalog(settings.display_language)} aria-label={zh ? "重新载入动漫列表" : "Reload anime lists"} title={zh ? "重新载入动漫列表" : "Reload anime lists"}>
                 {reloading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
@@ -131,6 +136,16 @@ function SettingsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function LinkRow({ to, search, icon, label }: { to: "/watchlist"; search: { view: "history" }; icon: React.ReactNode; label: string }) {
+  return (
+    <Link to={to} search={search} className="press flex min-h-16 items-center gap-3 px-4 py-3 text-sm font-medium outline-none hover:bg-secondary/60 active:bg-secondary/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-readable [&_svg]:size-4.5 [&_svg]:shrink-0 [&_svg]:stroke-[1.8]">
+      <span className="text-muted-foreground">{icon}</span>
+      <span className="flex-1">{label}</span>
+      <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
+    </Link>
   );
 }
 

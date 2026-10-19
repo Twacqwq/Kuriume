@@ -1,3 +1,4 @@
+import { sharePoster } from "@/lib/view-transition";
 import { Link } from '@tanstack/react-router'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { AlertCircle, Film, RotateCcw, Star } from 'lucide-react'
@@ -361,7 +362,9 @@ const AnimeCard = memo(function AnimeCard({ item }: AnimeCardProps) {
     <Link
       to="/anime/$id"
       params={{ id: String(item.id) }}
-      className="group block cursor-pointer rounded-lg outline-none focus-visible:ring-[3px] focus-visible:ring-primary-readable"
+      viewTransition
+      onClick={sharePoster}
+      className="press group block cursor-pointer rounded-lg outline-none focus-visible:ring-[3px] focus-visible:ring-primary-readable"
     >
       {/* Cover */}
       <div className="relative aspect-2/3 overflow-hidden rounded-lg bg-card">

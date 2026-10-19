@@ -38,8 +38,8 @@ pub use anime1::Anime1;
 pub use error::{ProviderError, Result};
 pub use hianime::HiAnime;
 pub use models::{
-    AnimeInfo, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery,
-    PagedResult, SearchQuery, SortBy, Weekday,
+    AiringSlot, AnimeInfo, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery,
+    GetListQuery, PagedResult, SearchQuery, SortBy, Weekday,
 };
 pub use playback::{
     PlaybackCandidate, PlaybackEpisode, PlaybackHeaders, PlaybackProvider,

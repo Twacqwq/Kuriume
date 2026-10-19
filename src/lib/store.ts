@@ -80,7 +80,7 @@ export const externalIdentityApi = {
 };
 
 export const LIBRARY_STATUSES = [
-  { id: "following", zh: "追番", en: "Following" },
+  { id: "following", zh: "追番中", en: "Following" },
   { id: "completed", zh: "已看完", en: "Completed" },
 ] as const;
 
