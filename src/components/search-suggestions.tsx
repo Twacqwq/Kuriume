@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 
 const RECENT_KEY = "kuriume:recent-searches";
 const RECENT_LIMIT = 8;
-const SUGGEST_DELAY_MS = 320;
+const SUGGEST_DELAY_MS = 450;
 
 function readRecent(): string[] {
   try {
@@ -35,15 +35,18 @@ export function rememberSearch(query: string) {
  * Below the search field: recent searches while it is empty, and the first
  * few catalog matches while typing. Enter still opens the full result page.
  */
-export function SearchSuggestions({ query, onSearch, onNavigate }: { query: string; onSearch: (query: string) => void; onNavigate: () => void }) {
+export function SearchSuggestions({ query, composing = false, onSearch, onNavigate }: { query: string; composing?: boolean; onSearch: (query: string) => void; onNavigate: () => void }) {
   const language = useDisplayLanguage();
   const zh = language === "zh";
   const [recent, setRecent] = useState(readRecent);
   const [debounced, setDebounced] = useState(query.trim());
   useEffect(() => {
+    // Pinyin/kana input passes through many intermediate strings; only the
+    // committed text is worth a catalog lookup.
+    if (composing) return;
     const timer = setTimeout(() => setDebounced(query.trim()), SUGGEST_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, composing]);
   // One CJK character is already a meaningful title query; Latin needs two.
   const ready = debounced.length >= 2 || /[぀-ヿ㐀-鿿]/.test(debounced);
   const suggestions = useQuery({
@@ -51,6 +54,7 @@ export function SearchSuggestions({ query, onSearch, onNavigate }: { query: stri
     queryFn: () => invoke<PagedResult<AnimeInfo>>("search", { provider: "AniList", language, query: { keyword: debounced, limit: 6, offset: 0 } }),
     enabled: ready,
     staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 
   if (!query.trim()) {

@@ -2,10 +2,12 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { CalendarDays, CircleUserRound, Home, Library, Search } from "lucide-react";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
 import { cn } from "@/lib/utils";
+import { useUpdateAvailable } from "@/hooks/use-app-update";
 
 export function MobileNavigation({ onSearch }: { onSearch: () => void }) {
   const language = useDisplayLanguage();
   const path = useRouterState({ select: (state) => state.location.pathname });
+  const updateAvailable = useUpdateAvailable();
   const items = [
     { to: "/", icon: Home, label: language === "zh" ? "首页" : "Home" },
     { to: "/calendar", icon: CalendarDays, label: language === "zh" ? "日历" : "Calendar" },
@@ -28,9 +30,14 @@ export function MobileNavigation({ onSearch }: { onSearch: () => void }) {
       {items.map(({ to, icon: Icon, label }) => {
         const active = path === to || (to !== "/" && path.startsWith(to));
         return <Link key={to} to={to} aria-current={active ? "page" : undefined} className={cn("flex min-h-16 flex-col items-center justify-center gap-0.5 text-[11px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-primary-readable", active ? "text-primary-readable" : "text-muted-foreground")}>
-          <span className={cn("grid h-8 w-14 place-items-center rounded-full", active && "bg-primary/18")}><Icon size={21} strokeWidth={active ? 2.2 : 1.7} /></span><span>{label}</span>
+          <span className={cn("relative grid h-8 w-14 place-items-center rounded-full", active && "bg-primary/18")}><Icon size={21} strokeWidth={active ? 2.2 : 1.7} />{to === "/settings" && updateAvailable && <UpdateDot />}</span><span>{label}</span>
         </Link>;
       })}
     </nav>
   </>;
+}
+
+/** A newer release is out; details are on the 我的 page. */
+export function UpdateDot({ className }: { className?: string }) {
+  return <span role="img" aria-label="New version available" className={cn("absolute right-3.5 top-0.5 size-2 rounded-full bg-highlight ring-2 ring-sidebar", className)} />;
 }

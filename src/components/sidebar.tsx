@@ -1,4 +1,6 @@
 import { cn } from "@/lib/utils";
+import { useUpdateAvailable } from "@/hooks/use-app-update";
+import { UpdateDot } from "@/components/mobile-navigation";
 import { isMobileApp } from "@/lib/platform";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
 import { Button } from "@/components/ui/button";
@@ -26,6 +28,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
   const matches = useMatches();
   const currentPath = matches[matches.length - 1]?.pathname ?? "/";
   const shortcutLabel = navigator.userAgent.includes("Mac") ? "⌘K" : "Ctrl K";
+  const updateAvailable = useUpdateAvailable();
   const settingsActive = currentPath === "/settings" || currentPath.startsWith("/settings/");
 
   return (
@@ -107,6 +110,8 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
               : "text-muted-foreground hover:bg-white/4 hover:text-foreground",
           )}
         >
+          <span className="relative grid place-items-center">
+          {updateAvailable && <UpdateDot className="-right-1 -top-1" />}
           <CircleUserRound
             size={18}
             strokeWidth={settingsActive ? 2.2 : 1.75}
@@ -114,6 +119,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
               settingsActive ? "text-primary-readable" : undefined
             }
           />
+          </span>
           <span>{language === "zh" ? "我的" : "Me"}</span>
         </Link>
       </div>

@@ -22,6 +22,9 @@ pub struct AnimeInfo {
     pub title_native: Option<String>,
     /// Cover image URL.
     pub cover: Option<String>,
+    /// Dominant cover colour as `#rrggbb`, used to tint detail surfaces.
+    #[serde(default)]
+    pub cover_color: Option<String>,
     /// Wide artwork for hero/detail surfaces.
     pub banner: Option<String>,
     /// Score (0–10).

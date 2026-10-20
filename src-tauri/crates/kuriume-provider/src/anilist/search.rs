@@ -4,6 +4,36 @@ use std::sync::OnceLock;
 use super::*;
 
 const SEARCH_BATCH: usize = 50;
+/// How long a search's ID walk is reused for later pages of the same query.
+const SEARCH_WALK_TTL: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+const SEARCH_WALK_LIMIT: usize = 32;
+
+/// Progress through one query's merged ID streams. Page 2 of a result list
+/// resumes where page 1 stopped instead of replaying every ID batch.
+#[derive(Clone)]
+pub(super) struct SearchWalk {
+    ids: Vec<u64>,
+    seen: BTreeSet<u64>,
+    active: Vec<bool>,
+    page: u32,
+    local_offset: usize,
+    more: bool,
+    stored: Instant,
+}
+
+impl SearchWalk {
+    fn new(variants: usize) -> Self {
+        Self {
+            ids: Vec::new(),
+            seen: BTreeSet::new(),
+            active: vec![true; variants],
+            page: 1,
+            local_offset: 0,
+            more: true,
+            stored: Instant::now(),
+        }
+    }
+}
 
 #[derive(Deserialize)]
 struct AliasSnapshot {
@@ -184,24 +214,37 @@ impl AniList {
         }
 
         let target = u64::from(offset) + u64::from(limit) + 1;
-        let mut ids = Vec::new();
-        let mut seen = BTreeSet::new();
-        let mut active = vec![true; variants.len()];
-        let mut page = 1;
-        let mut local_offset = 0;
-        let mut more = true;
+        let walk_key = keyword.to_owned();
+        let mut walk = self
+            .search_walks
+            .lock()
+            .ok()
+            .and_then(|walks| walks.get(&walk_key).cloned())
+            .filter(|walk| {
+                walk.stored.elapsed() < SEARCH_WALK_TTL && walk.active.len() == variants.len()
+            })
+            .unwrap_or_else(|| SearchWalk::new(variants.len()));
+        let SearchWalk {
+            ids,
+            seen,
+            active,
+            page,
+            local_offset,
+            more,
+            ..
+        } = &mut walk;
         // ID-only batches keep GraphQL complexity and response sizes low; only
         // the requested display page gets full metadata. No cross-site mapping.
-        while (ids.len() as u64) < target && more {
+        while (ids.len() as u64) < target && *more {
             let batch: Vec<_> = local_ids
                 .iter()
-                .skip(local_offset)
+                .skip(*local_offset)
                 .take(SEARCH_BATCH)
                 .copied()
                 .collect();
-            local_offset += batch.len();
+            *local_offset += batch.len();
             let mut declarations = vec!["$page:Int!".to_owned()];
-            let mut variables = json!({ "page": page });
+            let mut variables = json!({ "page": *page });
             let mut fields = Vec::new();
             if !batch.is_empty() {
                 declarations.push("$ids:[Int!]!".into());
@@ -241,20 +284,38 @@ impl AniList {
                 *is_active = result.page_info.has_next_page && !result.media.is_empty();
                 streams.push(result.media.into_iter().map(|item| item.id).collect());
             }
-            merge_id_pages(&streams, &mut ids, &mut seen);
-            more = local_offset < local_ids.len() || active.iter().any(|value| *value);
-            page += 1;
+            merge_id_pages(&streams, ids, seen);
+            *more = *local_offset < local_ids.len() || active.iter().any(|value| *value);
+            *page += 1;
         }
         // total is a continuation bound until every stream ends, never the sum
         // of overlapping language counts or AniList's estimated search total.
-        let total = ids.len() as u64 + u64::from(more);
+        let total = ids.len() as u64 + u64::from(*more);
         let selected: Vec<_> = ids
-            .into_iter()
+            .iter()
+            .copied()
             .skip(offset as usize)
             .take(limit as usize)
             .collect();
+        walk.stored = Instant::now();
+        if let Ok(mut walks) = self.search_walks.lock() {
+            if walks.len() >= SEARCH_WALK_LIMIT && !walks.contains_key(&walk_key) {
+                walks.retain(|_, walk| walk.stored.elapsed() < SEARCH_WALK_TTL);
+                if walks.len() >= SEARCH_WALK_LIMIT {
+                    walks.clear();
+                }
+            }
+            walks.insert(walk_key, walk);
+        }
+        // Works already seen in another response need no metadata request.
+        let cached: Vec<_> = selected
+            .iter()
+            .filter_map(|id| self.cached_media(*id))
+            .collect();
         let data = if selected.is_empty() {
             Vec::new()
+        } else if cached.len() == selected.len() {
+            cached.into_iter().map(AnimeInfo::from).collect()
         } else {
             let response: PageResponse = self.graphql(format!(
                 "query($ids:[Int!]!) {{ Page(perPage:50) {{ pageInfo {{ total hasNextPage }} media(type:ANIME,isAdult:false,id_in:$ids) {{ {MEDIA_FIELDS} }} }} }}"
@@ -265,6 +326,7 @@ impl AniList {
                 .into_iter()
                 .map(|media| (media.id, media))
                 .collect();
+            self.remember_media(by_id.values());
             selected
                 .iter()
                 .filter_map(|id| by_id.remove(id))

@@ -51,7 +51,7 @@ export function TodayUpdates() {
                   {slot && (seen ? (
                     <span className="inline-flex items-center gap-0.5 text-muted-foreground"><Check size={12} />{zh ? "已看" : "Watched"}</span>
                   ) : aired ? (
-                    <span className="rounded-full bg-primary/18 px-1.5 py-0.5 font-bold text-primary-readable">{zh ? "已更新" : "Out now"}</span>
+                    <span className="rounded-full bg-highlight/14 px-1.5 py-0.5 font-bold text-highlight">{zh ? "已更新" : "Out now"}</span>
                   ) : (
                     <span className="inline-flex items-center gap-1 text-muted-foreground"><Clock3 size={11} />{zh ? `${airingClock(slot.airing_at, language)} 更新` : `at ${airingClock(slot.airing_at, language)}`}</span>
                   ))}
@@ -60,7 +60,7 @@ export function TodayUpdates() {
             </>
           );
           const className = cn("press flex min-w-0 snap-start gap-3 rounded-xl bg-card p-3 outline-none transition-colors hover:bg-secondary active:bg-secondary focus-visible:ring-[3px] focus-visible:ring-primary-readable motion-reduce:transition-none",
-            aired && !seen && "ring-1 ring-inset ring-primary/35");
+            aired && !seen && "ring-1 ring-inset ring-highlight/40");
           return aired && slot ? (
             <Link key={media.id} to="/anime/$id/episode/$ep" params={{ id: media.id, ep: String(slot.episode) }} search={{ t: undefined }} className={className}>{content}</Link>
           ) : (

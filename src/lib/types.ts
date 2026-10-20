@@ -8,6 +8,8 @@ export interface AnimeInfo {
   title_native: string | null;
   search_titles: string[];
   cover: string | null;
+  /** AniList dominant cover colour (#rrggbb). */
+  cover_color?: string | null;
   banner: string | null;
   score: number | null;
   year: number | null;

@@ -252,7 +252,7 @@ function LibraryCard({
         </Link>
         <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tabular-nums text-muted-foreground">
           {newCount > 0 && (
-            <span className="rounded-full bg-primary/18 px-2 py-0.5 font-bold text-primary-readable">{language === "zh" ? `${newCount} 话未看` : `${newCount} new`}</span>
+            <span className="rounded-full bg-highlight/14 px-2 py-0.5 font-bold text-highlight">{language === "zh" ? `${newCount} 话未看` : `${newCount} new`}</span>
           )}
           <span>
             {progress?.aired != null && progress.aired < entry.total_episodes

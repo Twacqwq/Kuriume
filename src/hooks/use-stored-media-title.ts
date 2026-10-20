@@ -6,7 +6,9 @@ import type { AnimeInfo } from "@/lib/types";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 
-const TITLE_REQUEST_CONCURRENCY = 2;
+// Each lookup may cost an AniList request (limit: 30/min while degraded).
+const TITLE_REQUEST_CONCURRENCY = 1;
+const CJK = /[\u3040-\u30ff\u3400-\u9fff]/;
 let activeTitleRequests = 0;
 const waitingTitleRequests: Array<() => void> = [];
 
@@ -109,7 +111,9 @@ export function useStoredMediaTitle(
         release();
       }
     },
-    enabled: catalogProvider === "anilist" && !cached,
+    // A stored Chinese title is already what the zh UI would show.
+    enabled: catalogProvider === "anilist" && !cached &&
+      !(language === "zh" && CJK.test(fallback)),
     // A list card can provide a title immediately without being written into
     // the full-detail cache or pretending its synopsis has been fetched.
     placeholderData: cached,

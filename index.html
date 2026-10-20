@@ -1,14 +1,41 @@
 <!doctype html>
-<html lang="en" style="background-color: oklch(0.1 0 0)">
+<html lang="en" style="background-color: #3a201c">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="/icon.png" />
     <link rel="preload" href="/fonts/manrope-vf.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/splash-icon.png" as="image" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#141112" />
     <title>Kuriume</title>
+    <!-- Launch splash: inline so it paints before the app bundle loads.
+         src/lib/splash.ts removes it once the first catalog data is ready. -->
+    <style>
+      @font-face { font-family: "Manrope"; font-weight: 200 800; font-display: swap; src: url("/fonts/manrope-vf.woff2") format("woff2"); }
+      #splash { position: fixed; inset: 0; z-index: 2147483000; display: grid; place-items: center; background: #3a201c; transition: opacity 0.4s ease; animation: sp-failsafe 0.4s 8s forwards; }
+      #splash.sp-out { opacity: 0; pointer-events: none; }
+      #splash.sp-out .sp-icon { transform: scale(1.06); }
+      .sp-center { display: flex; flex-direction: column; align-items: center; margin-top: -6vh; }
+      .sp-icon { width: 116px; height: 116px; transition: transform 0.4s ease; animation: sp-pop 0.6s cubic-bezier(0.34, 1.4, 0.64, 1) both; }
+      .sp-name { margin-top: 20px; font: 800 30px/1 Manrope, system-ui, sans-serif; letter-spacing: 0.01em; color: #f3e6e0; animation: sp-rise 0.5s 0.2s ease-out both; }
+      .sp-sub { margin-top: 10px; font: 500 12px/1 "Noto Sans SC", "PingFang SC", "Hiragino Sans", "Microsoft YaHei", sans-serif; letter-spacing: 0.4em; margin-right: -0.4em; color: #b8958b; animation: sp-rise 0.5s 0.3s ease-out both; }
+      @keyframes sp-pop { from { opacity: 0; transform: scale(0.86); } to { opacity: 1; transform: none; } }
+      @keyframes sp-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+      @keyframes sp-failsafe { to { opacity: 0; visibility: hidden; } }
+      @media (prefers-reduced-motion: reduce) {
+        .sp-icon, .sp-name, .sp-sub { animation: none; }
+      }
+    </style>
   </head>
 
   <body>
+    <div id="splash" aria-hidden="true">
+      <div class="sp-center">
+        <img class="sp-icon" src="/splash-icon.png" alt="" width="116" height="116" decoding="sync" />
+        <div class="sp-name">Kuriume</div>
+        <div class="sp-sub">栗梅</div>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

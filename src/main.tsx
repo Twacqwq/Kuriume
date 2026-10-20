@@ -9,12 +9,15 @@ import { routeTree } from "./routeTree.gen";
 import "./main.css";
 import { installErrorDiagnostics } from "@/lib/diagnostics";
 import { prefetchBrowseData } from "@/lib/catalog-queries";
+import { dismissSplash } from "@/lib/splash";
 
 const removeErrorDiagnostics = installErrorDiagnostics();
 if (import.meta.hot) import.meta.hot.dispose(removeErrorDiagnostics);
 // Start once, outside StrictMode effects. Pages share these queries and own
 // loading/retry UI, so a failed warm-up never blocks the app shell.
-void prefetchBrowseData().catch(() => undefined);
+const browseData = prefetchBrowseData().catch(() => undefined);
+// The launch splash covers the first catalog load (bounded; see lib/splash).
+void dismissSplash(browseData);
 
 const router = createRouter({
   routeTree,

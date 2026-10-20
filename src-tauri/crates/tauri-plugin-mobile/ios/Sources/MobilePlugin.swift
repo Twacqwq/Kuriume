@@ -4,6 +4,10 @@ import Tauri
 import UIKit
 import WebKit
 
+private struct OpenUrlArgs: Decodable {
+    let url: String
+}
+
 private struct ControlArgs: Decodable {
     let action: String
     let value: Double?
@@ -112,6 +116,20 @@ class MobilePlugin: Plugin {
             sniffer?.cancel()
             sniffer = MediaSniffer(args: args, invoke: invoke)
             sniffer?.start(in: webview)
+        }
+    }
+
+    /// Opens a link in Safari (release pages).
+    @objc public func openUrl(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(OpenUrlArgs.self)
+        guard let url = URL(string: args.url) else {
+            invoke.reject("Invalid link")
+            return
+        }
+        DispatchQueue.main.async {
+            UIApplication.shared.open(url) { opened in
+                if opened { invoke.resolve() } else { invoke.reject("No app can open this link") }
+            }
         }
     }
 

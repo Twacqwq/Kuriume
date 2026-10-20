@@ -60,7 +60,7 @@ function EpisodePage() {
   const isFullscreen = fullscreen.mode !== "normal";
   const progressRef = useRef<Parameters<typeof historyApi.upsert>[0] | null>(null);
 
-  const { data: media } = useQuery(detailQueryOptions(id, language));
+  const { data: media, error: detailError } = useQuery(detailQueryOptions(id, language));
   const { data: storedMedia, isError: storedMediaError } = useQuery({
     queryKey: ["stored-media", id, language],
     queryFn: () => mediaApi.ensure(media!, language),
@@ -325,8 +325,11 @@ function EpisodePage() {
       onSetStatus={library.setStatus} onRemove={library.remove} />
   );
 
+  // Shown by the route error screen (retry / back) when the catalog lookup fails.
+  if (detailError && !media) throw detailError;
+
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background">
+    <div className="player-page flex h-full min-h-0 w-full flex-col overflow-hidden bg-background text-foreground">
       <header inert={isFullscreen} aria-hidden={isFullscreen} className={cn("player-header flex shrink-0 items-center gap-3 border-b border-white/6 px-3", isFullscreen && "invisible")}>
         <button
           type="button"

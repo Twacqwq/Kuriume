@@ -215,7 +215,7 @@ const CalendarCard = memo(function CalendarCard({ item, followed }: { item: Anim
                 {language === "zh" ? `第 ${item.schedule.episode} 话` : `Ep ${item.schedule.episode}`}
                 {" · "}
                 {item.schedule.airing_at <= Date.now() / 1000
-                  ? (language === "zh" ? "已更新" : "out")
+                  ? <span className="text-highlight">{language === "zh" ? "已更新" : "out"}</span>
                   : airingClock(item.schedule.airing_at, language)}
               </span>
             )}
