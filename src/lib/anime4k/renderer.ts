@@ -103,7 +103,9 @@ export class Anime4KRenderer {
 
   static async start(video: HTMLVideoElement, canvas: HTMLCanvasElement, quality: Anime4KQuality, onEvent: (event: Anime4KEvent) => void, source: FrameSource = "video") {
     const networks = await loadNetworks(quality);
-    const adapter = await navigator.gpu?.requestAdapter({ powerPreference: "high-performance" });
+    // Some WebViews answer only the default request (no power preference).
+    const adapter = await navigator.gpu?.requestAdapter({ powerPreference: "high-performance" })
+      ?? await navigator.gpu?.requestAdapter();
     if (!adapter) throw new Error("WebGPU is not available");
     const device = await adapter.requestDevice();
     const context = canvas.getContext("webgpu");

@@ -1,7 +1,7 @@
 import type Artplayer from "artplayer";
 import type { Anime4KEvent, Anime4KQuality } from "@/lib/anime4k/renderer";
 import { anime4kBackend, webgl2Capable } from "@/lib/anime4k/support";
-import { choosePath, cueText, readPath, writePath, type Anime4KPath } from "@/lib/anime4k/paths";
+import { choosePath, cueText, nextPath, readPath, writePath, type Anime4KPath } from "@/lib/anime4k/paths";
 
 export type { Anime4KPath } from "@/lib/anime4k/paths";
 
@@ -125,8 +125,8 @@ export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; 
 
   let path: Anime4KPath | null = null;
   /** Moves to the next path after an early failure; false when none is left. */
-  const fallBack = (current: Anime4KPath, backend: "webgpu" | "webgl2" | null) => {
-    const fallback = current === "video" ? "bitmap" : current === "bitmap" && backend === "webgpu" && webgl2Capable() ? "webgl2" : null;
+  const fallBack = (current: Anime4KPath, reason: unknown) => {
+    const fallback = nextPath(current, String(reason instanceof Error ? reason.message : reason), webgl2Capable());
     if (!fallback) return false;
     path = fallback;
     writePath(fallback);
@@ -154,7 +154,7 @@ export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; 
           if (event.type === "error") failed = true;
           if (event.type === "error" && early) {
             next?.stop();
-            if (fallBack(current, backend)) return;
+            if (fallBack(current, event.message)) return;
             options.onEvent({ ...event, message: `${current}: ${event.message}` });
           } else if (event.type === "slow" && event.quality === "hq") {
             next?.setQuality("fast");
@@ -168,7 +168,7 @@ export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; 
             ? await (await import("@/lib/anime4k/webgl-renderer")).Anime4KWebGLRenderer.start(video, canvas, "fast", onEvent)
             : await (await import("@/lib/anime4k/renderer")).Anime4KRenderer.start(video, canvas, options.quality, onEvent, current);
         } catch (reason) {
-          if (run === generation && fallBack(current, backend)) return;
+          if (run === generation && fallBack(current, reason)) return;
           throw reason;
         }
         if (run !== generation || !enabled) { next.stop(); return; }

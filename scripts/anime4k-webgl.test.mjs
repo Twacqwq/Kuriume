@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { evaluateSize, fragmentSource, parseHookShader } from "../src/lib/anime4k/glsl/mpv-hook.ts";
-import { choosePath } from "../src/lib/anime4k/paths.ts";
+import { choosePath, nextPath } from "../src/lib/anime4k/paths.ts";
 
 const shader = (name) => readFile(new URL(`../src/lib/anime4k/glsl/${name}`, import.meta.url), "utf8");
 
@@ -36,4 +36,12 @@ test("devices without WebGPU use the WebGL2 path; failures are remembered", () =
   assert.equal(choosePath(null, "webgl2"), "webgl2");
   assert.equal(choosePath("video", "webgl2"), "webgl2");
   assert.equal(choosePath(null, null), null);
+});
+
+test("a failed path steps down; missing WebGPU goes straight to WebGL2", () => {
+  assert.equal(nextPath("video", "OperationError: A valid external Instance reference no longer exists.", true), "bitmap");
+  assert.equal(nextPath("video", "WebGPU is not available", true), "webgl2");
+  assert.equal(nextPath("video", "WebGPU is not available", false), null);
+  assert.equal(nextPath("bitmap", "GPU device lost", true), "webgl2");
+  assert.equal(nextPath("webgl2", "WebGL context lost", true), null);
 });

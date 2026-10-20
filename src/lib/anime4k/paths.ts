@@ -28,6 +28,18 @@ export function choosePath(remembered: Anime4KPath | null, backend: Anime4KBacke
   return remembered ?? "video";
 }
 
+/**
+ * Where to go after `current` failed early. When WebGPU itself is missing
+ * (some WebKit builds expose navigator.gpu but hand out no adapter or
+ * device), retrying it through ImageBitmap is pointless: go to WebGL2.
+ */
+export function nextPath(current: Anime4KPath, reason: string, webgl2: boolean): Anime4KPath | null {
+  if (current === "webgl2") return null;
+  const noWebGPU = /webgpu is not available|webgpu canvas|requestdevice|adapter/i.test(reason);
+  if (current === "video" && !noWebGPU) return "bitmap";
+  return webgl2 ? "webgl2" : null;
+}
+
 
 /** Subtitle cue text without WebVTT markup, one line per cue line. */
 export function cueText(text: string): string {
