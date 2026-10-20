@@ -1,5 +1,9 @@
 import type Artplayer from "artplayer";
-import type { Anime4KEvent, Anime4KQuality, Anime4KRenderer, FrameSource } from "@/lib/anime4k/renderer";
+import type { Anime4KEvent, Anime4KQuality } from "@/lib/anime4k/renderer";
+import { anime4kBackend, webgl2Capable } from "@/lib/anime4k/support";
+import { choosePath, cueText, readPath, writePath, type Anime4KPath } from "@/lib/anime4k/paths";
+
+export type { Anime4KPath } from "@/lib/anime4k/paths";
 
 const PREFERENCE_KEY = "kuriume:anime4k";
 
@@ -11,20 +15,11 @@ export function writeAnime4KPreference(enabled: boolean) {
   try { localStorage.setItem(PREFERENCE_KEY, enabled ? "on" : "off"); } catch { /* per-device preference only */ }
 }
 
-const FRAME_SOURCE_KEY = "kuriume:anime4k-source";
-
-function readFrameSource(): FrameSource {
-  try { return localStorage.getItem(FRAME_SOURCE_KEY) === "bitmap" ? "bitmap" : "video"; } catch { return "video"; }
-}
-
-function writeFrameSource(source: FrameSource) {
-  try { localStorage.setItem(FRAME_SOURCE_KEY, source); } catch { /* best effort */ }
-}
-
-/** Subtitle cue text without WebVTT markup, one line per cue line. */
-export function cueText(text: string): string {
-  return text.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ");
-}
+type BackendRenderer = {
+  setQuality(quality: Anime4KQuality): void;
+  resize(box: { width: number; height: number }): void;
+  stop(): void;
+};
 
 export type Anime4KController = {
   setEnabled(enabled: boolean): void;
@@ -32,23 +27,35 @@ export type Anime4KController = {
 };
 
 /**
- * Lays a WebGPU canvas exactly over ArtPlayer's <video> and runs Anime4K on
+ * Lays a WebGPU (or WebGL2) canvas exactly over ArtPlayer's <video> and runs Anime4K on
  * every decoded frame while enabled. The canvas ignores pointer input, so
  * gestures and controls keep working. Native subtitle tracks render inside
  * the <video> (under the canvas), so while Anime4K is on they are drawn in a
  * text layer above it instead.
  */
-export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; onEvent: (event: Anime4KEvent | { type: "started" }) => void }): Anime4KController {
+export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; onEvent: (event: Anime4KEvent | { type: "started"; path: Anime4KPath }) => void }): Anime4KController {
   const video = art.video;
-  const canvas = document.createElement("canvas");
-  canvas.className = "kuriume-anime4k-canvas";
-  canvas.setAttribute("aria-hidden", "true");
+  // A canvas keeps the first context type it gets, so a switch to WebGL2
+  // needs a fresh one.
+  const makeCanvas = () => {
+    const element = document.createElement("canvas");
+    element.className = "kuriume-anime4k-canvas";
+    element.setAttribute("aria-hidden", "true");
+    return element;
+  };
+  let canvas = makeCanvas();
+  const replaceCanvas = () => {
+    const fresh = makeCanvas();
+    fresh.style.cssText = canvas.style.cssText;
+    canvas.replaceWith(fresh);
+    canvas = fresh;
+  };
   const captions = document.createElement("div");
   captions.className = "kuriume-anime4k-captions";
   captions.setAttribute("aria-live", "off");
   video.after(canvas, captions);
 
-  let renderer: Anime4KRenderer | null = null;
+  let renderer: BackendRenderer | null = null;
   let enabled = false;
   let starting: Promise<void> | null = null;
   let generation = 0;
@@ -116,39 +123,63 @@ export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; 
     releaseTracks();
   };
 
-  // Some WebViews cannot hand decoded video frames to WebGPU directly; an
-  // error right after starting retries once through ImageBitmap copies.
-  // The fallback is remembered per device, so it is only discovered once.
-  let source: FrameSource = readFrameSource();
+  let path: Anime4KPath | null = null;
+  /** Moves to the next path after an early failure; false when none is left. */
+  const fallBack = (current: Anime4KPath, backend: "webgpu" | "webgl2" | null) => {
+    const fallback = current === "video" ? "bitmap" : current === "bitmap" && backend === "webgpu" && webgl2Capable() ? "webgl2" : null;
+    if (!fallback) return false;
+    path = fallback;
+    writePath(fallback);
+    stopRenderer();
+    if (enabled) start();
+    return true;
+  };
   const start = () => {
     const run = ++generation;
     const startedAt = performance.now();
     starting = (async () => {
       try {
-        const { Anime4KRenderer } = await import("@/lib/anime4k/renderer");
-        const next = await Anime4KRenderer.start(video, canvas, options.quality, (event) => {
-          if (event.type === "error" && next.source === "video" && performance.now() - startedAt < 4000 && run === generation) {
-            source = "bitmap";
-            writeFrameSource(source);
-            next.stop();
-            stopRenderer();
-            if (enabled) start();
+        const backend = await anime4kBackend();
+        path ??= choosePath(readPath(), backend);
+        if (!path) throw new Error("Neither WebGPU nor WebGL2 half-float rendering is available");
+        const current = path;
+        // Each run draws on a fresh canvas: a canvas keeps its first context
+        // for life, so a stopped renderer's context cannot be reused, and a
+        // switch between WebGPU and WebGL2 needs a new canvas anyway.
+        replaceCanvas();
+        let next: BackendRenderer | null = null;
+        let failed = false;
+        const onEvent = (event: Anime4KEvent) => {
+          const early = performance.now() - startedAt < 4000 && run === generation;
+          if (event.type === "error") failed = true;
+          if (event.type === "error" && early) {
+            next?.stop();
+            if (fallBack(current, backend)) return;
+            options.onEvent({ ...event, message: `${current}: ${event.message}` });
           } else if (event.type === "slow" && event.quality === "hq") {
-            next.setQuality("fast");
+            next?.setQuality("fast");
             options.onEvent(event);
           } else {
             options.onEvent(event);
           }
-        }, source);
+        };
+        try {
+          next = current === "webgl2"
+            ? await (await import("@/lib/anime4k/webgl-renderer")).Anime4KWebGLRenderer.start(video, canvas, "fast", onEvent)
+            : await (await import("@/lib/anime4k/renderer")).Anime4KRenderer.start(video, canvas, options.quality, onEvent, current);
+        } catch (reason) {
+          if (run === generation && fallBack(current, backend)) return;
+          throw reason;
+        }
         if (run !== generation || !enabled) { next.stop(); return; }
         renderer = next;
         art.template.$player.classList.add("kuriume-anime4k-on");
-        layout();
-        if (run !== generation) return; // retried with another frame source
+        layout(); // draws the first frame when paused, which can fail
+        if (run !== generation || failed) return; // failed, or moved to another path
         takeTracks();
-        options.onEvent({ type: "started" });
+        options.onEvent({ type: "started", path: current });
       } catch (reason) {
-        if (run === generation) options.onEvent({ type: "error", message: reason instanceof Error ? reason.message : String(reason) });
+        if (run === generation) options.onEvent({ type: "error", message: `${path ?? "none"}: ${reason instanceof Error ? reason.message : String(reason)}` });
       } finally {
         if (run === generation) starting = null;
       }

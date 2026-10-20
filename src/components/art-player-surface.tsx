@@ -126,7 +126,11 @@ export function ArtPlayerSurface({
       art.notice.show = event.type === "slow"
         ? (zh ? "设备性能不足，已暂停 Anime4K" : "Anime4K paused: this device can't keep up")
         : (zh ? "Anime4K 启动失败，已关闭" : "Anime4K could not start");
-      if (event.type === "error") console.warn("[anime4k]", event.message);
+      if (event.type === "error") {
+        // Recorded for 日志与诊断: which path failed and the WebView's reason.
+        console.warn("[anime4k]", event.message);
+        diagnose("player_error", "warn", { operation: asset.diagnosticId, code: "unsupported", message: `Anime4K: ${event.message}` });
+      }
     }
   };
   const actionsRef = useRef({ setSheet, next, toggleAnime4K, onAnime4KEvent });

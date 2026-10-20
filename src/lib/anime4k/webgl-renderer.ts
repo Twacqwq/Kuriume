@@ -103,7 +103,8 @@ export class Anime4KWebGLRenderer {
     gl.deleteTexture(this.frame);
     for (const { program } of this.programs.values()) gl.deleteProgram(program);
     gl.deleteProgram(this.present);
-    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    // No WEBGL_lose_context here: forcing a loss can upset some WebKit
+    // builds; the context goes with its canvas, which every start replaces.
   }
 
   private schedule() {

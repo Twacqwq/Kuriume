@@ -9,7 +9,6 @@ export function webgl2Capable(): boolean {
   try {
     const gl = document.createElement("canvas").getContext("webgl2");
     webgl2 = Boolean(gl && (gl.getExtension("EXT_color_buffer_float") || gl.getExtension("EXT_color_buffer_half_float")));
-    gl?.getExtension("WEBGL_lose_context")?.loseContext();
   } catch {
     webgl2 = false;
   }
