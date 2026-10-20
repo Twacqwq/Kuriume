@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import {
   displayAnimeDescription,
   displayAnimeTitle,
@@ -15,11 +16,21 @@ interface HeroBannerProps {
   items: readonly AnimeInfo[];
 }
 
+const HERO_DETAIL_DELAY_MS = 800;
+
 export function HeroBanner({ items }: HeroBannerProps) {
   const language = useDisplayLanguage();
   const [current, setCurrent] = useState(0);
   const activeIndex = items.length > 0 ? Math.min(current, items.length - 1) : 0;
   const media = items[activeIndex];
+  // The synopsis only shows from md up. Fetch it once a slide has stayed on
+  // screen for a moment, so swiping through the carousel costs no lookups.
+  const showsSynopsis = useMediaQuery("(min-width: 768px)");
+  const [settledId, setSettledId] = useState<string>();
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledId(media?.id), HERO_DETAIL_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [media?.id]);
   const { data: localizedMedia } = useQuery({
     queryKey: ["anime-detail", media?.id, language],
     queryFn: () =>
@@ -28,7 +39,10 @@ export function HeroBanner({ items }: HeroBannerProps) {
         id: media!.id,
         language,
       }),
-    enabled: Boolean(media && language === "zh"),
+    enabled: Boolean(
+      media && language === "zh" && settledId === media.id &&
+        (showsSynopsis || !media.title_cn),
+    ),
     staleTime: 1000 * 60 * 60,
   });
   const nextArtwork =

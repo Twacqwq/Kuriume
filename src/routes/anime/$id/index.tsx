@@ -24,7 +24,10 @@ function AnimeDetailPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const language = useDisplayLanguage();
-  const { data: media } = useQuery(detailQueryOptions(id, language));
+  const { data: media, error: detailError } = useQuery(detailQueryOptions(id, language));
+  // After a hover/touch preload the loader may not block navigation, so a
+  // failed lookup surfaces here and goes to the route error screen.
+  if (detailError) throw detailError;
   const { data: episodes = [] } = useQuery({
     ...episodesQueryOptions(id, media?.total_episodes ?? 0),
     enabled: !!media,

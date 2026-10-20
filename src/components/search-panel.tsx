@@ -14,6 +14,7 @@ export function SearchPanel({ open, onClose }: SearchPanelProps) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const composing = useRef(false);
+  const [isComposing, setIsComposing] = useState(false);
   const suppressImeSubmit = useRef(false);
   const navigate = useNavigate();
   const language = useDisplayLanguage();
@@ -62,8 +63,8 @@ export function SearchPanel({ open, onClose }: SearchPanelProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            onCompositionStart={() => { composing.current = true; }}
-            onCompositionEnd={() => { composing.current = false; }}
+            onCompositionStart={() => { composing.current = true; setIsComposing(true); }}
+            onCompositionEnd={() => { composing.current = false; setIsComposing(false); }}
             placeholder={language === "zh" ? "搜索动画" : "Search anime"}
             aria-label={language === "zh" ? "搜索动画" : "Search anime"}
             enterKeyHint="search"
@@ -76,7 +77,7 @@ export function SearchPanel({ open, onClose }: SearchPanelProps) {
           <button type="button" onClick={onClose} aria-label={language === "zh" ? "关闭搜索" : "Close search"} className="grid size-12 shrink-0 place-items-center rounded-lg text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary-readable"><X size={19} /></button>
         </form>
         <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <SearchSuggestions query={query} onSearch={(value) => submit(value)} onNavigate={onClose} />
+          <SearchSuggestions query={query} composing={isComposing} onSearch={(value) => submit(value)} onNavigate={onClose} />
         </div>
       </DialogContent>
     </Dialog>

@@ -3,7 +3,7 @@ use reqwest::Client;
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex, Semaphore};
 
@@ -14,13 +14,20 @@ use crate::models::{
 };
 use crate::provider::AnimeProvider;
 
+mod gate;
 mod search;
+
+use gate::{rate_limited_message, timeout_from_headers, RateGate};
 
 const ANILIST_API: &str = "https://graphql.anilist.co";
 const BANGUMI_API: &str = "https://api.bgm.tv";
 const USER_AGENT: &str = "Kuriume/0.1 (https://github.com/Kuriume/Kuriume)";
 const CHINESE_REQUEST_TIMEOUT: Duration = Duration::from_secs(4);
 const CHINESE_CACHE_LIMIT: usize = 512;
+/// Catalog media seen in any response (lists, search, calendar, details) is
+/// reused for details and episodes instead of asking AniList again.
+const MEDIA_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+const MEDIA_CACHE_LIMIT: usize = 600;
 
 const MEDIA_FIELDS: &str = r#"
   id
@@ -47,6 +54,11 @@ pub struct AniList {
     client: Client,
     chinese_metadata: Arc<Mutex<HashMap<u64, ChineseCacheEntry>>>,
     chinese_requests: Arc<Semaphore>,
+    gate: Arc<RateGate>,
+    media_cache: Arc<StdMutex<HashMap<u64, (Instant, Media)>>>,
+    /// One in-flight lookup per media ID; concurrent callers wait and reuse it.
+    media_flights: Arc<Mutex<HashMap<u64, Arc<Mutex<()>>>>>,
+    search_walks: Arc<StdMutex<HashMap<String, search::SearchWalk>>>,
 }
 
 impl AniList {
@@ -60,25 +72,79 @@ impl AniList {
             client,
             chinese_metadata: Arc::new(Mutex::new(HashMap::new())),
             chinese_requests: Arc::new(Semaphore::new(4)),
+            gate: Arc::new(RateGate::new()),
+            media_cache: Arc::new(StdMutex::new(HashMap::new())),
+            media_flights: Arc::new(Mutex::new(HashMap::new())),
+            search_walks: Arc::new(StdMutex::new(HashMap::new())),
+        }
+    }
+
+    fn cached_media(&self, id: u64) -> Option<Media> {
+        let cache = self.media_cache.lock().ok()?;
+        let (stored, media) = cache.get(&id)?;
+        (stored.elapsed() < MEDIA_CACHE_TTL).then(|| media.clone())
+    }
+
+    fn remember_media<'a>(&self, media: impl IntoIterator<Item = &'a Media>) {
+        let Ok(mut cache) = self.media_cache.lock() else {
+            return;
+        };
+        let now = Instant::now();
+        for item in media {
+            cache.insert(item.id, (now, item.clone()));
+        }
+        if cache.len() > MEDIA_CACHE_LIMIT {
+            cache.retain(|_, (stored, _)| now.duration_since(*stored) < MEDIA_CACHE_TTL);
+            while cache.len() > MEDIA_CACHE_LIMIT {
+                let Some(oldest) = cache
+                    .iter()
+                    .min_by_key(|(_, (stored, _))| *stored)
+                    .map(|(id, _)| *id)
+                else {
+                    break;
+                };
+                cache.remove(&oldest);
+            }
         }
     }
 
     async fn graphql<T: DeserializeOwned>(&self, query: String, variables: Value) -> Result<T> {
-        let body = json!({ "query": query, "variables": variables });
-        let mut response = self.client.post(ANILIST_API).json(&body).send().await?;
-        // AniList rate-limits bursts (HTTP 429 + Retry-After). One short wait
-        // keeps a page navigation from failing on a transient limit.
+        // Every AniList request is paced by one shared gate; during a server
+        // timeout callers fail fast instead of extending it.
+        self.gate
+            .admit()
+            .await
+            .map_err(|wait| ProviderError::Source(rate_limited_message(wait)))?;
+        let response = self
+            .client
+            .post(ANILIST_API)
+            .json(&json!({ "query": query, "variables": variables }))
+            .send()
+            .await?;
+
+        let header = |name: &str| {
+            response
+                .headers()
+                .get(name)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_owned)
+        };
+        let now_unix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let timeout = timeout_from_headers(
+            header("retry-after").as_deref(),
+            header("x-ratelimit-reset").as_deref(),
+            now_unix,
+        );
         if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            let wait = rate_limit_wait(
-                response
-                    .headers()
-                    .get(reqwest::header::RETRY_AFTER)
-                    .and_then(|value| value.to_str().ok()),
-            );
-            if let Some(wait) = wait {
-                tokio::time::sleep(wait).await;
-                response = self.client.post(ANILIST_API).json(&body).send().await?;
-            }
+            self.gate.block_for(timeout).await;
+            return Err(ProviderError::Source(rate_limited_message(timeout)));
+        }
+        // Out of quota: wait for the window to reset rather than earning a 429.
+        if header("x-ratelimit-remaining").as_deref() == Some("0") {
+            self.gate.block_for(timeout).await;
         }
 
         if !response.status().is_success() {
@@ -150,6 +216,7 @@ impl AniList {
         // AniList's search total can be an estimate (e.g. 5000). The last-page
         // flag is authoritative; do not keep requesting empty pages after it.
         let total = catalog_page_total(&data.page, offset, per_page);
+        self.remember_media(&data.page.media);
         Ok(PagedResult {
             data: data.page.media.into_iter().map(AnimeInfo::from).collect(),
             total,
@@ -158,7 +225,29 @@ impl AniList {
         })
     }
 
+    /// Details and episodes for one work: the shared cache first, and at most
+    /// one AniList request per ID even when several pages ask at once.
     async fn media(&self, id: u64) -> Result<Media> {
+        if let Some(media) = self.cached_media(id) {
+            return Ok(media);
+        }
+        let flight = {
+            let mut flights = self.media_flights.lock().await;
+            if flights.len() > 64 {
+                flights.retain(|_, lock| Arc::strong_count(lock) > 1);
+            }
+            Arc::clone(flights.entry(id).or_default())
+        };
+        let _guard = flight.lock().await;
+        if let Some(media) = self.cached_media(id) {
+            return Ok(media);
+        }
+        let media = self.fetch_media(id).await?;
+        self.remember_media([&media]);
+        Ok(media)
+    }
+
+    async fn fetch_media(&self, id: u64) -> Result<Media> {
         let query = format!(
             r#"
             query ($id: Int!) {{
@@ -404,6 +493,7 @@ impl AnimeProvider for AniList {
     }
 
     async fn get_calendar(&self, _language: Option<&str>) -> Result<Vec<CalendarEntry>> {
+        const CALENDAR_MAX_PAGES: u32 = 8;
         const SHANGHAI_OFFSET: i64 = 8 * 60 * 60;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -443,11 +533,13 @@ impl AnimeProvider for AniList {
                 .graphql(query, json!({ "page": page, "from": from, "to": to }))
                 .await?;
             schedules.extend(data.page.airing_schedules);
-            if !data.page.page_info.has_next_page {
+            // A week is a few pages; never follow a runaway `hasNextPage`.
+            if !data.page.page_info.has_next_page || page >= CALENDAR_MAX_PAGES {
                 break;
             }
             page += 1;
         }
+        self.remember_media(schedules.iter().map(|schedule| &schedule.media));
 
         let (airing_times, media): (Vec<_>, Vec<_>) = schedules
             .into_iter()
@@ -535,7 +627,7 @@ struct PageInfo {
     has_next_page: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Media {
     id: u64,
@@ -559,7 +651,7 @@ struct Media {
     studios: Option<StudioConnection>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct MediaTitle {
     romaji: Option<String>,
     english: Option<String>,
@@ -680,21 +772,21 @@ impl BangumiSubject {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CoverImage {
     extra_large: Option<String>,
     large: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct FuzzyDate {
     year: Option<u16>,
     month: Option<u8>,
     day: Option<u8>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct NextAiringEpisode {
     episode: u32,
@@ -702,13 +794,13 @@ struct NextAiringEpisode {
     airing_at: Option<i64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct StudioConnection {
     #[serde(default)]
     nodes: Vec<Studio>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct Studio {
     name: String,
 }
@@ -812,16 +904,6 @@ impl From<Media> for AnimeInfo {
             schedule: None,
         }
     }
-}
-
-/// How long to wait before retrying a rate-limited request: the server's
-/// `Retry-After` seconds (2 s when absent), but never longer than 5 s; a longer
-/// limit is reported to the caller instead of blocking the page.
-fn rate_limit_wait(retry_after: Option<&str>) -> Option<Duration> {
-    let seconds = retry_after
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .unwrap_or(2);
-    (seconds <= 5).then(|| Duration::from_secs(seconds.max(1)))
 }
 
 /// Broadcast episodes: everything before the next airing, or all of a
@@ -1427,15 +1509,6 @@ mod tests {
         );
         assert!(info.description_cn.is_none());
         assert!(!is_probably_japanese("冒险者再次踏上了寻找魔法的旅途。"));
-    }
-
-    #[test]
-    fn rate_limits_wait_briefly_or_give_up() {
-        assert_eq!(rate_limit_wait(None), Some(Duration::from_secs(2)));
-        assert_eq!(rate_limit_wait(Some("3")), Some(Duration::from_secs(3)));
-        assert_eq!(rate_limit_wait(Some("0")), Some(Duration::from_secs(1)));
-        assert_eq!(rate_limit_wait(Some("60")), None);
-        assert_eq!(rate_limit_wait(Some("soon")), Some(Duration::from_secs(2)));
     }
 
     #[test]
