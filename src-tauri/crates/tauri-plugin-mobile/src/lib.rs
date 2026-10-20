@@ -61,10 +61,19 @@ mod mobile {
         .await
         .map_err(|error| error.to_string())?
     }
+
+    // Trusted Rust callers only (the app validates the URL); no frontend permission.
+    pub async fn open_url<R: Runtime>(app: AppHandle<R>, url: String) -> Result<(), String> {
+        app.state::<Mobile<R>>()
+            .0
+            .run_mobile_plugin::<serde_json::Value>("openUrl", serde_json::json!({ "url": url }))
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
 }
 
 #[cfg(mobile)]
-pub use mobile::sniff;
+pub use mobile::{open_url, sniff};
 
 #[cfg(target_os = "ios")]
 tauri::ios_plugin_binding!(init_plugin_mobile);

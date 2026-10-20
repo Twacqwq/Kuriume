@@ -1,9 +1,12 @@
 package com.twac.kuriume.mobile
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
+import android.net.Uri
 import android.provider.Settings
 import android.view.WindowManager
 import android.webkit.WebView
@@ -17,6 +20,9 @@ import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import kotlin.math.roundToInt
+
+@InvokeArg
+class OpenUrlArgs { lateinit var url: String }
 
 @InvokeArg
 class ControlArgs { lateinit var action: String; var value: Double? = null; var session: String? = null }
@@ -115,6 +121,20 @@ class MobilePlugin(private val activity: Activity) : Plugin(activity) {
             sniffer?.cancel()
             sniffer = MediaSniffer(activity, args, invoke)
             sniffer?.start()
+        }
+    }
+
+    /** Opens a link in the system browser (release pages and APK downloads). */
+    @Command
+    fun openUrl(invoke: Invoke) {
+        val args = invoke.parseArgs(OpenUrlArgs::class.java)
+        activity.runOnUiThread {
+            try {
+                activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(args.url)))
+                invoke.resolve()
+            } catch (error: ActivityNotFoundException) {
+                invoke.reject("No app can open this link")
+            }
         }
     }
 }

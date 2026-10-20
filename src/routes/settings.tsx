@@ -21,8 +21,14 @@ import {
   ScrollText,
   ChevronRight,
   History,
+  Download,
+  ExternalLink,
+  Github,
+  Info,
 } from "lucide-react";
 import { useState } from "react";
+import { useAppUpdate } from "@/hooks/use-app-update";
+import { openExternal, plainReleaseNotes, PROJECT_URL } from "@/lib/app-update";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -126,6 +132,8 @@ function SettingsPage() {
             </SettingRow>
           </SettingsGroup>
 
+          <AboutGroup zh={zh} />
+
           <SettingsGroup title={zh ? "诊断" : "Diagnostics"}>
             <Link to="/settings/logs" className="flex min-h-20 items-center gap-3 px-4 py-3 text-sm font-medium outline-none hover:bg-secondary/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-readable">
               <ScrollText className="size-4.5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -136,6 +144,80 @@ function SettingsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function AboutGroup({ zh }: { zh: boolean }) {
+  const { version, update } = useAppUpdate();
+  const [openError, setOpenError] = useState<string | null>(null);
+  const open = (url: string) => {
+    setOpenError(null);
+    openExternal(url).catch((reason) => setOpenError(toErrorMessage(reason, zh ? "无法打开链接" : "Could not open the link")));
+  };
+  const result = update.data;
+  const checking = update.isFetching;
+  const status = checking
+    ? <span className="inline-flex items-center gap-1.5"><Loader2 className="size-3.5 animate-spin" aria-hidden="true" />{zh ? "正在检查…" : "Checking…"}</span>
+    : update.isError
+      ? <span className="text-destructive-readable">{zh ? "检查失败" : "Check failed"}</span>
+      : result?.status === "available"
+        ? <span className="rounded-full bg-highlight/14 px-2 py-0.5 font-bold text-highlight">{zh ? `新版本 v${result.latest}` : `v${result.latest} available`}</span>
+        : result?.status === "latest"
+          ? <span className="inline-flex items-center gap-1"><Check className="size-3.5" aria-hidden="true" />{zh ? "已是最新版本" : "Up to date"}</span>
+          : null;
+  const notes = result?.status === "available" ? plainReleaseNotes(result.notes) : [];
+
+  return (
+    <SettingsGroup title={zh ? "关于" : "About"}>
+      <div className="flex min-h-20 items-center gap-3 px-4 py-3 text-sm">
+        <Info className="size-4.5 shrink-0 stroke-[1.8] text-muted-foreground" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">{zh ? "版本" : "Version"} <span className="ml-1 tabular-nums text-muted-foreground">{version ? `v${version}` : "—"}</span></p>
+          <p role="status" className="mt-1 text-xs text-muted-foreground">{status}</p>
+        </div>
+        <Button type="button" variant="secondary" className="h-12 shrink-0 px-4" disabled={!version || checking} onClick={() => void update.refetch()}>
+          {zh ? "检查更新" : "Check for updates"}
+        </Button>
+      </div>
+      {result?.status === "available" && (
+        <div className="space-y-3 bg-highlight/6 px-4 py-4">
+          <div>
+            <p className="text-sm font-bold">{zh ? `Kuriume v${result.latest} 已发布` : `Kuriume v${result.latest} is out`}</p>
+            {result.publishedAt && (
+              <p className="mt-0.5 text-xs text-muted-foreground">{new Date(result.publishedAt).toLocaleDateString(zh ? "zh-CN" : "en-US")}</p>
+            )}
+          </div>
+          {notes.length > 0 && (
+            <ul className="space-y-1 text-xs leading-5 text-muted-foreground">
+              {notes.map((line, index) => <li key={index} className="break-words">{line}</li>)}
+            </ul>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" className="h-12 px-4" onClick={() => open(result.download?.url ?? result.pageUrl)}>
+              <Download aria-hidden="true" />
+              {result.download ? (zh ? "下载更新" : "Download") : (zh ? "前往发布页" : "Open release")}
+            </Button>
+            {result.download && (
+              <Button type="button" variant="ghost" className="h-12 px-4 text-muted-foreground" onClick={() => open(result.pageUrl)}>
+                {zh ? "更新说明" : "Release notes"}
+              </Button>
+            )}
+          </div>
+          {result.download?.name.endsWith(".apk") && (
+            <p className="text-xs leading-5 text-muted-foreground">{zh ? "下载完成后点开安装包即可覆盖安装，观看记录会保留。" : "Open the downloaded package to install over this version; your history is kept."}</p>
+          )}
+        </div>
+      )}
+      <button type="button" onClick={() => open(PROJECT_URL)} className="press flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium outline-none hover:bg-secondary/60 active:bg-secondary/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-readable">
+        <Github className="size-4.5 shrink-0 stroke-[1.8] text-muted-foreground" aria-hidden="true" />
+        <span className="flex-1">{zh ? "项目主页" : "Project page"}</span>
+        <span className="hidden text-xs text-muted-foreground min-[380px]:inline">github.com/Twacqwq/Kuriume</span>
+        <ExternalLink className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      </button>
+      {(openError || update.isError) && (
+        <p role="alert" className="px-4 py-3 text-xs text-destructive-readable">{openError ?? toErrorMessage(update.error, zh ? "检查更新失败" : "Update check failed")}</p>
+      )}
+    </SettingsGroup>
   );
 }
 

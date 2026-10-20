@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tauri::menu::Menu;
 use tauri::Manager;
 
+mod app_commands;
 mod commands;
 mod diagnostics;
 #[cfg(target_os = "macos")]
@@ -108,6 +109,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            crate::app_commands::open_external,
             crate::diagnostics::diagnostics_write,
             crate::diagnostics::diagnostics_read,
             crate::diagnostics::diagnostics_clear,
