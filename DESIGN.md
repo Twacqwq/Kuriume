@@ -115,13 +115,9 @@ The palette is 暖墨栗: roughly 90 % warm-grey surfaces, 8 % 栗梅, 2 % 金�
 
 Detail pages set `--cover-tone` from AniList's dominant cover colour (clamped to a quiet saturation and lightness band; grey covers keep the 栗梅 default) and glow it behind the hero; the artwork fades into that glow. The player page (`.player-page`) switches to neutral greys (`player-background`), because a warm frame shifts how the video's colours are perceived.
 
-### Launch and loading
+### Launch
 
-The mascot is Kuri (栗), an original chestnut drawn soft and flat: thin dark-brown outline, 栗-brown shell with a highlight, a pale stippled base, big glossy eyes, blush and a tiny open smile, and a 金茶 leaf on the stem. It is our own character; don't trace or borrow existing anime characters.
-
-- Launch splash (`index.html`, inline so it paints before the bundle): Kuri drops in and lands with a squash-and-stretch bounce, the leaf sways and Kuri blinks; the `Kuriume` wordmark (Manrope 800, the K in `primary-readable`) pops in letter by letter, then `栗梅 · 今天也一起追番吧`. Stars twinkle and autumn leaves drift over the ink canvas. It stays at least 1.5 s and at most 3 s, leaving once the first catalog data is ready (`src/lib/splash.ts`). Native launch colours (window, Android theme, iOS LaunchScreen) match the canvas so there is no flash.
-- `KuriLoader` replaces spinners: `lg` for full-page waits, `md` over video, `sm` inline beside short status text. Kuri hops with a shadow that shrinks mid-air and blinks now and then; `md`/`lg` add 金茶 twinkles and falling leaves. Page-shaped skeletons stay where the layout is known (home, calendar).
-- Under reduced motion every animation stops and Kuri shows static.
+The launch splash (`index.html`, inline so it paints before the bundle) is the solid `background` canvas with the app icon centred, the `Kuriume` wordmark (Manrope 800) and `栗梅` below it. The icon pops in gently and the text rises after it; under reduced motion they appear without motion. The splash stays at least 0.9 s and at most 2.5 s, leaving once the first catalog data is ready (`src/lib/splash.ts`). Native launch colours (window, Android theme, iOS LaunchScreen) match the canvas so there is no flash.
 
 ## Typography
 

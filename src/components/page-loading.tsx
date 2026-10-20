@@ -1,4 +1,4 @@
-import { KuriLoader, KuriMark } from "@/components/kuri-loader";
+import { Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
 import { cn } from "@/lib/utils";
@@ -7,20 +7,15 @@ export function LoadingStatus({ className }: { className?: string }) {
   const language = useDisplayLanguage();
   return (
     <div role="status" className={cn("flex items-center gap-2 text-sm text-muted-foreground", className)}>
-      <span aria-hidden="true" className="kuri kuri-sm inline-grid shrink-0"><KuriMark className="size-full" /></span>
+      <Loader2 aria-hidden="true" className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />
       <span>{language === "zh" ? "正在载入…" : "Loading…"}</span>
     </div>
   );
 }
 
 // Route/chunk fallback. Page-specific skeletons below keep the app shell usable.
-export function PageLoading({ label }: { label?: string }) {
-  const language = useDisplayLanguage();
-  return (
-    <div className="grid min-h-[60dvh] place-items-center px-6">
-      <KuriLoader size="lg" label={label ?? (language === "zh" ? "正在载入…" : "Loading…")} />
-    </div>
-  );
+export function PageLoading() {
+  return <LoadingStatus className="min-h-64 justify-center" />;
 }
 
 export function HomePageLoading() {

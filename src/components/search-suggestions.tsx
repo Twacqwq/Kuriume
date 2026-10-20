@@ -4,8 +4,7 @@ import type { AnimeInfo, PagedResult } from "@/lib/types";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowUpRight, Clock3, Search, X } from "lucide-react";
-import { KuriMark } from "@/components/kuri-loader";
+import { ArrowUpRight, Clock3, Loader2, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const RECENT_KEY = "kuriume:recent-searches";
@@ -93,7 +92,7 @@ export function SearchSuggestions({ query, composing = false, onSearch, onNaviga
     <section aria-label={zh ? "搜索建议" : "Suggestions"} className="px-1 pb-1 pt-2">
       {(suggestions.isFetching || !ready || debounced !== query.trim()) && items.length === 0 ? (
         <p role="status" className="flex min-h-12 items-center gap-2 px-3 text-sm text-muted-foreground">
-          <span aria-hidden="true" className="kuri kuri-sm inline-grid shrink-0"><KuriMark className="size-full" /></span>{zh ? "正在查找…" : "Searching…"}
+          <Loader2 size={14} className="animate-spin text-primary-readable motion-reduce:animate-none" />{zh ? "正在查找…" : "Searching…"}
         </p>
       ) : (
         <ul>

@@ -1,5 +1,4 @@
 import { LibraryControl } from "@/components/library-control";
-import { KuriLoader } from "@/components/kuri-loader";
 import { PlaybackPanel, PlaybackOptions, type PanelDrawer } from "@/components/playback-panel";
 import { PlaybackSurface } from "@/components/playback-surface";
 import { PlaybackSubtitles } from "@/components/playback-subtitles";
@@ -30,6 +29,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import {
   ArrowLeft,
+  Loader2,
   Radio,
   RefreshCw,
   TriangleAlert,
@@ -469,9 +469,10 @@ function PlaybackEmptyState({
 
   if (status) {
     return (
-      <div className="relative flex h-full flex-col items-center justify-center">
+      <div role="status" className="relative flex h-full flex-col items-center justify-center gap-3 text-white/55">
         {exitBar}
-        <KuriLoader size="md" tone="inverse" label={status} />
+        <Loader2 className="h-6 w-6 animate-spin text-primary-readable" />
+        <p className="text-sm">{status}</p>
       </div>
     );
   }

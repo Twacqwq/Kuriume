@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-import { KuriMark } from "@/components/kuri-loader";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { refreshCatalogLanguage } from "@/lib/catalog-queries";
@@ -222,7 +221,7 @@ function LoadingSettings({ language }: { language: DisplayLanguage }) {
       role="status"
       className="flex items-center gap-2 px-4 py-6 text-xs text-muted-foreground"
     >
-      <span aria-hidden="true" className="kuri kuri-sm inline-grid shrink-0"><KuriMark className="size-full" /></span>
+      <Loader2 size={14} className="animate-spin" aria-hidden="true" />
       {language === "zh" ? "正在读取…" : "Loading…"}
     </div>
   );

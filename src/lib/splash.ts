@@ -1,7 +1,7 @@
-/** Shortest time the launch splash stays, so the mascot can land. */
-export const SPLASH_MIN_MS = 1500;
+/** Shortest time the launch splash stays, so it never just flickers. */
+export const SPLASH_MIN_MS = 900;
 /** Never hold the app back longer than this for slow first data. */
-export const SPLASH_MAX_MS = 3000;
+export const SPLASH_MAX_MS = 2500;
 const FADE_MS = 450;
 
 /**
