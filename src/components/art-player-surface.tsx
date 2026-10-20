@@ -10,6 +10,9 @@ import { useEffect, useRef, useState } from "react";
 import { playerIcons } from "@/components/art-player-icons";
 import { bindPlayerAccessibility } from "@/components/art-player-accessibility";
 import { bindTouchProgress } from "@/components/art-player-progress";
+import { bindAnime4K, readAnime4KPreference, writeAnime4KPreference, type Anime4KController } from "@/components/art-player-anime4k";
+import { anime4kSupported } from "@/lib/anime4k/support";
+import type { Anime4KEvent } from "@/lib/anime4k/renderer";
 import { PLAYBACK_RATES, PlayerChrome, type PlayerEpisode, type PlayerNext, type PlayerSheet } from "@/components/player-chrome";
 import "@/components/art-player-skin.css";
 import { diagnose, diagnosticMessage, type DiagnosticCode } from "@/lib/diagnostics";
@@ -90,8 +93,41 @@ export function ArtPlayerSurface({
   const gestureOptions = useRef<GestureOptions>({});
   gestureOptions.current = { levels: isFullscreen, locked, onLockedTap: () => setLockFlash(Date.now()) };
   const gesture = usePlayerGestures(gesturePlayer, language, gestureOptions);
-  const actionsRef = useRef({ setSheet, next });
-  actionsRef.current = { setSheet, next };
+  // Anime4K: the preference persists per device; support is probed once.
+  const [anime4k, setAnime4k] = useState(readAnime4KPreference);
+  const [anime4kSupport, setAnime4kSupport] = useState<"unknown" | "yes" | "no">("unknown");
+  const anime4kRef = useRef<Anime4KController | null>(null);
+  const toggleAnime4K = () => {
+    const art = artRef.current;
+    const zh = language === "zh";
+    if (anime4kSupport === "no") {
+      if (art) art.notice.show = zh ? "当前设备不支持 Anime4K（需要 WebGPU）" : "Anime4K needs WebGPU, which this device lacks";
+      return;
+    }
+    const next = !anime4k;
+    setAnime4k(next);
+    writeAnime4KPreference(next);
+    if (art && !next) art.notice.show = zh ? "Anime4K 已关闭" : "Anime4K off";
+  };
+  const onAnime4KEvent = (event: Anime4KEvent | { type: "started" }) => {
+    const art = artRef.current;
+    const zh = language === "zh";
+    if (!art) return;
+    if (event.type === "started") {
+      art.notice.show = zh ? "Anime4K 已开启" : "Anime4K on";
+    } else if (event.type === "slow" && event.quality === "hq") {
+      art.notice.show = zh ? "Anime4K 已切换为流畅模式" : "Anime4K switched to fast mode";
+    } else {
+      // Off for this session only; the saved preference stays as chosen.
+      setAnime4k(false);
+      art.notice.show = event.type === "slow"
+        ? (zh ? "设备性能不足，已暂停 Anime4K" : "Anime4K paused: this device can't keep up")
+        : (zh ? "Anime4K 启动失败，已关闭" : "Anime4K could not start");
+      if (event.type === "error") console.warn("[anime4k]", event.message);
+    }
+  };
+  const actionsRef = useRef({ setSheet, next, toggleAnime4K, onAnime4KEvent });
+  actionsRef.current = { setSheet, next, toggleAnime4K, onAnime4KEvent };
   const callbacksRef = useRef({ onEnded, onProgress, onError, onPlaying, onSubtitleError });
   callbacksRef.current = { onEnded, onProgress, onError, onPlaying, onSubtitleError };
   const initialOptionsRef = useRef({ poster, startTime, autoPlay, defaultVolume, defaultSpeed, language });
@@ -157,11 +193,15 @@ export function ArtPlayerSurface({
         }),
         ...([
           ["next", "left", 15, NEXT_ICON, () => actionsRef.current.next?.onPlay()],
+          ["anime4k", "right", 35, "", () => actionsRef.current.toggleAnime4K()],
           ["speed", "right", 40, "", () => actionsRef.current.setSheet("speed")],
           ["episodes", "right", 45, "", () => actionsRef.current.setSheet("episodes")],
         ] as const).map(([name, position, index, icon, action]) => {
           const button = controlButton(icon);
-          if (!icon) button.className += " kuriume-player-text-button";
+          if (name === "anime4k") {
+            button.className += " kuriume-anime4k-toggle";
+            button.innerHTML = '<span class="kuriume-anime4k-badge" aria-hidden="true"><span class="kuriume-anime4k-word">Anime</span><span class="kuriume-anime4k-mark">4K</span></span>';
+          } else if (!icon) button.className += " kuriume-player-text-button";
           return {
             name: `kuriume-${name}`,
             position,
@@ -235,6 +275,11 @@ export function ArtPlayerSurface({
     // reads those as "hovering the bottom bar" and then never auto-hides it.
     if (isMobileApp) Object.defineProperty(art.controls, "isHover", { get: () => false, set: () => {}, configurable: true });
     const unbindProgress = isMobileApp ? bindTouchProgress(art) : () => {};
+    const anime4kController = bindAnime4K(art, {
+      quality: isMobileApp ? "fast" : "hq",
+      onEvent: (event) => actionsRef.current.onAnime4KEvent(event),
+    });
+    anime4kRef.current = anime4kController;
     artRef.current = art;
     setGesturePlayer(art);
     if (!isMobileApp) art.on("dblclick", () => fullscreenRef.current.toggle("system"));
@@ -294,6 +339,8 @@ export function ArtPlayerSurface({
       hls?.destroy();
       unbindAccessibility();
       unbindProgress();
+      anime4kController.destroy();
+      anime4kRef.current = null;
       art.destroy(false);
       artRef.current = null;
       setGesturePlayer(null);
@@ -403,6 +450,30 @@ export function ArtPlayerSurface({
     return () => { art.off("video:ratechange", speed); };
   }, [gesturePlayer, hasNext, isFullscreen, episodeCount, language]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void anime4kSupported().then((supported) => { if (!cancelled) setAnime4kSupport(supported ? "yes" : "no"); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Anime4K toggle state and the renderer follow the preference and support.
+  useEffect(() => {
+    const art = gesturePlayer;
+    if (!art) return;
+    anime4kRef.current?.setEnabled(anime4k && anime4kSupport === "yes");
+    const button = (art.controls["kuriume-anime4k"] as HTMLElement | undefined)?.querySelector("button");
+    if (!button) return;
+    const zh = language === "zh";
+    const on = anime4k && anime4kSupport !== "no";
+    button.setAttribute("aria-pressed", String(on));
+    button.dataset.unsupported = String(anime4kSupport === "no");
+    const label = anime4kSupport === "no"
+      ? (zh ? "Anime4K：当前设备不支持" : "Anime4K: not supported on this device")
+      : zh ? `Anime4K 画质增强：${on ? "已开启" : "已关闭"}` : `Anime4K upscaling: ${on ? "on" : "off"}`;
+    button.setAttribute("aria-label", label);
+    button.title = label;
+  }, [gesturePlayer, anime4k, anime4kSupport, language]);
+
   // Desktop: keyboard shortcuts beyond ArtPlayer's own (space, arrows), and wheel volume.
   useEffect(() => {
     const art = gesturePlayer;
@@ -425,6 +496,7 @@ export function ArtPlayerSurface({
         }
       } else if (event.key === "f" || event.key === "F") fullscreenRef.current.toggle("system");
       else if (event.key === "n" || event.key === "N") actionsRef.current.next?.onPlay();
+      else if (event.key === "a" || event.key === "A") actionsRef.current.toggleAnime4K();
       else if (event.key === "[") step(-1);
       else if (event.key === "]") step(1);
       else if (event.key === "?") actionsRef.current.setSheet("shortcuts");

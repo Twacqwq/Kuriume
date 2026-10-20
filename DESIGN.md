@@ -120,6 +120,10 @@ Detail pages set `--cover-tone` from AniList's dominant cover colour (clamped to
 
 The launch splash (`index.html`, inline so it paints before the bundle) is solid 深栗 `#3a201c` with the app icon centred, the `Kuriume` wordmark (Manrope 800) and `栗梅` below it. The icon pops in gently and the text rises after it; under reduced motion they appear without motion. The splash stays at least 0.9 s and at most 2.5 s, leaving once the first catalog data is ready (`src/lib/splash.ts`). Native launch colours (window, Android theme and Android 12 splash, iOS LaunchScreen) use the same 深栗, so launch shows one colour until the splash fades into the app.
 
+### Anime4K
+
+The player bar has an `Anime4K` text toggle beside 倍速: borderless Manrope (the "4K" in 800), foreground when off and 栗梅 `#cc6b5f` when on, 40 % opacity where WebGPU is missing. Short notices confirm on/off, a step down to fast mode, or why it stopped. Desktop runs the VL networks, phones the M networks; HQ drops to fast, and fast switches off for the session, when most frames miss a 30 fps budget. Shortcut: A.
+
 ## Typography
 
 The body font stack is shared throughout. Manrope and Noto Sans SC are bundled variable fonts; no runtime font download is needed. Headings and buttons use bold weight (700); setting labels use medium weight (500). The headline role describes desktop settings headings, the title role the mobile top bar, and the body/label roles compact interface text. Supporting metadata uses 12px/16px text; navigation has smaller labels where space requires them.

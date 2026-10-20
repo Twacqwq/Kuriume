@@ -330,6 +330,7 @@ function Shortcuts({ zh }: { zh: boolean }) {
     ["↑ / ↓", zh ? "音量" : "Volume"],
     ["F", zh ? "全屏" : "Fullscreen"],
     ["N", zh ? "下一集" : "Next episode"],
+    ["A", zh ? "Anime4K 画质增强" : "Anime4K upscaling"],
     ["[ / ]", zh ? "减速 / 加速" : "Slower / faster"],
     ["?", zh ? "显示快捷键" : "Show shortcuts"],
   ];

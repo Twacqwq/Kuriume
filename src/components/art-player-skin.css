@@ -329,6 +329,68 @@
   white-space: nowrap;
 }
 
+/* Anime4K toggle: borderless text in the bar, like 倍速; on turns it 栗梅.
+   #cc6b5f is 栗梅 lifted just enough to stay legible over the bar's dark
+   gradient (5.8:1 on black; the #a4534a fill colour is 3.9:1). Manrope
+   with the "4K" heavier reads as a spec label rather than a sentence. */
+.artplayer-app .kuriume-player-button.kuriume-anime4k-toggle {
+  width: auto;
+  min-width: 48px;
+  padding: 0 8px;
+}
+.artplayer-app .kuriume-player-button.kuriume-anime4k-toggle[aria-pressed="true"] {
+  background-color: transparent;
+}
+.kuriume-anime4k-badge {
+  display: inline-flex;
+  align-items: baseline;
+  color: var(--foreground);
+  font-family: Manrope, system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1;
+  font-feature-settings: "tnum", "lnum";
+  white-space: nowrap;
+  transition: color 160ms ease;
+}
+.kuriume-anime4k-word { font-weight: 600; letter-spacing: 0.005em; }
+.kuriume-anime4k-mark { font-weight: 800; letter-spacing: -0.01em; }
+.kuriume-anime4k-toggle[aria-pressed="true"] .kuriume-anime4k-badge { color: #cc6b5f; }
+.kuriume-anime4k-toggle[data-unsupported="true"] .kuriume-anime4k-badge { opacity: 0.4; }
+@media (prefers-reduced-motion: reduce) {
+  .kuriume-anime4k-badge { transition: none; }
+}
+
+/* Anime4K output: same box as the <video>, above it, below subtitles and
+   controls; hidden (video shows through) until the first frame is drawn. */
+.kuriume-anime4k-canvas {
+  position: absolute;
+  z-index: 12;
+  display: none;
+  pointer-events: none;
+}
+.kuriume-anime4k-on .kuriume-anime4k-canvas { display: block; }
+.kuriume-anime4k-captions {
+  position: absolute;
+  inset: auto 0 calc(var(--art-bottom-height, 48px) + 16px) 0;
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0 5%;
+  pointer-events: none;
+  text-align: center;
+}
+.kuriume-anime4k-captions span {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  font-size: clamp(16px, 2vw, 28px);
+  line-height: 1.35;
+  text-shadow: 0 1px 3px #000;
+}
+
 /* Locked fullscreen: no bars, no gestures; only the unlock button can appear. */
 .artplayer-app[data-locked="true"] .art-bottom,
 .artplayer-app[data-locked="true"] .art-mask {
