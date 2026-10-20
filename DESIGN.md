@@ -19,6 +19,7 @@ colors:
   border: "#342d2c"
   sidebar: "#100d0e"
   player-background: "#0e0e0f"
+  splash: "#3a201c"
 typography:
   headline:
     fontSize: "1.875rem"
@@ -117,7 +118,7 @@ Detail pages set `--cover-tone` from AniList's dominant cover colour (clamped to
 
 ### Launch
 
-The launch splash (`index.html`, inline so it paints before the bundle) is the solid `background` canvas with the app icon centred, the `Kuriume` wordmark (Manrope 800) and `栗梅` below it. The icon pops in gently and the text rises after it; under reduced motion they appear without motion. The splash stays at least 0.9 s and at most 2.5 s, leaving once the first catalog data is ready (`src/lib/splash.ts`). Native launch colours (window, Android theme, iOS LaunchScreen) match the canvas so there is no flash.
+The launch splash (`index.html`, inline so it paints before the bundle) is solid 深栗 `#3a201c` with the app icon centred, the `Kuriume` wordmark (Manrope 800) and `栗梅` below it. The icon pops in gently and the text rises after it; under reduced motion they appear without motion. The splash stays at least 0.9 s and at most 2.5 s, leaving once the first catalog data is ready (`src/lib/splash.ts`). Native launch colours (window, Android theme and Android 12 splash, iOS LaunchScreen) use the same 深栗, so launch shows one colour until the splash fades into the app.
 
 ## Typography
 
