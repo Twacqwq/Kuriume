@@ -1,4 +1,5 @@
 import { MediaDetail } from "@/components/media-detail";
+import { PageLoading } from "@/components/page-loading";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
 import {
   historyApi,
@@ -81,11 +82,7 @@ function AnimeDetailPage() {
   });
 
   if (!media) {
-    return (
-      <div className="grid min-h-full place-items-center pt-8 text-sm text-muted-foreground">
-        正在读取作品信息…
-      </div>
-    );
+    return <PageLoading label={language === "zh" ? "正在读取作品信息…" : "Loading details…"} />;
   }
 
   return (

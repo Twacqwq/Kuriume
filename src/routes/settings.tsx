@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { BloomMark } from "@/components/bloom-loader";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { refreshCatalogLanguage } from "@/lib/catalog-queries";
@@ -221,7 +222,7 @@ function LoadingSettings({ language }: { language: DisplayLanguage }) {
       role="status"
       className="flex items-center gap-2 px-4 py-6 text-xs text-muted-foreground"
     >
-      <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+      <span aria-hidden="true" className="bloom bloom-sm inline-grid shrink-0"><BloomMark className="size-full" /></span>
       {language === "zh" ? "正在读取…" : "Loading…"}
     </div>
   );

@@ -1,4 +1,5 @@
 import { LibraryControl } from "@/components/library-control";
+import { BloomLoader } from "@/components/bloom-loader";
 import { PlaybackPanel, PlaybackOptions, type PanelDrawer } from "@/components/playback-panel";
 import { PlaybackSurface } from "@/components/playback-surface";
 import { PlaybackSubtitles } from "@/components/playback-subtitles";
@@ -29,7 +30,6 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import {
   ArrowLeft,
-  Loader2,
   Radio,
   RefreshCw,
   TriangleAlert,
@@ -469,10 +469,9 @@ function PlaybackEmptyState({
 
   if (status) {
     return (
-      <div role="status" className="relative flex h-full flex-col items-center justify-center gap-3 text-white/55">
+      <div className="relative flex h-full flex-col items-center justify-center">
         {exitBar}
-        <Loader2 className="h-6 w-6 animate-spin text-primary-readable" />
-        <p className="text-sm">{status}</p>
+        <BloomLoader size="md" tone="inverse" label={status} />
       </div>
     );
   }

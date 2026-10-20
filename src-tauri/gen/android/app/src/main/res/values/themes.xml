@@ -1,6 +1,8 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Theme.kuriume" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+        <!-- Matches the web splash, so launch goes ink → splash with no flash. -->
+        <item name="android:windowBackground">@color/kuriume_ink</item>
+        <item name="android:windowSplashScreenBackground" tools:targetApi="31">@color/kuriume_ink</item>
     </style>
 </resources>

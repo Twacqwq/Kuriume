@@ -115,6 +115,14 @@ The palette is 暖墨栗: roughly 90 % warm-grey surfaces, 8 % 栗梅, 2 % 金�
 
 Detail pages set `--cover-tone` from AniList's dominant cover colour (clamped to a quiet saturation and lightness band; grey covers keep the 栗梅 default) and glow it behind the hero; the artwork fades into that glow. The player page (`.player-page`) switches to neutral greys (`player-background`), because a warm frame shifts how the video's colours are perceived.
 
+### Launch and loading
+
+The mark is a 梅 (plum) blossom — the second character of 栗梅 — with five round petals in `primary`, a dark heart and `highlight` stamens. Round petals keep it distinct from notched cherry blossoms.
+
+- Launch splash (`index.html`, inline so it paints before the bundle): the blossom spins open petal by petal, a ring pops, the 栗梅 / KURIUME wordmark rises, and petals drift across the ink canvas. It stays at least 1.5 s and at most 3 s, leaving once the first catalog data is ready (`src/lib/splash.ts`). Native launch colours (window, Android theme, iOS LaunchScreen) match the canvas so there is no flash.
+- `BloomLoader` replaces spinners: `lg` for full-page waits, `md` over video, `sm` inline beside short status text. Petals light up in turn while the flower turns; `md`/`lg` add 金茶 twinkles and a falling petal. Page-shaped skeletons stay where the layout is known (home, calendar).
+- Under reduced motion every bloom animation stops and the mark shows static.
+
 ## Typography
 
 The body font stack is shared throughout. Manrope and Noto Sans SC are bundled variable fonts; no runtime font download is needed. Headings and buttons use bold weight (700); setting labels use medium weight (500). The headline role describes desktop settings headings, the title role the mobile top bar, and the body/label roles compact interface text. Supporting metadata uses 12px/16px text; navigation has smaller labels where space requires them.
