@@ -210,7 +210,7 @@ export function PlayerChrome(props: PlayerChromeProps) {
       )}
 
       {ended && props.next && (
-        <div role="dialog" aria-label={zh ? "下一集" : "Up next"} className="player-chrome-next pointer-events-auto absolute right-3 w-[min(18rem,calc(100%-1.5rem))] rounded-2xl border border-white/10 bg-[#141214]/95 p-3 shadow-xl">
+        <div role="dialog" aria-label={zh ? "下一集" : "Up next"} className="player-chrome-next pointer-events-auto absolute right-3 w-[min(18rem,calc(100%-1.5rem))] rounded-2xl border border-white/10 bg-[#151516]/95 p-3 shadow-xl">
           <p className="text-xs text-white/60">{zh ? "下一集" : "Up next"}{countdown !== null && <span className="ml-1 tabular-nums">· {countdown}s</span>}</p>
           <p className="mt-0.5 truncate text-sm font-bold">{props.next.label}</p>
           <div className="mt-3 flex gap-2">
@@ -263,7 +263,7 @@ function Sheet({ title, side, viewport, onClose, closeLabel, children }: { title
     <div className={cn("pointer-events-auto inset-0 text-foreground", viewport ? "fixed z-[60]" : "absolute z-10")}>
       <button type="button" aria-label={closeLabel} tabIndex={-1} onClick={onClose} className="absolute inset-0 bg-black/45" />
       <div ref={panel} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}
-        className={cn("player-sheet absolute flex flex-col bg-[#141214]/96 outline-none backdrop-blur-sm",
+        className={cn("player-sheet absolute flex flex-col bg-[#151516]/96 outline-none backdrop-blur-sm",
           side === "right" ? "inset-y-0 right-0 w-[min(24rem,48%)] border-l border-white/8" : "inset-x-0 bottom-0 max-h-[78%] rounded-t-2xl border-t border-white/8")}>
         <div className="flex min-h-14 shrink-0 items-center justify-between pl-4 pr-1">
           <h2 className="text-base font-bold">{title}</h2>

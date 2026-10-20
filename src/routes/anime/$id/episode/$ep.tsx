@@ -329,7 +329,7 @@ function EpisodePage() {
   if (detailError && !media) throw detailError;
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background">
+    <div className="player-page flex h-full min-h-0 w-full flex-col overflow-hidden bg-background text-foreground">
       <header inert={isFullscreen} aria-hidden={isFullscreen} className={cn("player-header flex shrink-0 items-center gap-3 border-b border-white/6 px-3", isFullscreen && "invisible")}>
         <button
           type="button"

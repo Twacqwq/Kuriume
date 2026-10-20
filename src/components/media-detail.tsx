@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { coverTone } from "@/lib/cover-tone";
 import { LibraryControl } from "@/components/library-control";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
 import {
@@ -110,7 +111,7 @@ export function MediaDetail({
   };
 
   return (
-    <div className="media-detail min-h-full pb-10 md:pb-16">
+    <div className="media-detail detail-canvas min-h-full pb-10 md:pb-16" style={toneStyle(media.cover_color)}>
       <section className="relative overflow-hidden">
         <HeroArtwork media={media} />
         <div className="absolute left-4 top-4 z-20 md:left-8 md:top-10">
@@ -150,7 +151,7 @@ export function MediaDetail({
               {media.score && (
                 <>
                   <span className="text-white/25">·</span>
-                  <span className="inline-flex items-center gap-1 text-[#d9b56d]">
+                  <span className="inline-flex items-center gap-1 text-highlight">
                     <Star size={12} fill="currentColor" />
                     {media.score.toFixed(1)}
                   </span>
@@ -375,10 +376,17 @@ export function MediaDetail({
   );
 }
 
+function toneStyle(color: string | null | undefined): React.CSSProperties | undefined {
+  const tone = coverTone(color);
+  return tone ? ({ "--cover-tone": tone } as React.CSSProperties) : undefined;
+}
+
 function HeroArtwork({ media }: { media: AnimeInfo }) {
   const artwork = media.banner || media.cover;
   return (
-    <div className="absolute inset-0">
+    // The artwork fades out into the cover-tinted canvas instead of into a flat
+    // background colour, so the page below the hero carries the work's colour.
+    <div className="detail-artwork absolute inset-0">
       {artwork && (
         <img
           src={artwork}
@@ -391,7 +399,7 @@ function HeroArtwork({ media }: { media: AnimeInfo }) {
       )}
       <div className="absolute inset-0 bg-black/25" />
       <div className="absolute inset-0 hidden bg-linear-to-r from-background via-background/55 to-background/10 lg:block" />
-      <div className="absolute inset-0 bg-linear-to-t from-background via-background/65 to-black/10 lg:via-background/25" />
+      <div className="absolute inset-0 bg-linear-to-t from-black/45 via-black/20 to-black/10" />
     </div>
   );
 }

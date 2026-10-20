@@ -14,7 +14,7 @@ import { PLAYBACK_RATES, PlayerChrome, type PlayerEpisode, type PlayerNext, type
 import "@/components/art-player-skin.css";
 import { diagnose, diagnosticMessage, type DiagnosticCode } from "@/lib/diagnostics";
 
-const KURIUME = "#904840";
+const KURIUME = "#a4534a";
 // Fullscreen belongs to the desktop page, including the double-click shortcut.
 Artplayer.DBCLICK_FULLSCREEN = false;
 Artplayer.SETTING_ITEM_HEIGHT = 48;

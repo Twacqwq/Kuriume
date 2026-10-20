@@ -1,20 +1,24 @@
 ---
 name: Kuriume
-description: Existing dark 栗梅 app and settings design.
+description: 暖墨栗 — warm-ink dark app with a 栗梅 accent.
 colors:
-  primary: "#904840"
+  primary: "#a4534a"
   primary-foreground: "#fff8f6"
-  primary-readable: "#d4938c"
+  primary-readable: "#e0a59c"
+  highlight: "#c8a36c"
+  highlight-foreground: "#1d150c"
   destructive: "#b44e4e"
   destructive-readable: "#ee8585"
-  background: "#0d0d0f"
-  foreground: "#f2efef"
-  card: "#151416"
-  secondary: "#242124"
-  muted-foreground: "#9c9698"
-  accent: "#292427"
-  border: "#312d30"
-  sidebar: "#111012"
+  background: "#141112"
+  foreground: "#eeeae8"
+  card: "#1e1a1a"
+  popover: "#241f1f"
+  secondary: "#2a2424"
+  muted-foreground: "#a59d9a"
+  accent: "#2e2727"
+  border: "#342d2c"
+  sidebar: "#100d0e"
+  player-background: "#0e0e0f"
 typography:
   headline:
     fontSize: "1.875rem"
@@ -80,7 +84,7 @@ components:
 
 ## Overview
 
-Kuriume uses a dark neutral palette with the confirmed 栗梅 accent, bundled Manrope and Chinese fallback fonts, and shadcn/ui components styled with Tailwind. Settings use compact groups, bold headings and actions, and minimal explanatory text. Desktop and mobile share colors, controls, and interaction states.
+Kuriume uses the 暖墨栗 (warm ink) palette: dark neutrals with a faint chestnut cast, the 栗梅 accent and a greyed 金茶 highlight, bundled Manrope and Chinese fallback fonts, and shadcn/ui components styled with Tailwind. Settings use compact groups, bold headings and actions, and minimal explanatory text. Desktop and mobile share colors, controls, and interaction states.
 
 This is an extraction of the existing implementation, not a new visual direction. Sources: `src/main.css`, `src/fonts.css`, `src/components/ui/`, `src/components/sidebar.tsx`, `src/components/mobile-navigation.tsx`, and the two settings routes. Diagnostics behavior below is local to `/settings/logs`.
 
@@ -93,13 +97,23 @@ This is an extraction of the existing implementation, not a new visual direction
 
 ## Colors
 
+The palette is 暖墨栗: roughly 90 % warm-grey surfaces, 8 % 栗梅, 2 % 金茶. Warmth comes from the accent, not from the text: foreground stays near-neutral so long sessions do not read as a warm filter.
+
 ### Primary
 
-`primary` is the 栗梅 fill for primary actions and tinted active navigation. `primary-foreground` supplies text on that fill; `primary-readable` supplies lighter accent text, icons, and focus rings. Destructive controls use `destructive`; readable error text uses `destructive-readable`.
+`primary` is the 栗梅 fill for primary actions, playback progress and tinted active navigation; it is the only saturated colour. `primary-foreground` supplies text on that fill; `primary-readable` supplies lighter accent text, icons, and focus rings. Destructive controls use `destructive`; readable error text uses `destructive-readable`.
+
+### Highlight
+
+`highlight` (金茶) marks time-sensitive reminders only: unwatched counts, "out now", scores. Use it as text or a 14 % tint behind small badges, never as a large fill or a button. `highlight-foreground` is text on a solid highlight fill.
 
 ### Neutral
 
-`background` is the app canvas, `card` groups settings rows, and `sidebar` separates navigation. `foreground` is the main text; `muted-foreground` carries supporting text and inactive icons. `secondary` is a neutral control fill, `accent` supplies hover surfaces, and `border` supplies dividers and field outlines. These are semantic roles from the stylesheet, not additional brand accents.
+`background` is the app canvas, `card` groups rows, `popover` floats above them, and `sidebar` separates navigation. Surfaces step up in lightness so groups read without heavy borders. `foreground` is the main text; `muted-foreground` carries supporting text and inactive icons. `secondary` is a neutral control fill, `accent` supplies hover surfaces, and `border` supplies dividers and field outlines.
+
+### Context tints
+
+Detail pages set `--cover-tone` from AniList's dominant cover colour (clamped to a quiet saturation and lightness band; grey covers keep the 栗梅 default) and glow it behind the hero; the artwork fades into that glow. The player page (`.player-page`) switches to neutral greys (`player-background`), because a warm frame shifts how the video's colours are perceived.
 
 ## Typography
 
@@ -115,7 +129,7 @@ The app uses a mobile top bar and four-item bottom navigation below 768px; at 76
 
 ## Elevation & Depth
 
-Settings groups use tonal separation and subtle dividers without card shadows. The app canvas has an existing faint accent radial wash. Inputs and outline buttons retain the small library shadow; alert dialogs use a larger shadow over a black overlay at 65% opacity. Exact shadow values are recorded in the sidecar.
+Settings groups use tonal separation and subtle dividers without card shadows. The app canvas has a faint 栗梅 radial wash; detail pages replace it with the cover-tone glow. Inputs and outline buttons retain the small library shadow; alert dialogs use a larger shadow over a black overlay at 65% opacity. Exact shadow values are recorded in the sidecar.
 
 ## Shapes
 

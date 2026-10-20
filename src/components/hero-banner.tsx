@@ -124,8 +124,8 @@ export function HeroBanner({ items }: HeroBannerProps) {
         />
       )}
 
-      <div className="absolute inset-0 hidden bg-linear-to-r from-[#0b090a] via-[#0b090a]/80 to-[#0b090a]/8 md:block" />
-      <div className="absolute inset-0 bg-linear-to-t from-[#0b090a] via-[#0b090a]/65 to-transparent md:from-[#0b090a]/75 md:via-transparent" />
+      <div className="absolute inset-0 hidden bg-linear-to-r from-background via-background/80 to-background/8 md:block" />
+      <div className="absolute inset-0 bg-linear-to-t from-background via-background/65 to-transparent md:from-background/75 md:via-transparent" />
 
       <div
         key={`${media.id}-content`}

@@ -4,33 +4,64 @@
 @custom-variant dark (&:where(.dark, .dark *));
 :root {
   --radius: 0.75rem;
-  --background: #0d0d0f;
-  --foreground: #f2efef;
-  --card: #151416;
-  --card-foreground: #f2efef;
-  --popover: #191719;
-  --popover-foreground: #f2efef;
-  --primary: #904840;
+  /* 暖墨栗: a faint chestnut cast in the neutrals, 栗梅 as the only saturated
+     colour, and a greyed 金茶 for reminders. Keep text near-neutral so long
+     sessions don't read as a warm filter. */
+  --background: #141112;
+  --foreground: #eeeae8;
+  --card: #1e1a1a;
+  --card-foreground: #eeeae8;
+  --popover: #241f1f;
+  --popover-foreground: #eeeae8;
+  --primary: #a4534a;
   --primary-foreground: #fff8f6;
-  --primary-readable: #d4938c;
+  --primary-readable: #e0a59c;
+  --highlight: #c8a36c;
+  --highlight-foreground: #1d150c;
   --destructive-readable: #ee8585;
-  --secondary: #242124;
-  --secondary-foreground: #f2efef;
-  --muted: #242124;
-  --muted-foreground: #9c9698;
-  --accent: #292427;
-  --accent-foreground: #f2efef;
+  --secondary: #2a2424;
+  --secondary-foreground: #eeeae8;
+  --muted: #2a2424;
+  --muted-foreground: #a59d9a;
+  --accent: #2e2727;
+  --accent-foreground: #eeeae8;
   --destructive: #b44e4e;
-  --border: #312d30;
-  --input: #312d30;
-  --ring: #904840;
-  --sidebar: #111012;
-  --sidebar-foreground: #f2efef;
-  --sidebar-primary: #904840;
+  --border: #342d2c;
+  --input: #342d2c;
+  --ring: #a4534a;
+  --sidebar: #100d0e;
+  --sidebar-foreground: #eeeae8;
+  --sidebar-primary: #a4534a;
   --sidebar-primary-foreground: #fff8f6;
-  --sidebar-accent: #242124;
-  --sidebar-accent-foreground: #f2efef;
-  --sidebar-border: #312d30;
+  --sidebar-accent: #2a2424;
+  --sidebar-accent-foreground: #eeeae8;
+  --sidebar-border: #342d2c;
+  /* Cover-derived tint for detail pages; set inline from the artwork. */
+  --cover-tone: 164 83 74;
+}
+/* Detail pages: a cover-coloured glow behind the hero that fades into the
+   canvas, so the page below the artwork is not a flat black field. */
+.detail-canvas {
+  background:
+    radial-gradient(ellipse 140% 75vh at 50% 0, rgb(var(--cover-tone) / 0.3), transparent 100%),
+    var(--background);
+}
+.detail-artwork { mask-image: linear-gradient(to bottom, #000 30%, transparent 96%); }
+@media (min-width: 1024px) {
+  .detail-artwork { mask-image: linear-gradient(to bottom, #000 50%, transparent 100%); }
+}
+/* Video needs a neutral surround: a warm frame makes the picture look cooler. */
+.player-page {
+  --background: #0e0e0f;
+  --card: #171718;
+  --popover: #1c1c1d;
+  --secondary: #252526;
+  --muted: #252526;
+  --accent: #2a2a2b;
+  --border: #2f2f30;
+  --input: #2f2f30;
+  --foreground: #eeeeee;
+  --muted-foreground: #a2a2a4;
 }
 @theme inline {
   --font-sans: "Manrope", "Noto Sans SC", -apple-system, BlinkMacSystemFont,
@@ -44,6 +75,8 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-readable: var(--primary-readable);
+  --color-highlight: var(--highlight);
+  --color-highlight-foreground: var(--highlight-foreground);
   --color-destructive-readable: var(--destructive-readable);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -114,14 +147,14 @@ body,
 body {
   @apply m-0 font-sans text-foreground antialiased;
   background:
-    radial-gradient(circle at 82% -10%, rgba(144, 72, 64, 0.08), transparent 30rem),
+    radial-gradient(circle at 82% -10%, rgba(164, 83, 74, 0.09), transparent 30rem),
     var(--background);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
 
 ::selection {
-  background: rgba(144, 72, 64, 0.45);
+  background: rgba(164, 83, 74, 0.45);
   color: #fff;
 }
 

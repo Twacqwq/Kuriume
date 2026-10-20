@@ -34,7 +34,7 @@ const MEDIA_FIELDS: &str = r#"
   idMal
   title { romaji english native }
   synonyms
-  coverImage { extraLarge large }
+  coverImage { extraLarge large color }
   bannerImage
   averageScore
   seasonYear
@@ -777,6 +777,8 @@ impl BangumiSubject {
 struct CoverImage {
     extra_large: Option<String>,
     large: Option<String>,
+    /// AniList's dominant cover colour, e.g. "#e4a15d".
+    color: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -875,6 +877,10 @@ impl From<Media> for AnimeInfo {
             search_titles,
             title_cn,
             title_native: native,
+            cover_color: media
+                .cover_image
+                .as_ref()
+                .and_then(|cover| cover.color.clone()),
             cover: media
                 .cover_image
                 .and_then(|cover| cover.extra_large.or(cover.large)),
