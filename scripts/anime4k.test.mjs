@@ -30,3 +30,9 @@ test("the Anime4K renderer stays out of the main bundle", async () => {
   assert.match(renderer, /import\("\.\/vendor\/pipelines\/restore\/CNNVL"\)/, "HQ weights load only for HQ");
   assert.doesNotMatch(renderer, /^import [^\n]*CNN(x2)?VL/m);
 });
+
+test("every Anime4K start draws on a fresh canvas (a stopped WebGL2 renderer loses its context)", async () => {
+  const controller = await readFile(new URL("../src/components/art-player-anime4k.ts", import.meta.url), "utf8");
+  const start = controller.slice(controller.indexOf("const start = () => {"));
+  assert.match(start.slice(0, start.indexOf("Anime4KWebGLRenderer")), /replaceCanvas\(\);/);
+});
