@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { targetSize, upscalePasses } from "../src/lib/anime4k/sizing.ts";
-import { cueText } from "../src/components/art-player-anime4k.ts";
+import { cueText } from "../src/lib/anime4k/paths.ts";
 
 test("Anime4K upscales only as far as the screen needs", () => {
   const p1080 = { width: 1920, height: 1080 };

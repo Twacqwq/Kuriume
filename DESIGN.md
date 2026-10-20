@@ -122,7 +122,7 @@ The launch splash (`index.html`, inline so it paints before the bundle) is solid
 
 ### Anime4K
 
-The player bar has an `Anime4K` text toggle beside 倍速: borderless Manrope (the "4K" in 800), foreground when off and 栗梅 `#cc6b5f` when on, 40 % opacity where WebGPU is missing. Short notices confirm on/off, a step down to fast mode, or why it stopped. Desktop runs the VL networks, phones the M networks; HQ drops to fast, and fast switches off for the session, when most frames miss a 30 fps budget. Shortcut: A.
+The player bar has an `Anime4K` text toggle beside 倍速: borderless Manrope (the "4K" in 800), foreground when off and 栗梅 `#cc6b5f` when on, 40 % opacity where neither WebGPU nor WebGL2 can run it. Short notices confirm on/off (「兼容模式」 on the WebGL2 path), a step down to fast mode, or why it stopped. With WebGPU, desktop runs the VL networks and phones the M networks; without it (macOS 15, iOS 18 and older) a WebGL2 path runs the M networks from the original GLSL; HQ drops to fast, and fast switches off for the session, when most frames miss a 30 fps budget. Shortcut: A.
 
 ## Typography
 

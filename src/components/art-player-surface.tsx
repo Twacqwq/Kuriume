@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { playerIcons } from "@/components/art-player-icons";
 import { bindPlayerAccessibility } from "@/components/art-player-accessibility";
 import { bindTouchProgress } from "@/components/art-player-progress";
-import { bindAnime4K, readAnime4KPreference, writeAnime4KPreference, type Anime4KController } from "@/components/art-player-anime4k";
+import { bindAnime4K, readAnime4KPreference, writeAnime4KPreference, type Anime4KController, type Anime4KPath } from "@/components/art-player-anime4k";
 import { anime4kSupported } from "@/lib/anime4k/support";
 import type { Anime4KEvent } from "@/lib/anime4k/renderer";
 import { PLAYBACK_RATES, PlayerChrome, type PlayerEpisode, type PlayerNext, type PlayerSheet } from "@/components/player-chrome";
@@ -101,7 +101,7 @@ export function ArtPlayerSurface({
     const art = artRef.current;
     const zh = language === "zh";
     if (anime4kSupport === "no") {
-      if (art) art.notice.show = zh ? "当前设备不支持 Anime4K（需要 WebGPU）" : "Anime4K needs WebGPU, which this device lacks";
+      if (art) art.notice.show = zh ? "当前设备不支持 Anime4K" : "Anime4K is not supported on this device";
       return;
     }
     const next = !anime4k;
@@ -109,12 +109,15 @@ export function ArtPlayerSurface({
     writeAnime4KPreference(next);
     if (art && !next) art.notice.show = zh ? "Anime4K 已关闭" : "Anime4K off";
   };
-  const onAnime4KEvent = (event: Anime4KEvent | { type: "started" }) => {
+  const onAnime4KEvent = (event: Anime4KEvent | { type: "started"; path: Anime4KPath }) => {
     const art = artRef.current;
     const zh = language === "zh";
     if (!art) return;
     if (event.type === "started") {
-      art.notice.show = zh ? "Anime4K 已开启" : "Anime4K on";
+      // WebGL2 (older macOS/iOS) runs the lighter networks only.
+      art.notice.show = event.path === "webgl2"
+        ? (zh ? "Anime4K 已开启（兼容模式）" : "Anime4K on (compatibility mode)")
+        : (zh ? "Anime4K 已开启" : "Anime4K on");
     } else if (event.type === "slow" && event.quality === "hq") {
       art.notice.show = zh ? "Anime4K 已切换为流畅模式" : "Anime4K switched to fast mode";
     } else {
