@@ -1,4 +1,4 @@
-import { BloomLoader, BloomMark } from "@/components/bloom-loader";
+import { KuriLoader, KuriMark } from "@/components/kuri-loader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
 import { cn } from "@/lib/utils";
@@ -7,7 +7,7 @@ export function LoadingStatus({ className }: { className?: string }) {
   const language = useDisplayLanguage();
   return (
     <div role="status" className={cn("flex items-center gap-2 text-sm text-muted-foreground", className)}>
-      <span aria-hidden="true" className="bloom bloom-sm inline-grid shrink-0"><BloomMark className="size-full" /></span>
+      <span aria-hidden="true" className="kuri kuri-sm inline-grid shrink-0"><KuriMark className="size-full" /></span>
       <span>{language === "zh" ? "正在载入…" : "Loading…"}</span>
     </div>
   );
@@ -18,7 +18,7 @@ export function PageLoading({ label }: { label?: string }) {
   const language = useDisplayLanguage();
   return (
     <div className="grid min-h-[60dvh] place-items-center px-6">
-      <BloomLoader size="lg" label={label ?? (language === "zh" ? "正在载入…" : "Loading…")} />
+      <KuriLoader size="lg" label={label ?? (language === "zh" ? "正在载入…" : "Loading…")} />
     </div>
   );
 }

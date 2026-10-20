@@ -1,5 +1,5 @@
 import { LibraryControl } from "@/components/library-control";
-import { BloomLoader } from "@/components/bloom-loader";
+import { KuriLoader } from "@/components/kuri-loader";
 import { PlaybackPanel, PlaybackOptions, type PanelDrawer } from "@/components/playback-panel";
 import { PlaybackSurface } from "@/components/playback-surface";
 import { PlaybackSubtitles } from "@/components/playback-subtitles";
@@ -471,7 +471,7 @@ function PlaybackEmptyState({
     return (
       <div className="relative flex h-full flex-col items-center justify-center">
         {exitBar}
-        <BloomLoader size="md" tone="inverse" label={status} />
+        <KuriLoader size="md" tone="inverse" label={status} />
       </div>
     );
   }

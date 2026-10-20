@@ -267,36 +267,46 @@ code {
   }
 }
 
-/* Bloom loader (components/bloom-loader.tsx). */
-.bloom-sm { width: 1rem; height: 1rem; }
-.bloom-md { width: 3rem; height: 3rem; }
-.bloom-lg { width: 4.5rem; height: 4.5rem; }
-.bloom-petal { fill: var(--primary); transform-box: fill-box; transform-origin: center; animation: bloom-pulse 1.5s calc(var(--i) * 0.15s) ease-in-out infinite both; }
-.bloom-heart { fill: #6e342e; }
-.bloom-stamen { stroke: var(--highlight); stroke-width: 1.2; stroke-linecap: round; opacity: 0.8; }
-.bloom-pollen { fill: var(--highlight); }
-.bloom-sm .bloom-stamen, .bloom-sm .bloom-pollen { display: none; }
-.bloom-mark { animation: bloom-turn 7s linear infinite; }
-.bloom-twinkle { position: absolute; width: 22%; height: 22%; fill: var(--highlight); animation: bloom-twinkle 2s var(--d, 0s) ease-in-out infinite both; }
-.bloom-drift { position: absolute; left: 70%; top: 10%; width: 18%; height: 13%; border-radius: 100% 0; background: var(--primary-readable); opacity: 0; animation: bloom-drift 2.6s 0.4s ease-in infinite; }
-@keyframes bloom-pulse {
-  0%, 100% { opacity: 0.4; transform: scale(0.84); }
-  30% { opacity: 1; transform: scale(1.06); }
-  55% { opacity: 0.9; transform: scale(1); }
+/* Kuri loader (components/kuri-loader.tsx). */
+.kuri-sm { width: 1.125rem; height: 1.125rem; }
+.kuri-md { width: 3.25rem; height: 3.25rem; }
+.kuri-lg { width: 5rem; height: 5rem; }
+.kuri-body { transform-box: fill-box; transform-origin: 50% 100%; animation: kuri-hop 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+.kuri-shadow { transform-box: fill-box; transform-origin: center; animation: kuri-shadow 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+.kuri-eyes { transform-box: fill-box; transform-origin: center; animation: kuri-blink 3.3s 0.6s infinite; }
+.kuri-leaf { transform-box: fill-box; transform-origin: 0% 50%; animation: kuri-sway 1.1s ease-in-out infinite; }
+.kuri-sm .kuri-body { animation-name: kuri-hop-small; }
+.kuri-twinkle { position: absolute; width: 20%; height: 20%; fill: var(--highlight); animation: kuri-twinkle 2.2s var(--d, 0s) ease-in-out infinite both; }
+.kuri-fall { position: absolute; width: 18%; height: 11%; fill: var(--highlight); opacity: 0; animation: kuri-fall 2.8s var(--d, 0s) ease-in infinite; }
+.kuri-fall:nth-of-type(even) { fill: var(--primary-readable); }
+@keyframes kuri-hop {
+  0%, 100% { transform: translateY(0) scale(1.07, 0.93); }
+  14% { transform: translateY(0) scale(0.95, 1.06); }
+  48% { transform: translateY(-15px) scale(1, 1); }
+  80% { transform: translateY(0) scale(1.09, 0.91); }
+  90% { transform: translateY(0) scale(0.98, 1.02); }
 }
-@keyframes bloom-turn { to { transform: rotate(360deg); } }
-@keyframes bloom-twinkle {
+@keyframes kuri-hop-small {
+  0%, 100% { transform: translateY(0) scale(1.06, 0.94); }
+  48% { transform: translateY(-9px); }
+  80% { transform: translateY(0) scale(1.06, 0.94); }
+}
+@keyframes kuri-shadow {
+  0%, 80%, 100% { transform: scaleX(1); opacity: 1; }
+  48% { transform: scaleX(0.62); opacity: 0.5; }
+}
+@keyframes kuri-blink { 0%, 90%, 100% { transform: none; } 94% { transform: scaleY(0.1); } }
+@keyframes kuri-sway { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(10deg); } }
+@keyframes kuri-twinkle {
   0%, 60%, 100% { opacity: 0; transform: scale(0.2) rotate(0deg); }
   30% { opacity: 1; transform: scale(1) rotate(45deg); }
 }
-@keyframes bloom-drift {
+@keyframes kuri-fall {
   0% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
   15% { opacity: 0.9; }
-  100% { opacity: 0; transform: translate(-260%, 420%) rotate(-200deg); }
+  100% { opacity: 0; transform: translate(-120%, 520%) rotate(-240deg); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .bloom-petal, .bloom-mark, .bloom-twinkle, .bloom-drift { animation: none; }
-  .bloom-petal { opacity: 1; }
-  .bloom-twinkle { opacity: 0; }
+  .kuri-body, .kuri-shadow, .kuri-eyes, .kuri-leaf, .kuri-twinkle, .kuri-fall { animation: none; }
+  .kuri-twinkle, .kuri-fall { opacity: 0; }
 }
-

@@ -10,7 +10,7 @@ import type { PlaybackCandidate } from "@/lib/online-source";
 import { playbackErrorMessage } from "@/lib/playback-error";
 import { cn } from "@/lib/utils";
 import { Check, ChevronRight, Play, RefreshCw, Search } from "lucide-react";
-import { BloomMark } from "@/components/bloom-loader";
+import { KuriMark } from "@/components/kuri-loader";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 type Source = ReturnType<typeof useOnlineSource>;
@@ -423,7 +423,7 @@ function PanelLabel({ children }: { children: ReactNode }) {
 export function LoadingLine({ children }: { children: ReactNode }) {
   return (
     <div role="status" className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-      <span aria-hidden="true" className="bloom bloom-sm inline-grid shrink-0"><BloomMark className="size-full" /></span>
+      <span aria-hidden="true" className="kuri kuri-sm inline-grid shrink-0"><KuriMark className="size-full" /></span>
       {children}
     </div>
   );

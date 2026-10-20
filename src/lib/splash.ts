@@ -1,4 +1,4 @@
-/** Shortest time the launch splash stays, so its bloom can finish. */
+/** Shortest time the launch splash stays, so the mascot can land. */
 export const SPLASH_MIN_MS = 1500;
 /** Never hold the app back longer than this for slow first data. */
 export const SPLASH_MAX_MS = 3000;
