@@ -34,6 +34,7 @@ pub enum Event {
     SubtitleError,
     NativeControl,
     PlayerFallback,
+    PlayerTap,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
