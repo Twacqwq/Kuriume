@@ -130,7 +130,8 @@ export class Anime4KRenderer {
   resize(box: Size, pixelRatio = window.devicePixelRatio || 1) {
     const native = { width: this.video.videoWidth, height: this.video.videoHeight };
     if (!native.width || !native.height || !box.width || !box.height) return;
-    const target = targetSize(box, native, pixelRatio);
+    // Cap at 2x: a 3x phone screen triples the CNN work for little gain.
+    const target = targetSize(box, native, Math.min(pixelRatio, 2));
     if (this.canvas.width !== target.width || this.canvas.height !== target.height) {
       this.canvas.width = target.width;
       this.canvas.height = target.height;
@@ -192,9 +193,18 @@ export class Anime4KRenderer {
   }
 
   private bitmapPending = false;
+  /** One frame on the GPU at a time: queueing more starves the page's own
+   *  compositing, so taps would update the controls but never show them. */
+  private inFlight = false;
+  private redraw = false;
 
   private draw() {
     if (this.stopped) return;
+    if (this.inFlight) {
+      if (this.video.paused) this.redraw = true;
+      else this.measure(Infinity);
+      return;
+    }
     if (this.source === "bitmap") {
       if (this.bitmapPending || this.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
       this.bitmapPending = true;
@@ -230,10 +240,16 @@ export class Anime4KRenderer {
     present.end();
     const submitted = performance.now();
     this.device.queue.submit([encoder.finish()]);
-    if (!this.video.paused) void this.device.queue.onSubmittedWorkDone().then(() => this.measure(performance.now() - submitted));
+    this.inFlight = true;
+    void this.device.queue.onSubmittedWorkDone().then(() => {
+      this.inFlight = false;
+      if (!this.video.paused) this.measure(performance.now() - submitted);
+      if (this.redraw && !this.stopped) { this.redraw = false; this.draw(); }
+    }, () => { this.inFlight = false; });
   }
 
-  /** Report when the GPU cannot keep up with playback (most frames over budget). */
+  /** Report when the GPU cannot keep up with playback: most frames over
+   *  budget, or dropped because the previous one was still running. */
   private measure(elapsedMs: number) {
     if (this.stopped) return;
     const budget = 1000 / 30;

@@ -50,6 +50,11 @@ export function usePlayerGestures(art: Artplayer | null, language: string, optio
     let updating = false;
     let suppressClick = false;
     let touchId = 0;
+    // A tap is recognised on touchend rather than from the click the WebView
+    // synthesises afterwards: Android WebView may retarget, delay or drop that
+    // click (and does, on some devices, while video plays).
+    let tapStart: { id: number; x: number; y: number; at: number } | null = null;
+    let touchTapAt = -Infinity;
     // Tap state
     let lastTap: { at: number; zone: TapZone; controlsBefore: boolean } | null = null;
     let streak: { zone: Exclude<TapZone, "center">; until: number; seconds: number } | null = null;
@@ -95,6 +100,7 @@ export function usePlayerGestures(art: Artplayer | null, language: string, optio
       return true;
     };
     const cancel = () => { touchId++; move = null; change = null; endPress(); hideLater(); };
+    const touch0X = (event: TouchEvent) => event.touches[0].clientX;
     const start = (event: TouchEvent) => {
       suppressClick = false;
       move = null;
@@ -108,6 +114,7 @@ export function usePlayerGestures(art: Artplayer | null, language: string, optio
       const y = touch.clientY - rect.top;
       if (y < 44 || y > rect.height - 52) return;
       const id = ++touchId;
+      tapStart = { id, x: touch0X(event), y: event.touches[0].clientY, at: performance.now() };
       if (art.playing) {
         pressTimer = setTimeout(() => {
           if (disposed || id !== touchId || change) return;
@@ -131,6 +138,7 @@ export function usePlayerGestures(art: Artplayer | null, language: string, optio
     };
     const update = (event: TouchEvent) => {
       if (event.touches.length !== 1) { cancel(); return; }
+      if (tapStart && Math.hypot(event.touches[0].clientX - tapStart.x, event.touches[0].clientY - tapStart.y) > 10) tapStart = null;
       const rect = container.getBoundingClientRect(), touch = event.touches[0];
       if (press) {
         // While held, sliding up/down picks 1.5× / 2× / 3×.
@@ -166,11 +174,17 @@ export function usePlayerGestures(art: Artplayer | null, language: string, optio
         void apply();
       } else showError();
     };
-    const end = () => {
+    const end = (event: TouchEvent) => {
       clearTimeout(pressTimer);
+      const tapped = tapStart && tapStart.id === touchId && !change && !press && performance.now() - tapStart.at < 350 ? tapStart : null;
+      tapStart = null;
       if (endPress()) { suppressClick = true; cancel(); return; }
       if (change?.kind === "seek") art.currentTime = change.value;
       cancel();
+      if (tapped && event.touches.length === 0) {
+        touchTapAt = performance.now();
+        tap(tapped.x);
+      }
     };
     const skip = (zone: Exclude<TapZone, "center">, now: number) => {
       if (!Number.isFinite(art.duration) || art.duration <= 0) return;
@@ -180,9 +194,9 @@ export function usePlayerGestures(art: Artplayer | null, language: string, optio
       art.currentTime = Math.min(Math.max(0, target), Math.max(0, art.duration - 0.1));
       show({ kind: "skip", zone, seconds, text: zone === "right" ? `+${seconds}s` : `-${seconds}s` }, SKIP_STREAK_MS);
     };
-    const tap = (event: MouseEvent) => {
+    const tap = (clientX: number) => {
       const rect = container.getBoundingClientRect();
-      const zone = tapZone(event.clientX - rect.left, rect.width);
+      const zone = tapZone(clientX - rect.left, rect.width);
       const now = performance.now();
       if (opts().locked) { opts().onLockedTap?.(); return; }
       // A tap while a skip streak runs keeps skipping in that direction.
@@ -204,7 +218,9 @@ export function usePlayerGestures(art: Artplayer | null, language: string, optio
       // The library's own click handler would toggle play/controls on its own timing.
       event.stopImmediatePropagation();
       event.stopPropagation();
-      tap(event);
+      // Already handled on touchend; this is the WebView's follow-up click.
+      if (performance.now() - touchTapAt < 700) return;
+      tap(event.clientX);
     };
     const background = () => { diagnose("player_background", "info", { message: document.hidden ? "Document became hidden; pausing playback" : "Native lifecycle interruption; pausing playback" }); cancel(); pending = null; ready = false; art.pause(); void control("finish").catch(() => {}); };
     const visibility = () => { if (document.hidden) background(); };
