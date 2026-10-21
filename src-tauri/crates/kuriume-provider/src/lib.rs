@@ -24,8 +24,8 @@
 mod anilist;
 mod anime1;
 mod bangumi;
-mod counterpart;
 pub mod builtin_rules;
+mod counterpart;
 mod error;
 mod hianime;
 mod models;
