@@ -102,6 +102,19 @@ pub(crate) fn set_display_language(
 }
 
 #[command]
+pub(crate) fn set_catalog_source(
+    state: State<'_, StoreState>,
+    app: AppHandle,
+    source: &str,
+) -> Result<(), String> {
+    state.with_store(&app, |store| {
+        store
+            .set_catalog_source(source)
+            .map_err(|error| error.to_string())
+    })
+}
+
+#[command]
 pub(crate) fn media_ensure(
     state: State<'_, StoreState>,
     app: AppHandle,

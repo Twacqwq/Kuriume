@@ -4,17 +4,51 @@ import { invoke } from "@tauri-apps/api/core";
 export type DisplayLanguage = "en" | "zh";
 export const DEFAULT_DISPLAY_LANGUAGE: DisplayLanguage = "zh";
 
+/**
+ * The catalog used for browsing, search and the schedule. A media item always
+ * opens from the catalog in its ID ("anilist:1", "bangumi:1"), so saved
+ * items keep working when this changes.
+ */
+export type CatalogSource = "anilist" | "bangumi";
+export const DEFAULT_CATALOG_SOURCE: CatalogSource = "anilist";
+/** Provider names the Rust catalog commands take. */
+export const CATALOG_PROVIDERS = { anilist: "AniList", bangumi: "Bangumi" } as const;
+export type CatalogProviderName = (typeof CATALOG_PROVIDERS)[CatalogSource];
+
+export function catalogSourceOf(id: string): CatalogSource {
+  return id.startsWith("bangumi:") ? "bangumi" : "anilist";
+}
+
+export function catalogProviderFor(id: string): CatalogProviderName {
+  return CATALOG_PROVIDERS[catalogSourceOf(id)];
+}
+
+/** "bangumi:400602" → "400602". */
+export function catalogExternalId(id: string): string {
+  const separator = id.indexOf(":");
+  return separator >= 0 ? id.slice(separator + 1) : id;
+}
+
+/** Whether a library/history row (provider + external ID) is this catalog item. */
+export function isCatalogEntry(entry: { provider: string; external_id: string }, id: string): boolean {
+  return `${entry.provider}:${entry.external_id}` === id;
+}
+
 export interface Settings {
   default_volume: number;
   default_speed: number;
   auto_next: boolean;
   display_language: DisplayLanguage;
+  /** Absent from databases saved before data sources existed. */
+  catalog_source?: CatalogSource;
 }
 
 export const settingsApi = {
   get: () => invoke<Settings>("get_settings"),
   setDisplayLanguage: (language: DisplayLanguage) =>
     invoke<void>("set_display_language", { language }),
+  setCatalogSource: (source: CatalogSource) =>
+    invoke<void>("set_catalog_source", { source }),
 };
 
 // One small, process-local entry. Settings change only through our save actions.
@@ -39,8 +73,8 @@ export const mediaApi = {
   ensure: (media: AnimeInfo, language: DisplayLanguage = DEFAULT_DISPLAY_LANGUAGE) =>
     invoke<StoredMedia>("media_ensure", {
       input: {
-        provider: "anilist",
-        external_id: String(media.anilist_id),
+        provider: catalogSourceOf(media.id),
+        external_id: catalogExternalId(media.id),
         title:
           language === "zh"
             ? media.title_cn || media.title_en || media.title
@@ -54,7 +88,7 @@ export const mediaApi = {
 
 export interface ExternalIdentity {
   media_id: string;
-  provider: "anilist" | "tmdb_tv" | "tmdb_movie";
+  provider: CatalogSource | "tmdb_tv" | "tmdb_movie";
   external_id: string;
   scope: string;
   confidence: number;

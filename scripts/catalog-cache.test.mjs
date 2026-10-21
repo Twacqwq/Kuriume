@@ -104,3 +104,13 @@ test("language reload invalidates both catalogs and old in-flight replies cannot
   assert.equal(client.getQueryData(catalog.spotlightQuery("en").queryKey).data[0].id, "english");
   assert.deepEqual(client.getQueryData(catalog.calendarQueryOptions("en").queryKey), []);
 });
+
+test("the data source picks the catalog and keeps separate caches", async () => {
+  const calls = [];
+  globalThis.__catalogInvoke = async (cmd, args) => { calls.push([cmd, args]); return cmd === "get_settings" ? { ...settings, catalog_source: "bangumi" } : cmd === "get_list" ? page : calendar; };
+  await catalog.prefetchBrowseData();
+  assert.deepEqual(calls.filter(([cmd]) => cmd !== "get_settings").map(([cmd, args]) => [cmd, args.provider]), [["get_list", "Bangumi"], ["get_calendar", "Bangumi"]]);
+  assert.notDeepEqual(catalog.spotlightQuery("zh", "bangumi").queryKey, catalog.spotlightQuery("zh", "anilist").queryKey);
+  assert.notDeepEqual(catalog.calendarQueryOptions("zh", "bangumi").queryKey, catalog.calendarQueryOptions("zh").queryKey);
+  assert.deepEqual(client.getQueryData(catalog.spotlightQuery("zh", "bangumi").queryKey), page);
+});

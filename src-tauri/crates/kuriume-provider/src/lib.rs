@@ -1,7 +1,8 @@
 //! # kuriume-provider
 //!
 //! Anime data-source abstraction layer. Defines a unified `AnimeProvider` trait;
-//! AniList is the V1 animation catalog. Playback sources are a separate concern.
+//! AniList (default) and Bangumi are the animation catalogs. Playback sources
+//! are a separate concern.
 //!
 //! ## Usage
 //!
@@ -22,6 +23,7 @@
 
 mod anilist;
 mod anime1;
+mod bangumi;
 pub mod builtin_rules;
 mod error;
 mod hianime;
@@ -31,10 +33,12 @@ mod playback_matching;
 mod provider;
 pub mod rule;
 mod source_http;
+mod user_agent;
 mod xifan;
 
 pub use anilist::AniList;
 pub use anime1::Anime1;
+pub use bangumi::Bangumi;
 pub use error::{ProviderError, Result};
 pub use hianime::HiAnime;
 pub use models::{

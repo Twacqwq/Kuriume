@@ -70,6 +70,9 @@ export function nextPlaybackSource(
 }
 
 export interface PlaybackMatchContext {
+  /** Catalog ID ("anilist:1", "bangumi:1"): scopes manual searches per work. */
+  catalogId?: string | null;
+  /** AniList ID, which some playback sources match on; absent for Bangumi works. */
   anilistId?: number | null;
   year?: number | null;
   episodeCount?: number | null;

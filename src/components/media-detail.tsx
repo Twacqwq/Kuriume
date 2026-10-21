@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { isCatalogEntry } from "@/lib/store";
 import { coverTone } from "@/lib/cover-tone";
 import { LibraryControl } from "@/components/library-control";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
@@ -65,9 +66,7 @@ export function MediaDetail({
   const description = displayAnimeDescription(media, language);
   const latest = history
     .filter(
-      (entry) =>
-        entry.provider === "anilist" &&
-        entry.external_id === String(media.anilist_id),
+      (entry) => isCatalogEntry(entry, media.id),
     )
     .sort(
       (a, b) =>
@@ -106,7 +105,7 @@ export function MediaDetail({
     return () => observer.disconnect();
   }, []);
   const progressFor = (episode: number) => {
-    const entry = history.find((item) => item.provider === "anilist" && item.external_id === String(media.anilist_id) && item.episode === episode);
+    const entry = history.find((item) => isCatalogEntry(item, media.id) && item.episode === episode);
     return entry && entry.duration > 0 ? Math.min(100, (entry.position / entry.duration) * 100) : 0;
   };
 
@@ -235,7 +234,7 @@ export function MediaDetail({
                     key={episode.id}
                     to="/anime/$id/episode/$ep"
                     params={{ id: media.id, ep: String(episode.ep) }}
-                    search={{ t: percent > 2 && percent < 92 ? history.find((item) => item.external_id === String(media.anilist_id) && item.episode === episode.ep)?.position : undefined }}
+                    search={{ t: percent > 2 && percent < 92 ? history.find((item) => isCatalogEntry(item, media.id) && item.episode === episode.ep)?.position : undefined }}
                     aria-label={displayEpisodeTitle(episode, episode.ep, language)}
                     title={displayEpisodeTitle(episode, episode.ep, language)}
                     className={cn("press relative grid min-h-12 place-items-center overflow-hidden rounded-xl text-sm tabular-nums outline-none hover:bg-secondary active:bg-secondary focus-visible:outline-2 focus-visible:outline-primary-readable",
@@ -260,7 +259,7 @@ export function MediaDetail({
                     key={episode.id}
                     to="/anime/$id/episode/$ep"
                     params={{ id: media.id, ep: String(episode.ep) }}
-                    search={{ t: percent > 2 && percent < 92 ? history.find((item) => item.external_id === String(media.anilist_id) && item.episode === episode.ep)?.position : undefined }}
+                    search={{ t: percent > 2 && percent < 92 ? history.find((item) => isCatalogEntry(item, media.id) && item.episode === episode.ep)?.position : undefined }}
                     className="press group relative overflow-hidden rounded-xl bg-card px-4 py-3.5 transition-colors hover:bg-secondary active:bg-secondary focus-visible:outline-2 focus-visible:outline-primary-readable motion-reduce:transition-none"
                   >
                     <div className="flex items-center gap-3">

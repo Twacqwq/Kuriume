@@ -1,8 +1,8 @@
-import { useDisplayLanguage } from "@/hooks/use-display-language";
+import { useCatalogSource, useDisplayLanguage } from "@/hooks/use-display-language";
 import { calendarQueryOptions } from "@/lib/catalog-queries";
 import { displayAnimeTitle } from "@/lib/display-language";
 import { historyApi, historyListQueryKey, libraryApi } from "@/lib/store";
-import { airingClock, followedExternalIds, watchedThrough } from "@/lib/tracking";
+import { airingClock, followedIds, watchedThrough } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -17,13 +17,14 @@ function todayWeekdayId() {
 export function TodayUpdates() {
   const language = useDisplayLanguage();
   const zh = language === "zh";
-  const { data: calendar = [] } = useQuery(calendarQueryOptions(language));
+  const source = useCatalogSource();
+  const { data: calendar = [] } = useQuery(calendarQueryOptions(language, source));
   const { data: library = [] } = useQuery({ queryKey: ["library-list"], queryFn: () => libraryApi.list() });
   const { data: history = [] } = useQuery({ queryKey: historyListQueryKey(200, 0), queryFn: () => historyApi.list(200, 0) });
-  const followed = followedExternalIds(library);
+  const followed = followedIds(library);
   const now = Date.now() / 1000;
   const items = (calendar.find((entry) => entry.weekday.id === todayWeekdayId())?.items ?? [])
-    .filter((media) => followed.has(String(media.anilist_id)))
+    .filter((media) => followed.has(media.id))
     .sort((a, b) => (a.schedule?.airing_at ?? 0) - (b.schedule?.airing_at ?? 0));
   if (items.length === 0) return null;
 
@@ -37,7 +38,7 @@ export function TodayUpdates() {
         {items.map((media) => {
           const slot = media.schedule;
           const aired = slot ? slot.airing_at <= now : false;
-          const seen = slot ? watchedThrough(history, String(media.anilist_id)) >= slot.episode : false;
+          const seen = slot ? watchedThrough(history, media.id) >= slot.episode : false;
           const label = slot ? (zh ? `第 ${slot.episode} 话` : `Episode ${slot.episode}`) : "";
           const content = (
             <>

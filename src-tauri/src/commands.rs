@@ -22,6 +22,18 @@ impl ProviderState {
         self.providers.insert(provider.name().to_string(), provider);
     }
 
+    /// A namespaced catalog ID (`anilist:1`, `bangumi:1`) names its own
+    /// catalog, whatever the caller passed: saved items keep opening from
+    /// the catalog they came from after the browsing source changes.
+    fn for_id(&self, name: &str, id: &str) -> Result<&Arc<dyn AnimeProvider>, String> {
+        let owner = match id.split_once(':').map(|(prefix, _)| prefix) {
+            Some("anilist") => "AniList",
+            Some("bangumi") => "Bangumi",
+            _ => name,
+        };
+        self.get(owner)
+    }
+
     fn get(&self, name: &str) -> Result<&Arc<dyn AnimeProvider>, String> {
         self.providers
             .get(name)
@@ -83,7 +95,7 @@ pub(crate) async fn get_detail(
         provider,
         operation(),
         Some(Action::Detail),
-        state.get(provider)?.get_detail(id, language),
+        state.for_id(provider, id)?.get_detail(id, language),
     )
     .await
     .map_err(|error| error.to_string())
@@ -100,7 +112,7 @@ pub(crate) async fn get_episodes(
         provider,
         operation(),
         Some(Action::Episodes),
-        state.get(provider)?.get_episodes(query),
+        state.for_id(provider, &query.id)?.get_episodes(query),
     )
     .await
     .map_err(|error| error.to_string())
@@ -134,7 +146,7 @@ pub(crate) async fn get_characters(
         provider,
         operation(),
         Some(Action::Characters),
-        state.get(provider)?.get_characters(id),
+        state.for_id(provider, id)?.get_characters(id),
     )
     .await
     .map_err(|error| error.to_string())

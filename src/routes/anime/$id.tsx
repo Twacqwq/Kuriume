@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { queryClient } from "@/lib/query-client";
-import { DEFAULT_DISPLAY_LANGUAGE, settingsQueryOptions, type DisplayLanguage } from "@/lib/store";
+import { catalogProviderFor, DEFAULT_DISPLAY_LANGUAGE, settingsQueryOptions, type DisplayLanguage } from "@/lib/store";
 import type { AnimeInfo, AnimeEpisodes, AnimeCharacters } from "@/lib/types";
 
 export const detailQueryOptions = (
@@ -14,7 +14,7 @@ export const detailQueryOptions = (
   // unmounting card cancel the route loader's shared request during navigation.
   queryFn: () =>
     invoke<AnimeInfo>("get_detail", {
-      provider: "AniList",
+      provider: catalogProviderFor(id),
       id,
       language,
     }),
@@ -25,7 +25,7 @@ export const episodesQueryOptions = (id: string, limit: number) => ({
   staleTime: 30 * 60 * 1000,
   queryFn: () =>
     invoke<AnimeEpisodes[]>("get_episodes", {
-      provider: "AniList",
+      provider: catalogProviderFor(id),
       query: { id, offset: 0, limit },
     }),
 });
@@ -35,7 +35,7 @@ export const charactersQueryOptions = (id: string) => ({
   staleTime: 60 * 60 * 1000,
   queryFn: () =>
     invoke<AnimeCharacters[]>("get_characters", {
-      provider: "AniList",
+      provider: catalogProviderFor(id),
       id,
     }),
 });

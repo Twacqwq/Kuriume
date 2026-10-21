@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useDisplayLanguage } from "@/hooks/use-display-language";
+import { useCatalogSource, useDisplayLanguage } from "@/hooks/use-display-language";
 import { displayAnimeTitle } from "@/lib/display-language";
 import { calendarQueryOptions, ensureCatalogSettings } from "@/lib/catalog-queries";
 import { useQuery } from "@tanstack/react-query";
@@ -9,7 +9,7 @@ import { memo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { sharePoster } from "@/lib/view-transition";
 import { libraryApi } from "@/lib/store";
-import { airingClock, followedExternalIds } from "@/lib/tracking";
+import { airingClock, followedIds } from "@/lib/tracking";
 import { Bookmark } from "lucide-react";
 
 const ONLY_FOLLOWED_KEY = "kuriume:calendar-only-following";
@@ -37,9 +37,10 @@ export const Route = createFileRoute("/calendar")({
 
 function CalendarPage() {
   const language = useDisplayLanguage();
-  const { data: rawCalendar = [], isPending, isError, refetch } = useQuery(calendarQueryOptions(language));
+  const source = useCatalogSource();
+  const { data: rawCalendar = [], isPending, isError, refetch } = useQuery(calendarQueryOptions(language, source));
   const { data: library = [] } = useQuery({ queryKey: ["library-list"], queryFn: () => libraryApi.list() });
-  const followed = followedExternalIds(library);
+  const followed = followedIds(library);
   const [onlyFollowed, setOnlyFollowed] = useState(readOnlyFollowed);
   const filterFollowed = onlyFollowed && followed.size > 0;
   const toggleOnlyFollowed = () => {
@@ -49,7 +50,7 @@ function CalendarPage() {
     });
   };
   // Followed works lead each day, in broadcast order; optionally only them.
-  const isFollowed = (item: AnimeInfo) => followed.has(String(item.anilist_id));
+  const isFollowed = (item: AnimeInfo) => followed.has(item.id);
   const calendar = rawCalendar.map((entry) => ({
     ...entry,
     items: entry.items
@@ -199,7 +200,7 @@ const CalendarCard = memo(function CalendarCard({ item, followed }: { item: Anim
         {item.score != null && item.score > 0 && (
           <div className="absolute top-2 right-2 hidden items-center gap-1 rounded-md bg-black/80 px-1.5 py-1 text-xs text-yellow-300 lg:flex">
             <Star aria-hidden="true" size={10} fill="currentColor" />
-            {item.score}
+            {item.score.toFixed(1)}
           </div>
         )}
       </div>
@@ -224,7 +225,7 @@ const CalendarCard = memo(function CalendarCard({ item, followed }: { item: Anim
         {!item.schedule && item.total_episodes > 0 && (
           <p className="text-sm text-muted-foreground lg:text-xs">{language === "zh" ? `共 ${item.total_episodes} 话` : `${item.total_episodes} episodes`}</p>
         )}
-        {item.score != null && item.score > 0 && <p className="flex items-center gap-1.5 text-xs text-muted-foreground lg:hidden"><Star aria-hidden="true" size={12} className="text-yellow-300" />{item.score}</p>}
+        {item.score != null && item.score > 0 && <p className="flex items-center gap-1.5 text-xs text-muted-foreground lg:hidden"><Star aria-hidden="true" size={12} className="text-yellow-300" />{item.score.toFixed(1)}</p>}
       </div>
     </Link>
   );
