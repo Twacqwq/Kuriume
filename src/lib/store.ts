@@ -5,9 +5,9 @@ export type DisplayLanguage = "en" | "zh";
 export const DEFAULT_DISPLAY_LANGUAGE: DisplayLanguage = "zh";
 
 /**
- * The catalog used for browsing, search and the schedule. A media item always
- * opens from the catalog in its ID ("anilist:1", "bangumi:1"), so saved
- * items keep working when this changes.
+ * The catalog used for browsing, search and the schedule. Requests go to the
+ * catalog named in an ID ("anilist:1", "bangumi:1"); a saved item from the
+ * other catalog is first mapped to the chosen one (see `catalogApi`).
  */
 export type CatalogSource = "anilist" | "bangumi";
 export const DEFAULT_CATALOG_SOURCE: CatalogSource = "anilist";
@@ -49,6 +49,14 @@ export const settingsApi = {
     invoke<void>("set_display_language", { language }),
   setCatalogSource: (source: CatalogSource) =>
     invoke<void>("set_catalog_source", { source }),
+};
+
+export const catalogApi = {
+  /**
+   * The chosen catalog's ID for a saved item from the other catalog, matched
+   * by title once and then remembered; null when there is no confident match.
+   */
+  counterpart: (id: string) => invoke<string | null>("catalog_counterpart", { id }),
 };
 
 // One small, process-local entry. Settings change only through our save actions.

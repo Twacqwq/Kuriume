@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { queryClient } from "@/lib/query-client";
-import { CATALOG_PROVIDERS, DEFAULT_CATALOG_SOURCE, DEFAULT_DISPLAY_LANGUAGE, settingsQueryOptions, type CatalogSource, type DisplayLanguage } from "@/lib/store";
+import { CATALOG_PROVIDERS, catalogApi, catalogSourceOf, DEFAULT_CATALOG_SOURCE, DEFAULT_DISPLAY_LANGUAGE, libraryApi, settingsQueryOptions, type CatalogSource, type DisplayLanguage } from "@/lib/store";
 import type { AnimeInfo, CalendarEntry, PagedResult } from "@/lib/types";
 
 export const CURRENT_YEAR = new Date().getFullYear();
@@ -71,7 +71,7 @@ export async function prefetchBrowseData() {
 
 const CATALOG_KEYS = new Set([
   "anime-list", "home-season-page", "search", "calendar", "anime-detail",
-  "stored-media", "stored-title", "library-list", "history-list",
+  "stored-media", "stored-title", "library-list", "history-list", "catalog-counterpart",
 ]);
 
 /** After a language or data-source change: drop catalog caches, reload home and schedule. */
@@ -90,3 +90,49 @@ export async function refreshCatalog(language: DisplayLanguage, source: CatalogS
 }
 
 export const refreshCatalogLanguage = refreshCatalog;
+
+/**
+ * Where a catalog ID should open under `source`: itself, or the chosen
+ * catalog's entry for the same saved work. Lookup failures fall back to the
+ * ID itself, so a mapping problem never blocks opening the item.
+ */
+export const counterpartQueryOptions = (id: string, source: CatalogSource) => ({
+  queryKey: ["catalog-counterpart", id, source],
+  staleTime: Infinity,
+  queryFn: async () => {
+    if (catalogSourceOf(id) === source) return null;
+    try {
+      return await catalogApi.counterpart(id);
+    } catch {
+      return null;
+    }
+  },
+});
+
+/** Bounds the catalog searches one pass may make. */
+const LINK_BATCH = 30;
+let linking: Promise<void> | undefined;
+
+/**
+ * Give followed works an ID in the chosen catalog, one at a time and best
+ * effort, so today's updates and the schedule recognise them after the data
+ * source changes. Already-linked works cost no request.
+ */
+export function linkFollowedToCatalog(): Promise<void> {
+  linking ??= (async () => {
+    const source = await currentCatalogSource();
+    const library = await libraryApi.list("following").catch(() => []);
+    const pending = library.filter((entry) => entry.provider !== source).slice(0, LINK_BATCH);
+    let linked = false;
+    for (const entry of pending) {
+      const id = `${entry.provider}:${entry.external_id}`;
+      if (await queryClient.fetchQuery(counterpartQueryOptions(id, source))) linked = true;
+    }
+    if (linked) {
+      await queryClient.invalidateQueries({
+        predicate: (query) => ["library-list", "history-list", "library-entry"].includes(String(query.queryKey[0])),
+      });
+    }
+  })().finally(() => { linking = undefined; });
+  return linking;
+}

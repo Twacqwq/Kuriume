@@ -8,7 +8,7 @@ export type DiagnosticCode = typeof diagnosticCodes[number];
 export type DiagnosticLevel = "info" | "warn" | "error";
 export interface DiagnosticDetails {
   operation?: number;
-  provider?: "anilist" | "anime1" | "xifan" | "agedm" | "hianime" | "imported";
+  provider?: "anilist" | "bangumi" | "anime1" | "xifan" | "agedm" | "hianime" | "imported";
   code?: DiagnosticCode;
   action?: typeof diagnosticActions[number];
   message?: string;
@@ -83,7 +83,7 @@ export function diagnose(event: DiagnosticEvent, level: DiagnosticLevel, details
     }
   }
   if (details.code && diagnosticCodes.includes(details.code)) safe.code = details.code;
-  if (details.provider && ["anilist", "anime1", "xifan", "agedm", "hianime", "imported"].includes(details.provider)) safe.provider = details.provider;
+  if (details.provider && ["anilist", "bangumi", "anime1", "xifan", "agedm", "hianime", "imported"].includes(details.provider)) safe.provider = details.provider;
   if (details.engine && ["hlsjs", "native_hls", "html_video"].includes(details.engine)) safe.engine = details.engine;
   if (details.action && diagnosticActions.includes(details.action)) safe.action = details.action;
   if (typeof details.message === "string") safe.message = diagnosticMessage(details.message);

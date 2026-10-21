@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { refreshCatalog } from "@/lib/catalog-queries";
+import { linkFollowedToCatalog, refreshCatalog } from "@/lib/catalog-queries";
 import {
   DEFAULT_CATALOG_SOURCE,
   DEFAULT_DISPLAY_LANGUAGE,
@@ -92,6 +92,7 @@ function SettingsPage() {
     }
     setSaving(false);
     await reloadCatalog(settings.display_language, source);
+    void linkFollowedToCatalog().catch(() => undefined);
   };
 
   const reloadCatalog = async (language: DisplayLanguage, source: CatalogSource = catalogSource) => {

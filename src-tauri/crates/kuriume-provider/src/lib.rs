@@ -24,6 +24,7 @@
 mod anilist;
 mod anime1;
 mod bangumi;
+mod counterpart;
 pub mod builtin_rules;
 mod error;
 mod hianime;
@@ -39,6 +40,7 @@ mod xifan;
 pub use anilist::AniList;
 pub use anime1::Anime1;
 pub use bangumi::Bangumi;
+pub use counterpart::find_counterpart;
 pub use error::{ProviderError, Result};
 pub use hianime::HiAnime;
 pub use models::{

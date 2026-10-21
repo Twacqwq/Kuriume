@@ -14,7 +14,8 @@ const CATALOG_PROVIDERS: [&str; 2] = ["anilist", "bangumi"];
 const CATALOG_IDENTITY: &str = "e.provider = (\
     SELECT x.provider FROM external_identity x \
     WHERE x.media_id = e.media_id AND x.scope = 'title' AND x.provider IN ('anilist', 'bangumi') \
-    ORDER BY CASE x.provider WHEN 'anilist' THEN 0 ELSE 1 END LIMIT 1)";
+    ORDER BY CASE x.provider WHEN (SELECT catalog_source FROM settings WHERE id = 1) THEN 0 \
+    WHEN 'anilist' THEN 1 ELSE 2 END LIMIT 1)";
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -370,7 +371,9 @@ impl Store {
                 FROM media m
                 JOIN external_identity e ON e.media_id = m.id AND e.scope = 'title'
                 WHERE m.id = ?1
-                ORDER BY CASE e.provider WHEN 'anilist' THEN 0 ELSE 1 END
+                ORDER BY CASE e.provider
+                  WHEN (SELECT catalog_source FROM settings WHERE id = 1) THEN 0
+                  WHEN 'anilist' THEN 1 ELSE 2 END
                 LIMIT 1
                 "#,
                 [media_id],
@@ -378,6 +381,71 @@ impl Store {
             )
             .optional()
             .map_err(Into::into)
+    }
+
+    /// The media a catalog entry (`anilist` / `bangumi` + ID) was saved as.
+    pub fn media_for_identity(&self, provider: &str, external_id: &str) -> Result<Option<String>> {
+        self.connection
+            .query_row(
+                r#"
+                SELECT media_id FROM external_identity
+                WHERE provider = ?1 AND external_id = ?2 AND scope = 'title'
+                "#,
+                params![provider, external_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    /// Records that `provider:external_id` is the same work as `media_id`.
+    /// If that entry was already saved as a separate media (opened under the
+    /// other catalog before the link was known), its history, library entry
+    /// and playback bindings move onto `media_id`; on conflicts the existing
+    /// rows of `media_id` win.
+    pub fn link_catalog_identity(
+        &self,
+        media_id: &str,
+        provider: &str,
+        external_id: &str,
+    ) -> Result<()> {
+        if !CATALOG_PROVIDERS.contains(&provider) || external_id.trim().is_empty() {
+            return Err(StoreError::Invalid(format!(
+                "not a catalog identity: {provider}:{external_id}"
+            )));
+        }
+        let transaction = self.connection.unchecked_transaction()?;
+        let previous = self.media_for_identity(provider, external_id)?;
+        match previous.as_deref() {
+            Some(current) if current == media_id => {}
+            Some(other) => {
+                for table in ["watch_history", "library_entry", "source_binding"] {
+                    transaction.execute(
+                        &format!("UPDATE OR IGNORE {table} SET media_id = ?1 WHERE media_id = ?2"),
+                        params![media_id, other],
+                    )?;
+                }
+                transaction.execute(
+                    r#"
+                    UPDATE external_identity SET media_id = ?1, verified_at = CURRENT_TIMESTAMP
+                    WHERE provider = ?2 AND external_id = ?3 AND scope = 'title'
+                    "#,
+                    params![media_id, provider, external_id],
+                )?;
+                transaction.execute("DELETE FROM media WHERE id = ?1", [other])?;
+            }
+            None => {
+                transaction.execute(
+                    r#"
+                    INSERT INTO external_identity (media_id, provider, external_id, scope, confidence)
+                    VALUES (?1, ?2, ?3, 'title', 1.0)
+                    "#,
+                    params![media_id, provider, external_id],
+                )?;
+            }
+        }
+        transaction.commit()?;
+        Ok(())
     }
 
     pub fn external_identity_list(&self, media_id: &str) -> Result<Vec<ExternalIdentity>> {
@@ -975,6 +1043,70 @@ mod tests {
         assert!(store
             .external_identity_remove(&media.id, "bangumi")
             .is_err());
+    }
+
+    #[test]
+    fn linked_identities_follow_the_catalog_source_and_merge_duplicates() {
+        let store = store();
+        let saved = store.ensure_media(&media()).unwrap();
+        store
+            .library_add(&saved.id, LibraryStatus::Following)
+            .unwrap();
+        store
+            .history_upsert(&saved.id, 3, "第 3 话", 120.0, 1440.0, None)
+            .unwrap();
+        // The same work, opened under Bangumi before the two were linked.
+        let duplicate = store
+            .ensure_media(&CatalogMediaInput {
+                provider: "bangumi".into(),
+                external_id: "975".into(),
+                title: "海贼王".into(),
+                cover: None,
+                banner: None,
+                total_episodes: 1000,
+            })
+            .unwrap();
+        store
+            .history_upsert(&duplicate.id, 3, "第 3 话", 600.0, 1440.0, None)
+            .unwrap();
+        store
+            .history_upsert(&duplicate.id, 4, "第 4 话", 60.0, 1440.0, None)
+            .unwrap();
+
+        store
+            .link_catalog_identity(&saved.id, "bangumi", "975")
+            .unwrap();
+        store
+            .link_catalog_identity(&saved.id, "bangumi", "975")
+            .unwrap();
+        assert_eq!(
+            store
+                .media_for_identity("bangumi", "975")
+                .unwrap()
+                .as_deref(),
+            Some(saved.id.as_str())
+        );
+        assert!(store.get_media(&duplicate.id).unwrap().is_none());
+        let history = store.history_list(10, 0).unwrap();
+        assert_eq!(history.len(), 2);
+        assert!(history.iter().all(|entry| entry.media_id == saved.id));
+        // On a conflict the item's own progress wins.
+        let third = history.iter().find(|entry| entry.episode == 3).unwrap();
+        assert_eq!(third.position, 120.0);
+        assert_eq!(history[0].provider, "anilist");
+
+        store.set_catalog_source("bangumi").unwrap();
+        let entry = &store.library_list(None).unwrap()[0];
+        assert_eq!(
+            (entry.provider.as_str(), entry.external_id.as_str()),
+            ("bangumi", "975")
+        );
+        assert_eq!(store.history_list(10, 0).unwrap()[0].provider, "bangumi");
+        assert_eq!(
+            store.get_media(&saved.id).unwrap().unwrap().provider,
+            "bangumi"
+        );
+        assert!(store.link_catalog_identity(&saved.id, "tmdb", "1").is_err());
     }
 
     #[test]

@@ -18,6 +18,8 @@ use crate::user_agent::USER_AGENT;
 mod gate;
 mod search;
 
+pub(crate) use search::alias_key as title_key;
+
 use gate::{rate_limited_message, timeout_from_headers, RateGate};
 
 const ANILIST_API: &str = "https://graphql.anilist.co";
@@ -389,6 +391,12 @@ impl Default for AniList {
 impl AnimeProvider for AniList {
     fn name(&self) -> &str {
         "AniList"
+    }
+
+    fn known_titles(&self, id: &str) -> Vec<String> {
+        Self::parse_id(id)
+            .map(search::known_titles)
+            .unwrap_or_default()
     }
 
     async fn search(

@@ -63,6 +63,16 @@ pub(super) fn chinese_title(id: u64) -> Option<String> {
         .map(|title| zhconv::zhconv(title.trim(), zhconv::Variant::ZhHans))
 }
 
+/// Every bundled title (mostly Chinese) for an AniList ID: available offline,
+/// so a saved AniList entry can be looked up elsewhere while AniList is down.
+pub(super) fn known_titles(id: u64) -> Vec<String> {
+    let entries = snapshot();
+    entries
+        .binary_search_by_key(&id, |(id, _)| *id)
+        .map(|index| entries[index].1.clone())
+        .unwrap_or_default()
+}
+
 fn aliases() -> &'static [(u64, Vec<String>)] {
     static KEYS: OnceLock<Vec<(u64, Vec<String>)>> = OnceLock::new();
     KEYS.get_or_init(|| {
@@ -87,7 +97,9 @@ fn script_variants(keyword: &str) -> Vec<String> {
     variants
 }
 
-fn alias_key(title: &str) -> String {
+/// Comparison key for titles: simplified script, case- and punctuation-free,
+/// with season labels (第二季, II) reduced to their number.
+pub(crate) fn alias_key(title: &str) -> String {
     let mut title = zhconv::zhconv(title, zhconv::Variant::ZhHans).to_lowercase();
     // Preserve season numbers while equating common Chinese and Roman labels.
     for (index, numeral) in ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]

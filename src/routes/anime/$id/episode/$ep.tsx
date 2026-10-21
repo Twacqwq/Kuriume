@@ -25,7 +25,7 @@ import {
   sourceBindingApi,
 } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { detailQueryOptions, episodesQueryOptions } from "@/routes/anime/$id";
+import { detailQueryOptions, episodesQueryOptions, useCatalogRedirect } from "@/routes/anime/$id";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import {
@@ -61,7 +61,8 @@ function EpisodePage() {
   const isFullscreen = fullscreen.mode !== "normal";
   const progressRef = useRef<Parameters<typeof historyApi.upsert>[0] | null>(null);
 
-  const { data: media, error: detailError } = useQuery(detailQueryOptions(id, language));
+  const redirecting = useCatalogRedirect(id);
+  const { data: media, error: detailError } = useQuery({ ...detailQueryOptions(id, language), enabled: !redirecting });
   const { data: storedMedia, isError: storedMediaError } = useQuery({
     queryKey: ["stored-media", id, language],
     queryFn: () => mediaApi.ensure(media!, language),
