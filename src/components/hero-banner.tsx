@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { catalogProviderFor } from "@/lib/store";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import {
@@ -35,7 +36,7 @@ export function HeroBanner({ items }: HeroBannerProps) {
     queryKey: ["anime-detail", media?.id, language],
     queryFn: () =>
       invoke<AnimeInfo>("get_detail", {
-        provider: "AniList",
+        provider: catalogProviderFor(media!.id),
         id: media!.id,
         language,
       }),
@@ -105,12 +106,12 @@ export function HeroBanner({ items }: HeroBannerProps) {
     <section
       aria-roledescription="carousel"
       aria-label={language === "zh" ? "本季推荐" : "Season highlights"}
-      aria-labelledby={`hero-title-${media.anilist_id}`}
+      aria-labelledby={`hero-title-${media.id.replace(":", "-")}`}
       className="relative isolate flex aspect-[16/10] flex-col overflow-hidden rounded-2xl bg-card min-[480px]:aspect-[16/8] md:aspect-auto md:min-h-[clamp(400px,48vh,520px)]"
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
     >
-      <Link to="/anime/$id" params={{ id: media.id }} aria-labelledby={`hero-title-${media.anilist_id}`}
+      <Link to="/anime/$id" params={{ id: media.id }} aria-labelledby={`hero-title-${media.id.replace(":", "-")}`}
         className="absolute inset-0 z-20 rounded-2xl outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-primary-readable md:hidden" />
       {artwork && (
         <img
@@ -139,7 +140,7 @@ export function HeroBanner({ items }: HeroBannerProps) {
               {media.score && <span>· {media.score.toFixed(1)}</span>}
             </div>
             <h1
-              id={`hero-title-${media.anilist_id}`}
+              id={`hero-title-${media.id.replace(":", "-")}`}
               className="line-clamp-2 max-w-2xl text-balance text-[1.375rem] font-bold leading-[1.2] tracking-[-0.025em] text-white md:line-clamp-3 md:text-4xl xl:text-5xl"
             >
               {title}

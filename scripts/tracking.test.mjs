@@ -13,15 +13,21 @@ test("aired episodes prefer the catalog, then this week's schedule, then a finis
 });
 
 test("starting an episode implies the earlier ones; finishing counts it", () => {
-  assert.equal(watchedThrough([], "1"), 0);
-  assert.equal(watchedThrough([entry(3, 100)], "1"), 2);
-  assert.equal(watchedThrough([entry(3, 1400)], "1"), 3);
-  assert.equal(watchedThrough([entry(3, 1400), entry(5, 10)], "1"), 4);
-  assert.equal(watchedThrough([entry(7, 1400, 1440, "2")], "1"), 0, "other works are ignored");
+  assert.equal(watchedThrough([], "anilist:1"), 0);
+  assert.equal(watchedThrough([entry(3, 100)], "anilist:1"), 2);
+  assert.equal(watchedThrough([entry(3, 1400)], "anilist:1"), 3);
+  assert.equal(watchedThrough([entry(3, 1400), entry(5, 10)], "anilist:1"), 4);
+  assert.equal(watchedThrough([entry(7, 1400, 1440, "2")], "anilist:1"), 0, "other works are ignored");
 });
 
 test("minutes left rounds up and hides finished or unknown episodes", () => {
   assert.equal(minutesLeft({ position: 60, duration: 180 }), 2);
   assert.equal(minutesLeft({ position: 179, duration: 180 }), null);
   assert.equal(minutesLeft({ position: 10, duration: 0 }), null);
+});
+
+test("Bangumi history counts only for the Bangumi entry", () => {
+  const bangumi = { ...entry(4, 1400, 1440, "21"), provider: "bangumi" };
+  assert.equal(watchedThrough([bangumi], "bangumi:21"), 4);
+  assert.equal(watchedThrough([bangumi], "anilist:21"), 0);
 });

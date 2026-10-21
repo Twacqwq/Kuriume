@@ -11,6 +11,7 @@ import {
   charactersQueryOptions,
   detailQueryOptions,
   episodesQueryOptions,
+  useCatalogRedirect,
 } from "@/routes/anime/$id";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
@@ -24,7 +25,8 @@ function AnimeDetailPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const language = useDisplayLanguage();
-  const { data: media, error: detailError } = useQuery(detailQueryOptions(id, language));
+  const redirecting = useCatalogRedirect(id);
+  const { data: media, error: detailError } = useQuery({ ...detailQueryOptions(id, language), enabled: !redirecting });
   // After a hover/touch preload the loader may not block navigation, so a
   // failed lookup surfaces here and goes to the route error screen.
   if (detailError) throw detailError;

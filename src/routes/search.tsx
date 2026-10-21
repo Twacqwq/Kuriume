@@ -1,7 +1,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { AnimeGrid } from "@/components/anime-grid";
-import { useDisplayLanguage } from "@/hooks/use-display-language";
-import type { DisplayLanguage } from "@/lib/store";
+import { useCatalogSource, useDisplayLanguage } from "@/hooks/use-display-language";
+import { CATALOG_PROVIDERS, type CatalogSource, type DisplayLanguage } from "@/lib/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { AnimeInfo, PagedResult } from "@/lib/types";
 
@@ -15,9 +15,10 @@ async function fetchSearchResults(
   keyword: string,
   offset: number,
   language: DisplayLanguage,
+  source: CatalogSource,
 ): Promise<PagedResult<AnimeInfo>> {
   return invoke<PagedResult<AnimeInfo>>("search", {
-    provider: "AniList",
+    provider: CATALOG_PROVIDERS[source],
     language,
     query: { keyword, limit: PAGE_SIZE, offset },
   });
@@ -44,6 +45,7 @@ export const Route = createFileRoute("/search")({
 function SearchPage() {
   const { q } = Route.useSearch();
   const language = useDisplayLanguage();
+  const source = useCatalogSource();
 
   if (!q) return null;
 
@@ -51,8 +53,8 @@ function SearchPage() {
     <div>
       <AnimeGrid
         key={`${q}:${language}`}
-        queryKey={["search", q, language]}
-        queryFn={(offset: number) => fetchSearchResults(q, offset, language)}
+        queryKey={["search", q, language, source]}
+        queryFn={(offset: number) => fetchSearchResults(q, offset, language, source)}
         initialPageParam={0}
         getNextPageParam={(lastPage) => getNextSearchPageParam(lastPage)}
         title={language === "zh" ? `“${q}” 的搜索结果` : `Results for “${q}”`}

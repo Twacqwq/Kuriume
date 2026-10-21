@@ -2,7 +2,7 @@ use crate::commands::ProviderState;
 use crate::media_proxy::MediaProxyState;
 use crate::online_commands::OnlineSourceState;
 use crate::store_commands::StoreState;
-use kuriume_provider::AniList;
+use kuriume_provider::{AniList, Bangumi};
 use std::sync::Arc;
 #[cfg(desktop)]
 use tauri::menu::Menu;
@@ -26,6 +26,7 @@ pub fn run() {
     );
     let mut catalog = ProviderState::new();
     catalog.register(Arc::new(AniList::new()));
+    catalog.register(Arc::new(Bangumi::new()));
 
     let media_proxy = MediaProxyState::new();
     let protocol_media_proxy = media_proxy.clone();
@@ -119,6 +120,7 @@ pub fn run() {
             crate::commands::get_episodes,
             crate::commands::get_calendar,
             crate::commands::get_characters,
+            crate::commands::catalog_counterpart,
             crate::online_commands::playback_source_list,
             crate::online_commands::playback_source_list_rules,
             crate::online_commands::playback_source_add_rule,
@@ -131,6 +133,7 @@ pub fn run() {
             crate::store_commands::set_default_speed,
             crate::store_commands::set_auto_next,
             crate::store_commands::set_display_language,
+            crate::store_commands::set_catalog_source,
             crate::store_commands::media_ensure,
             crate::store_commands::external_identity_list,
             crate::store_commands::external_identity_upsert,

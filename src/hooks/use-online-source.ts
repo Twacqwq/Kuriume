@@ -78,9 +78,8 @@ export function useOnlineSource(
   const episodesRequestRef = useRef(0);
   const initializedScopeRef = useRef<string | null>(null);
   const catalogScope =
-    matchContext.anilistId != null
-      ? `anilist:${matchContext.anilistId}`
-      : (animeTitle?.trim() ?? "");
+    matchContext.catalogId ??
+    (matchContext.anilistId != null ? `anilist:${matchContext.anilistId}` : (animeTitle?.trim() ?? ""));
   const manualQuery =
     manualSearch?.scope === catalogScope ? manualSearch.query : null;
   const alternativeTitleKey = alternativeTitles

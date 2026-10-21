@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { LibraryControl } from "@/components/library-control";
 import { StoredMediaTitle } from "@/components/stored-media-title";
 import { LibraryListLoading } from "@/components/page-loading";
-import { useDisplayLanguage } from "@/hooks/use-display-language";
+import { useCatalogSource, useDisplayLanguage } from "@/hooks/use-display-language";
 import {
   catalogId,
   historyApi,
@@ -77,22 +77,26 @@ function LibraryPage() {
     onSuccess: refreshLibrary,
   });
   // Airing progress comes from this week's schedule, which the app already
-  // loads once for the calendar: no extra AniList request per followed work
+  // loads once for the calendar: no extra catalog request per followed work
   // (AniList rate-limits, and a burst of detail lookups starves navigation).
-  const { data: calendar = [] } = useQuery({ ...calendarQueryOptions(language), enabled: view === "following" });
+  // Bangumi's schedule has dates but no broadcast times, so its works show
+  // no unwatched count.
+  const source = useCatalogSource();
+  const { data: calendar = [] } = useQuery({ ...calendarQueryOptions(language, source), enabled: view === "following" });
   const now = Date.now() / 1000;
   const airing = new Map<string, AnimeInfo>();
   for (const day of calendar) {
     for (const media of day.items) {
-      const known = airing.get(String(media.anilist_id));
+      const known = airing.get(media.id);
       // Keep the latest broadcast of the week for each work.
-      if (!known || (media.schedule?.airing_at ?? 0) > (known.schedule?.airing_at ?? 0)) airing.set(String(media.anilist_id), media);
+      if (!known || (media.schedule?.airing_at ?? 0) > (known.schedule?.airing_at ?? 0)) airing.set(media.id, media);
     }
   }
   const progress = new Map<string, { aired: number | null; through: number; next: AiringSlot | null }>();
   for (const entry of entries) {
-    if (entry.status !== "following" || entry.provider !== "anilist") continue;
-    const media = airing.get(entry.external_id);
+    if (entry.status !== "following") continue;
+    const mediaId = catalogId(entry.provider, entry.external_id);
+    const media = airing.get(mediaId);
     const slot = media?.schedule ?? null;
     const total = media?.total_episodes || entry.total_episodes;
     const next = slot
@@ -100,7 +104,7 @@ function LibraryPage() {
       : null;
     progress.set(entry.media_id, {
       aired: media ? airedEpisodes(media, now) : null,
-      through: watchedThrough(history, entry.external_id),
+      through: watchedThrough(history, mediaId),
       next,
     });
   }
@@ -108,7 +112,7 @@ function LibraryPage() {
     const item = progress.get(entry.media_id);
     return item?.aired != null ? Math.max(0, item.aired - item.through) : 0;
   };
-  const lastWatched = (entry: LibraryEntry) => latestEntry(history, entry.external_id)?.watched_at ?? "";
+  const lastWatched = (entry: LibraryEntry) => latestEntry(history, catalogId(entry.provider, entry.external_id))?.watched_at ?? "";
   const filtered =
     view === "history"
       ? []

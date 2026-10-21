@@ -46,9 +46,16 @@ function fixture(options) {
     Object.defineProperty(event, "target", { value: { closest: () => null } });
     surface.dispatchEvent(event);
   };
+  const touch = (type, x, y) => {
+    const event = new Event(type, { cancelable: true });
+    const points = type === "touchend" ? [] : [{ clientX: x, clientY: y }];
+    Object.defineProperty(event, "touches", { value: points });
+    Object.defineProperty(event, "target", { value: { closest: () => null } });
+    surface.dispatchEvent(event);
+  };
   usePlayerGestures(art, "zh", options);
   const cleanup = effects.pop()();
-  return { art, click, controlsShown: () => shown, done: () => { cleanup(); globalThis.document = documentBefore; } };
+  return { art, click, touch, controlsShown: () => shown, done: () => { cleanup(); globalThis.document = documentBefore; } };
 }
 
 test("single tap toggles controls; double tap on a side skips and keeps the controls as they were", () => {
@@ -91,6 +98,23 @@ test("a locked screen only reports the tap", () => {
     assert.equal(flashed, 2);
     assert.equal(f.art.currentTime, 100);
     assert.equal(f.controlsShown(), false);
+  } finally {
+    f.done();
+  }
+});
+
+test("the WebView's click after a touch tap is ignored however late it comes", async () => {
+  const f = fixture();
+  try {
+    f.touch("touchstart", 150, 100);
+    f.touch("touchend");
+    assert.equal(f.controlsShown(), true, "the touch tap reveals");
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    f.click(150);
+    assert.equal(f.controlsShown(), true, "a late synthetic click must not hide them again");
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    f.click(150);
+    assert.equal(f.controlsShown(), false, "a click without a touch still toggles");
   } finally {
     f.done();
   }

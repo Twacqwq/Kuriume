@@ -6,6 +6,16 @@ use uuid::Uuid;
 
 const CURRENT_SCHEMA_VERSION: i64 = 3;
 const DEFAULT_DISPLAY_LANGUAGE: &str = "zh";
+const DEFAULT_CATALOG_SOURCE: &str = "anilist";
+/// Catalogs a media item can belong to; their identities are primary.
+const CATALOG_PROVIDERS: [&str; 2] = ["anilist", "bangumi"];
+/// The one catalog identity a library/history row is shown under: AniList
+/// first, then Bangumi (an item linked to both appears once).
+const CATALOG_IDENTITY: &str = "e.provider = (\
+    SELECT x.provider FROM external_identity x \
+    WHERE x.media_id = e.media_id AND x.scope = 'title' AND x.provider IN ('anilist', 'bangumi') \
+    ORDER BY CASE x.provider WHEN (SELECT catalog_source FROM settings WHERE id = 1) THEN 0 \
+    WHEN 'anilist' THEN 1 ELSE 2 END LIMIT 1)";
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -23,6 +33,9 @@ pub struct Settings {
     pub default_speed: f64,
     pub auto_next: bool,
     pub display_language: String,
+    /// Catalog for browsing, search and the schedule: "anilist" or "bangumi".
+    /// Saved items always open from the catalog they came from.
+    pub catalog_source: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -151,7 +164,8 @@ impl Store {
               default_volume REAL NOT NULL DEFAULT 0.8,
               default_speed REAL NOT NULL DEFAULT 1.0,
               auto_next INTEGER NOT NULL DEFAULT 1,
-              display_language TEXT NOT NULL DEFAULT 'zh'
+              display_language TEXT NOT NULL DEFAULT 'zh',
+              catalog_source TEXT NOT NULL DEFAULT 'anilist'
             );
             INSERT OR IGNORE INTO settings (id) VALUES (1);
 
@@ -222,7 +236,8 @@ impl Store {
         self.connection
             .query_row(
                 r#"
-                SELECT default_volume, default_speed, auto_next, display_language
+                SELECT default_volume, default_speed, auto_next, display_language,
+                       catalog_source
                 FROM settings WHERE id = 1
                 "#,
                 [],
@@ -232,6 +247,7 @@ impl Store {
                         default_speed: row.get(1)?,
                         auto_next: row.get::<_, i64>(2)? != 0,
                         display_language: row.get(3)?,
+                        catalog_source: row.get(4)?,
                     })
                 },
             )
@@ -278,6 +294,19 @@ impl Store {
         }
         self.connection.execute(
             "UPDATE settings SET display_language = ?1 WHERE id = 1",
+            [value],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_catalog_source(&self, value: &str) -> Result<()> {
+        if !CATALOG_PROVIDERS.contains(&value) {
+            return Err(StoreError::Invalid(
+                "catalog source must be 'anilist' or 'bangumi'".into(),
+            ));
+        }
+        self.connection.execute(
+            "UPDATE settings SET catalog_source = ?1 WHERE id = 1",
             [value],
         )?;
         Ok(())
@@ -342,7 +371,9 @@ impl Store {
                 FROM media m
                 JOIN external_identity e ON e.media_id = m.id AND e.scope = 'title'
                 WHERE m.id = ?1
-                ORDER BY CASE e.provider WHEN 'anilist' THEN 0 ELSE 1 END
+                ORDER BY CASE e.provider
+                  WHEN (SELECT catalog_source FROM settings WHERE id = 1) THEN 0
+                  WHEN 'anilist' THEN 1 ELSE 2 END
                 LIMIT 1
                 "#,
                 [media_id],
@@ -350,6 +381,71 @@ impl Store {
             )
             .optional()
             .map_err(Into::into)
+    }
+
+    /// The media a catalog entry (`anilist` / `bangumi` + ID) was saved as.
+    pub fn media_for_identity(&self, provider: &str, external_id: &str) -> Result<Option<String>> {
+        self.connection
+            .query_row(
+                r#"
+                SELECT media_id FROM external_identity
+                WHERE provider = ?1 AND external_id = ?2 AND scope = 'title'
+                "#,
+                params![provider, external_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    /// Records that `provider:external_id` is the same work as `media_id`.
+    /// If that entry was already saved as a separate media (opened under the
+    /// other catalog before the link was known), its history, library entry
+    /// and playback bindings move onto `media_id`; on conflicts the existing
+    /// rows of `media_id` win.
+    pub fn link_catalog_identity(
+        &self,
+        media_id: &str,
+        provider: &str,
+        external_id: &str,
+    ) -> Result<()> {
+        if !CATALOG_PROVIDERS.contains(&provider) || external_id.trim().is_empty() {
+            return Err(StoreError::Invalid(format!(
+                "not a catalog identity: {provider}:{external_id}"
+            )));
+        }
+        let transaction = self.connection.unchecked_transaction()?;
+        let previous = self.media_for_identity(provider, external_id)?;
+        match previous.as_deref() {
+            Some(current) if current == media_id => {}
+            Some(other) => {
+                for table in ["watch_history", "library_entry", "source_binding"] {
+                    transaction.execute(
+                        &format!("UPDATE OR IGNORE {table} SET media_id = ?1 WHERE media_id = ?2"),
+                        params![media_id, other],
+                    )?;
+                }
+                transaction.execute(
+                    r#"
+                    UPDATE external_identity SET media_id = ?1, verified_at = CURRENT_TIMESTAMP
+                    WHERE provider = ?2 AND external_id = ?3 AND scope = 'title'
+                    "#,
+                    params![media_id, provider, external_id],
+                )?;
+                transaction.execute("DELETE FROM media WHERE id = ?1", [other])?;
+            }
+            None => {
+                transaction.execute(
+                    r#"
+                    INSERT INTO external_identity (media_id, provider, external_id, scope, confidence)
+                    VALUES (?1, ?2, ?3, 'title', 1.0)
+                    "#,
+                    params![media_id, provider, external_id],
+                )?;
+            }
+        }
+        transaction.commit()?;
+        Ok(())
     }
 
     pub fn external_identity_list(&self, media_id: &str) -> Result<Vec<ExternalIdentity>> {
@@ -431,9 +527,9 @@ impl Store {
     }
 
     pub fn external_identity_remove(&self, media_id: &str, provider: &str) -> Result<()> {
-        if provider == "anilist" {
+        if CATALOG_PROVIDERS.contains(&provider) {
             return Err(StoreError::Invalid(
-                "the primary AniList identity cannot be removed".into(),
+                "a primary catalog identity cannot be removed".into(),
             ));
         }
         self.connection.execute(
@@ -545,7 +641,7 @@ impl Store {
     }
 
     pub fn history_list(&self, limit: i32, offset: i32) -> Result<Vec<WatchHistoryEntry>> {
-        let mut statement = self.connection.prepare(
+        let mut statement = self.connection.prepare(&format!(
             r#"
             SELECT h.media_id, e.provider, e.external_id, h.episode, m.title,
                    h.episode_title, m.cover, h.position, h.duration, h.source_id,
@@ -553,11 +649,11 @@ impl Store {
             FROM watch_history h
             JOIN media m ON m.id = h.media_id
             JOIN external_identity e
-              ON e.media_id = h.media_id AND e.scope = 'title' AND e.provider = 'anilist'
+              ON e.media_id = h.media_id AND e.scope = 'title' AND {CATALOG_IDENTITY}
             ORDER BY h.watched_at DESC
             LIMIT ?1 OFFSET ?2
-            "#,
-        )?;
+            "#
+        ))?;
         let rows = statement.query_map(params![limit.max(1), offset.max(0)], |row| {
             Ok(WatchHistoryEntry {
                 media_id: row.get(0)?,
@@ -733,6 +829,17 @@ fn migrate(connection: &mut Connection) -> Result<()> {
         [DEFAULT_DISPLAY_LANGUAGE],
     )?;
 
+    if !table_has_column(&transaction, "settings", "catalog_source")? {
+        transaction.execute_batch(
+            "ALTER TABLE settings ADD COLUMN catalog_source \
+             TEXT NOT NULL DEFAULT 'anilist';",
+        )?;
+    }
+    transaction.execute(
+        "UPDATE settings SET catalog_source = ?1 WHERE catalog_source NOT IN ('anilist', 'bangumi')",
+        [DEFAULT_CATALOG_SOURCE],
+    )?;
+
     transaction.execute_batch(
         r#"
         INSERT OR IGNORE INTO source_binding
@@ -809,7 +916,7 @@ fn library_select(suffix: &str) -> String {
         FROM library_entry l
         JOIN media m ON m.id = l.media_id
         JOIN external_identity e
-          ON e.media_id = l.media_id AND e.scope = 'title' AND e.provider = 'anilist'
+          ON e.media_id = l.media_id AND e.scope = 'title' AND {CATALOG_IDENTITY}
         {suffix}
         "#
     )
@@ -889,6 +996,117 @@ mod tests {
             migrate(&mut store.connection).unwrap();
             assert_eq!(store.get_settings().unwrap().display_language, expected);
         }
+    }
+
+    #[test]
+    fn catalog_source_defaults_to_anilist_and_accepts_bangumi() {
+        let mut store = store();
+        assert_eq!(store.get_settings().unwrap().catalog_source, "anilist");
+        store.set_catalog_source("bangumi").unwrap();
+        assert_eq!(store.get_settings().unwrap().catalog_source, "bangumi");
+        assert!(store.set_catalog_source("tmdb").is_err());
+        store
+            .connection
+            .execute("UPDATE settings SET catalog_source = 'nope'", [])
+            .unwrap();
+        migrate(&mut store.connection).unwrap();
+        assert_eq!(store.get_settings().unwrap().catalog_source, "anilist");
+    }
+
+    #[test]
+    fn bangumi_items_appear_in_library_and_history_once() {
+        let store = store();
+        let media = store
+            .ensure_media(&CatalogMediaInput {
+                provider: "bangumi".into(),
+                external_id: "400602".into(),
+                title: "葬送的芙莉莲".into(),
+                cover: None,
+                banner: None,
+                total_episodes: 28,
+            })
+            .unwrap();
+        store
+            .library_add(&media.id, LibraryStatus::Following)
+            .unwrap();
+        let entries = store.library_list(None).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].provider, "bangumi");
+        assert_eq!(entries[0].external_id, "400602");
+        // Linking an AniList identity later shows the item once, under AniList.
+        store
+            .external_identity_upsert(&media.id, "anilist", "154587", "title", 1.0)
+            .unwrap();
+        let entries = store.library_list(None).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].provider, "anilist");
+        assert!(store
+            .external_identity_remove(&media.id, "bangumi")
+            .is_err());
+    }
+
+    #[test]
+    fn linked_identities_follow_the_catalog_source_and_merge_duplicates() {
+        let store = store();
+        let saved = store.ensure_media(&media()).unwrap();
+        store
+            .library_add(&saved.id, LibraryStatus::Following)
+            .unwrap();
+        store
+            .history_upsert(&saved.id, 3, "第 3 话", 120.0, 1440.0, None)
+            .unwrap();
+        // The same work, opened under Bangumi before the two were linked.
+        let duplicate = store
+            .ensure_media(&CatalogMediaInput {
+                provider: "bangumi".into(),
+                external_id: "975".into(),
+                title: "海贼王".into(),
+                cover: None,
+                banner: None,
+                total_episodes: 1000,
+            })
+            .unwrap();
+        store
+            .history_upsert(&duplicate.id, 3, "第 3 话", 600.0, 1440.0, None)
+            .unwrap();
+        store
+            .history_upsert(&duplicate.id, 4, "第 4 话", 60.0, 1440.0, None)
+            .unwrap();
+
+        store
+            .link_catalog_identity(&saved.id, "bangumi", "975")
+            .unwrap();
+        store
+            .link_catalog_identity(&saved.id, "bangumi", "975")
+            .unwrap();
+        assert_eq!(
+            store
+                .media_for_identity("bangumi", "975")
+                .unwrap()
+                .as_deref(),
+            Some(saved.id.as_str())
+        );
+        assert!(store.get_media(&duplicate.id).unwrap().is_none());
+        let history = store.history_list(10, 0).unwrap();
+        assert_eq!(history.len(), 2);
+        assert!(history.iter().all(|entry| entry.media_id == saved.id));
+        // On a conflict the item's own progress wins.
+        let third = history.iter().find(|entry| entry.episode == 3).unwrap();
+        assert_eq!(third.position, 120.0);
+        assert_eq!(history[0].provider, "anilist");
+
+        store.set_catalog_source("bangumi").unwrap();
+        let entry = &store.library_list(None).unwrap()[0];
+        assert_eq!(
+            (entry.provider.as_str(), entry.external_id.as_str()),
+            ("bangumi", "975")
+        );
+        assert_eq!(store.history_list(10, 0).unwrap()[0].provider, "bangumi");
+        assert_eq!(
+            store.get_media(&saved.id).unwrap().unwrap().provider,
+            "bangumi"
+        );
+        assert!(store.link_catalog_identity(&saved.id, "tmdb", "1").is_err());
     }
 
     #[test]

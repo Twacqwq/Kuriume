@@ -1,10 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { refreshCatalogLanguage } from "@/lib/catalog-queries";
+import { linkFollowedToCatalog, refreshCatalog } from "@/lib/catalog-queries";
 import {
+  DEFAULT_CATALOG_SOURCE,
   DEFAULT_DISPLAY_LANGUAGE,
   settingsApi,
+  type CatalogSource,
   settingsQueryOptions,
   type DisplayLanguage,
   type Settings,
@@ -20,6 +22,7 @@ import {
   RefreshCw,
   ScrollText,
   ChevronRight,
+  Database,
   History,
   Download,
   ExternalLink,
@@ -72,14 +75,34 @@ function SettingsPage() {
     await reloadCatalog(language);
   };
 
-  const reloadCatalog = async (language: DisplayLanguage) => {
+  const catalogSource = settings?.catalog_source ?? DEFAULT_CATALOG_SOURCE;
+  const saveCatalogSource = async (source: CatalogSource) => {
+    if (!settings || source === catalogSource) return;
+    const previous = catalogSource;
+    updateSettings((current) => ({ ...current, catalog_source: source }));
+    setSaving(true);
+    setFeedback(null);
+    try {
+      await settingsApi.setCatalogSource(source);
+    } catch (reason) {
+      updateSettings((current) => ({ ...current, catalog_source: previous }));
+      setFeedback({ kind: "error", message: toErrorMessage(reason, zh ? "无法切换数据源" : "Could not change the data source") });
+      setSaving(false);
+      return;
+    }
+    setSaving(false);
+    await reloadCatalog(settings.display_language, source);
+    void linkFollowedToCatalog().catch(() => undefined);
+  };
+
+  const reloadCatalog = async (language: DisplayLanguage, source: CatalogSource = catalogSource) => {
     setReloading(true);
     setFeedback({ kind: "success", message: language === "zh" ? "正在重新载入动漫列表…" : "Reloading anime lists…" });
     try {
-      await refreshCatalogLanguage(language);
+      await refreshCatalog(language, source);
       setFeedback({ kind: "success", message: language === "zh" ? "动漫列表已重新载入" : "Anime lists reloaded" });
     } catch {
-      setFeedback({ kind: "error", message: language === "zh" ? "语言已保存，列表载入失败，请重试" : "Language saved. Could not reload lists; please retry." });
+      setFeedback({ kind: "error", message: language === "zh" ? "设置已保存，列表载入失败，请重试" : "Saved. Could not reload lists; please retry." });
     } finally {
       setReloading(false);
     }
@@ -127,6 +150,21 @@ function SettingsPage() {
                 <SelectContent>
                   <SelectItem value="en" className="min-h-12">English</SelectItem>
                   <SelectItem value="zh" className="min-h-12">中文</SelectItem>
+                </SelectContent>
+              </Select>
+            </SettingRow>
+            <SettingRow icon={<Database />} label={zh ? "数据源" : "Data source"} htmlFor="catalog-source">
+              <Select
+                value={catalogSource}
+                disabled={saving || reloading}
+                onValueChange={(value) => {
+                  if (value === "anilist" || value === "bangumi") void saveCatalogSource(value);
+                }}
+              >
+                <SelectTrigger id="catalog-source" className="h-12 w-32 shrink-0 border-0 bg-secondary/60"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="anilist" className="min-h-12">AniList</SelectItem>
+                  <SelectItem value="bangumi" className="min-h-12">Bangumi</SelectItem>
                 </SelectContent>
               </Select>
             </SettingRow>

@@ -386,10 +386,10 @@ const AnimeCard = memo(function AnimeCard({ item }: AnimeCardProps) {
         {item.score > 0 && (
           <div
             className="absolute top-2 right-2 flex items-center gap-1 rounded-md bg-black/68 px-1.5 py-0.5 text-xs text-white/88"
-            aria-label={`${language === "zh" ? "评分" : "Score"} ${item.score}`}
+            aria-label={`${language === "zh" ? "评分" : "Score"} ${item.score.toFixed(1)}`}
           >
             <Star size={10} fill="currentColor" aria-hidden="true" />
-            {item.score}
+            {item.score.toFixed(1)}
           </div>
         )}
       </div>

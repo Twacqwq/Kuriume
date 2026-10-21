@@ -1,7 +1,11 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
+import { useEffect } from "react";
+import { counterpartQueryOptions } from "@/lib/catalog-queries";
 import { queryClient } from "@/lib/query-client";
-import { DEFAULT_DISPLAY_LANGUAGE, settingsQueryOptions, type DisplayLanguage } from "@/lib/store";
+import { useCatalogSource } from "@/hooks/use-display-language";
+import { catalogProviderFor, catalogSourceOf, DEFAULT_CATALOG_SOURCE, DEFAULT_DISPLAY_LANGUAGE, settingsQueryOptions, type DisplayLanguage } from "@/lib/store";
 import type { AnimeInfo, AnimeEpisodes, AnimeCharacters } from "@/lib/types";
 
 export const detailQueryOptions = (
@@ -14,7 +18,7 @@ export const detailQueryOptions = (
   // unmounting card cancel the route loader's shared request during navigation.
   queryFn: () =>
     invoke<AnimeInfo>("get_detail", {
-      provider: "AniList",
+      provider: catalogProviderFor(id),
       id,
       language,
     }),
@@ -25,7 +29,7 @@ export const episodesQueryOptions = (id: string, limit: number) => ({
   staleTime: 30 * 60 * 1000,
   queryFn: () =>
     invoke<AnimeEpisodes[]>("get_episodes", {
-      provider: "AniList",
+      provider: catalogProviderFor(id),
       query: { id, offset: 0, limit },
     }),
 });
@@ -35,19 +39,50 @@ export const charactersQueryOptions = (id: string) => ({
   staleTime: 60 * 60 * 1000,
   queryFn: () =>
     invoke<AnimeCharacters[]>("get_characters", {
-      provider: "AniList",
+      provider: catalogProviderFor(id),
       id,
     }),
 });
 
+/** The same page (details or an episode) for another catalog ID. */
+function sameView(pathname: string, id: string) {
+  const episode = /\/episode\/([^/]+)\/?$/.exec(pathname)?.[1];
+  return episode
+    ? { to: "/anime/$id/episode/$ep" as const, params: { id, ep: decodeURIComponent(episode) } }
+    : { to: "/anime/$id" as const, params: { id } };
+}
+
+/**
+ * A saved item from the other catalog opens as the chosen catalog's entry.
+ * True while that lookup runs or the redirect is pending, so pages hold their
+ * catalog requests (the original catalog may be unreachable).
+ */
+export function useCatalogRedirect(id: string): boolean {
+  const source = useCatalogSource();
+  const foreign = catalogSourceOf(id) !== source;
+  const { data: target, isPending } = useQuery({ ...counterpartQueryOptions(id, source), enabled: foreign });
+  const navigate = useNavigate();
+  const location = useRouterState({ select: (state) => state.location });
+  useEffect(() => {
+    if (target) void navigate({ ...sameView(location.pathname, target), search: location.search as never, replace: true });
+    // Once per resolved target; the location is read at that moment.
+  }, [target]);
+  return foreign && (isPending || !!target);
+}
+
 export const Route = createFileRoute("/anime/$id")({
-  loader: async ({ params, preload }) => {
+  loader: async ({ params, preload, location }) => {
     // "intent" preloading runs this on hover and on every touch that starts a
     // scroll over a card. Preloads may only use the cache: each AniList lookup
     // counts against a 30-per-minute limit (see lib.rs/anilist gate).
     if (preload) return;
     const settings = await queryClient.ensureQueryData(settingsQueryOptions);
     const language = settings.display_language ?? DEFAULT_DISPLAY_LANGUAGE;
+    const source = settings.catalog_source ?? DEFAULT_CATALOG_SOURCE;
+    if (catalogSourceOf(params.id) !== source) {
+      const target = await queryClient.fetchQuery(counterpartQueryOptions(params.id, source));
+      if (target) throw redirect({ ...sameView(location.pathname, target), search: location.search as never, replace: true });
+    }
     const cached = queryClient.getQueryData<AnimeInfo>([
       "anime-detail",
       params.id,

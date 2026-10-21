@@ -13,15 +13,17 @@ use crate::models::{
     GetListQuery, PagedResult, SearchQuery, SortBy, Weekday,
 };
 use crate::provider::AnimeProvider;
+use crate::user_agent::USER_AGENT;
 
 mod gate;
 mod search;
+
+pub(crate) use search::alias_key as title_key;
 
 use gate::{rate_limited_message, timeout_from_headers, RateGate};
 
 const ANILIST_API: &str = "https://graphql.anilist.co";
 const BANGUMI_API: &str = "https://api.bgm.tv";
-const USER_AGENT: &str = "Kuriume/0.1 (https://github.com/Kuriume/Kuriume)";
 const CHINESE_REQUEST_TIMEOUT: Duration = Duration::from_secs(4);
 const CHINESE_CACHE_LIMIT: usize = 512;
 /// Catalog media seen in any response (lists, search, calendar, details) is
@@ -389,6 +391,12 @@ impl Default for AniList {
 impl AnimeProvider for AniList {
     fn name(&self) -> &str {
         "AniList"
+    }
+
+    fn known_titles(&self, id: &str) -> Vec<String> {
+        Self::parse_id(id)
+            .map(search::known_titles)
+            .unwrap_or_default()
     }
 
     async fn search(
@@ -1040,7 +1048,7 @@ fn bangumi_variant_score(
     }
 }
 
-fn localized_synopses(value: &str) -> (Option<String>, Option<String>) {
+pub(crate) fn localized_synopses(value: &str) -> (Option<String>, Option<String>) {
     // Bangumi sometimes appends the Japanese original to its Chinese synopsis.
     // Split only explicit source markers; do not guess at ordinary paragraphs.
     let (translated, original) = value

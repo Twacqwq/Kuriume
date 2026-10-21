@@ -34,6 +34,7 @@ pub enum Event {
     SubtitleError,
     NativeControl,
     PlayerFallback,
+    PlayerTap,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
@@ -79,6 +80,7 @@ pub enum Code {
 #[serde(rename_all = "snake_case")]
 pub enum Provider {
     Anilist,
+    Bangumi,
     Anime1,
     Xifan,
     Agedm,
@@ -89,6 +91,7 @@ pub enum Provider {
 pub fn provider(id: &str) -> Provider {
     match id {
         "AniList" | "anilist" => Provider::Anilist,
+        "Bangumi" | "bangumi" => Provider::Bangumi,
         "builtin:anime1" => Provider::Anime1,
         "builtin:xifan" => Provider::Xifan,
         "builtin:age" => Provider::Agedm,

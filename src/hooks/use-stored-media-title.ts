@@ -1,6 +1,6 @@
-import { useDisplayLanguage } from "@/hooks/use-display-language";
+import { useCatalogSource, useDisplayLanguage } from "@/hooks/use-display-language";
 import { displayAnimeTitle } from "@/lib/display-language";
-import { catalogId, type DisplayLanguage } from "@/lib/store";
+import { catalogId, catalogProviderFor, type DisplayLanguage } from "@/lib/store";
 import { storedTitleQueryKey } from "@/lib/stored-title-query";
 import type { AnimeInfo } from "@/lib/types";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
@@ -91,6 +91,7 @@ export function useStoredMediaTitle(
   fallback: string,
 ): string {
   const language = useDisplayLanguage();
+  const source = useCatalogSource();
   const client = useQueryClient();
   const catalogProvider = provider.toLowerCase();
   const id = catalogId(catalogProvider, externalId);
@@ -101,7 +102,7 @@ export function useStoredMediaTitle(
       const release = await acquireTitleRequest(signal);
       try {
         const media = await invoke<AnimeInfo>("get_detail", {
-          provider: "AniList",
+          provider: catalogProviderFor(id),
           id,
           language,
         });
@@ -112,7 +113,9 @@ export function useStoredMediaTitle(
       }
     },
     // A stored Chinese title is already what the zh UI would show.
-    enabled: catalogProvider === "anilist" && !cached &&
+    // Only the chosen catalog: the other one may be unreachable, and the
+    // stored title is a fine fallback.
+    enabled: catalogProvider === source && !cached &&
       !(language === "zh" && CJK.test(fallback)),
     // A list card can provide a title immediately without being written into
     // the full-detail cache or pretending its synopsis has been fetched.

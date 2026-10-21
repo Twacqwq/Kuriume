@@ -8,7 +8,7 @@ import { RouteError } from "@/components/route-error";
 import { routeTree } from "./routeTree.gen";
 import "./main.css";
 import { installErrorDiagnostics } from "@/lib/diagnostics";
-import { prefetchBrowseData } from "@/lib/catalog-queries";
+import { linkFollowedToCatalog, prefetchBrowseData } from "@/lib/catalog-queries";
 import { dismissSplash } from "@/lib/splash";
 
 const removeErrorDiagnostics = installErrorDiagnostics();
@@ -18,6 +18,8 @@ if (import.meta.hot) import.meta.hot.dispose(removeErrorDiagnostics);
 const browseData = prefetchBrowseData().catch(() => undefined);
 // The launch splash covers the first catalog load (bounded; see lib/splash).
 void dismissSplash(browseData);
+// After the first screen: map followed works saved under the other catalog.
+void browseData.then(() => linkFollowedToCatalog()).catch(() => undefined);
 
 const router = createRouter({
   routeTree,

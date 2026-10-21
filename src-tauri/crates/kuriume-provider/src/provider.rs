@@ -37,4 +37,10 @@ pub trait AnimeProvider: Send + Sync {
 
     /// Get weekly broadcast calendar.
     async fn get_calendar(&self, language: Option<&str>) -> Result<Vec<CalendarEntry>>;
+
+    /// Titles this catalog knows for an ID without a network request, used
+    /// to find the same work in another catalog. Empty by default.
+    fn known_titles(&self, _id: &str) -> Vec<String> {
+        Vec::new()
+    }
 }

@@ -19,12 +19,13 @@ import {
 import { queryClient } from "@/lib/query-client";
 import {
   historyApi,
+  isCatalogEntry,
   mediaApi,
   settingsQueryOptions,
   sourceBindingApi,
 } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { detailQueryOptions, episodesQueryOptions } from "@/routes/anime/$id";
+import { detailQueryOptions, episodesQueryOptions, useCatalogRedirect } from "@/routes/anime/$id";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import {
@@ -60,7 +61,8 @@ function EpisodePage() {
   const isFullscreen = fullscreen.mode !== "normal";
   const progressRef = useRef<Parameters<typeof historyApi.upsert>[0] | null>(null);
 
-  const { data: media, error: detailError } = useQuery(detailQueryOptions(id, language));
+  const redirecting = useCatalogRedirect(id);
+  const { data: media, error: detailError } = useQuery({ ...detailQueryOptions(id, language), enabled: !redirecting });
   const { data: storedMedia, isError: storedMediaError } = useQuery({
     queryKey: ["stored-media", id, language],
     queryFn: () => mediaApi.ensure(media!, language),
@@ -90,8 +92,7 @@ function EpisodePage() {
 
   const savedEntry = history.find(
     (entry) =>
-      entry.provider === "anilist" &&
-      entry.external_id === String(media?.anilist_id) &&
+      !!media && isCatalogEntry(entry, media.id) &&
       entry.episode === episodeNumber,
   );
   const startTime =
@@ -114,7 +115,8 @@ function EpisodePage() {
   );
 
   const onlineSource = useOnlineSource(media?.title, alternativeTitles, {
-    anilistId: media?.anilist_id,
+    catalogId: media?.id,
+    anilistId: media?.anilist_id || null,
     year: media?.year,
     episodeCount: media?.total_episodes,
     episodeNumber,
@@ -284,11 +286,11 @@ function EpisodePage() {
   const watched = useMemo(() => {
     const map = new Map<number, number>();
     for (const entry of history) {
-      if (entry.provider !== "anilist" || entry.external_id !== String(media?.anilist_id) || entry.duration <= 0) continue;
+      if (!media || !isCatalogEntry(entry, media.id) || entry.duration <= 0) continue;
       map.set(entry.episode, Math.min(1, entry.position / entry.duration));
     }
     return map;
-  }, [history, media?.anilist_id]);
+  }, [history, media]);
   const playerEpisodes = useMemo<PlayerEpisode[]>(
     () => (availableEpisodes ?? [])
       .filter((episode): episode is typeof episode & { episodeNumber: number } =>

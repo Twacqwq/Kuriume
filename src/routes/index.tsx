@@ -6,7 +6,7 @@ import { TodayUpdates } from "@/components/today-updates";
 import { minutesLeft } from "@/lib/tracking";
 import { StoredMediaTitle } from "@/components/stored-media-title";
 import { Button } from "@/components/ui/button";
-import { useDisplayLanguage } from "@/hooks/use-display-language";
+import { useCatalogSource, useDisplayLanguage } from "@/hooks/use-display-language";
 import { displayAnimeTitle } from "@/lib/display-language";
 import {
   ensureCatalogSettings,
@@ -30,7 +30,8 @@ export const Route = createFileRoute("/")({
 
 function HomePage() {
   const language = useDisplayLanguage();
-  const { data: firstPage, dataUpdatedAt, isError, isPending, refetch } = useQuery(spotlightQuery(language));
+  const source = useCatalogSource();
+  const { data: firstPage, dataUpdatedAt, isError, isPending, refetch } = useQuery(spotlightQuery(language, source));
   const spotlight = firstPage?.data?.slice(0, 12) ?? [];
   const { data: history = [], refetch: refetchHistory } = useQuery({
     queryKey: historyListQueryKey(12, 0),
@@ -157,12 +158,12 @@ function HomePage() {
       </div>
 
       {firstPage && <AnimeGrid
-        key={language}
+        key={`${language}:${source}`}
         title={language === "zh" ? "今年的动画" : "Explore this year"}
-        queryKey={["anime-list", "AniList", CURRENT_YEAR, language]}
+        queryKey={["anime-list", source, CURRENT_YEAR, language]}
         queryFn={(offset: number) => offset === 0
-          ? queryClient.fetchQuery(spotlightQuery(language))
-          : fetchSeason(offset, language)}
+          ? queryClient.fetchQuery(spotlightQuery(language, source))
+          : fetchSeason(offset, language, source)}
         initialPageParam={0}
         getNextPageParam={(lastPage) => {
           const next = lastPage.offset + lastPage.limit;
