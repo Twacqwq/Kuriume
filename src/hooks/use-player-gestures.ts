@@ -58,7 +58,6 @@ export function usePlayerGestures(art: Artplayer | null, language: string, optio
     // that touch is then consumed whenever it arrives. A time window is not
     // enough: under load the click can come late and toggle the controls back.
     let touchTapped = false;
-    let probes = 0;
     // Tap state
     let lastTap: { at: number; zone: TapZone; controlsBefore: boolean } | null = null;
     let streak: { zone: Exclude<TapZone, "center">; until: number; seconds: number } | null = null;
@@ -216,32 +215,6 @@ export function usePlayerGestures(art: Artplayer | null, language: string, optio
       }
       lastTap = { at: now, zone, controlsBefore: Boolean(art.controls?.show) };
       art.controls?.toggle?.();
-      probe(lastTap.controlsBefore);
-    };
-    // What a single tap actually did on this device, for the diagnostics log:
-    // the controls state, whether the bar is drawn, and what sits on top of it.
-    const probe = (before: boolean) => {
-      if (probes >= 6) return;
-      probes += 1;
-      const wanted = !before;
-      const report = (label: string) => {
-        if (disposed || typeof container.querySelector !== "function") return;
-        const bottom = container.querySelector<HTMLElement>(".art-bottom");
-        const bar = container.querySelector<HTMLElement>(".art-controls")?.getBoundingClientRect();
-        const top = bar ? document.elementFromPoint(bar.left + bar.width / 2, bar.top + bar.height / 2) : null;
-        const name = top ? (typeof top.className === "string" && top.className ? top.className.split(" ")[0] : top.tagName.toLowerCase()) : "none";
-        const flag = (value: boolean) => (value ? 1 : 0);
-        diagnose("player_tap", "info", {
-          message: [
-            `${label}ms want=${flag(wanted)} show=${flag(Boolean(art.controls?.show))}`,
-            `opacity=${bottom ? getComputedStyle(bottom).opacity : "none"} top=${name}`,
-            `playing=${flag(art.playing)} anime4k=${flag(container.classList.contains("kuriume-anime4k-on"))}`,
-            `has=${flag(CSS.supports("selector(:has(a))"))} cq=${flag(CSS.supports("container-type: inline-size"))}`,
-          ].join(" "),
-        });
-      };
-      setTimeout(() => report("80"), 80);
-      setTimeout(() => report("800"), 800);
     };
     const click = (event: MouseEvent) => {
       if (suppressClick) { event.preventDefault(); event.stopImmediatePropagation(); suppressClick = false; return; }
