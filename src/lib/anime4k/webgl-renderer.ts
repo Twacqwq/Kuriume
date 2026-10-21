@@ -50,6 +50,8 @@ export class Anime4KWebGLRenderer {
   private frameHandle = 0;
   private stopped = false;
   private lastPresented: number | undefined;
+  /** One frame on the GPU at a time (see the WebGPU renderer). */
+  private fence: WebGLSync | null = null;
   private callbacks = 0;
   private skipped = 0;
   private onLost = (event: Event) => {
@@ -100,6 +102,7 @@ export class Anime4KWebGLRenderer {
     this.canvas.removeEventListener("webglcontextlost", this.onLost);
     this.disposeChain();
     const gl = this.gl;
+    if (this.fence) gl.deleteSync(this.fence);
     gl.deleteTexture(this.frame);
     for (const { program } of this.programs.values()) gl.deleteProgram(program);
     gl.deleteProgram(this.present);
@@ -226,6 +229,17 @@ export class Anime4KWebGLRenderer {
     const gl = this.gl;
     const native = { width: this.video.videoWidth, height: this.video.videoHeight };
     if (!native.width || !native.height || this.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || gl.isContextLost()) return;
+    if (this.fence) {
+      const status = gl.getSyncParameter(this.fence, gl.SYNC_STATUS);
+      if (status !== gl.SIGNALED) {
+        // Still busy: skip this frame (counted as skipped by measure()); when
+        // paused, look again shortly so the last frame still gets drawn.
+        if (this.video.paused) setTimeout(() => this.draw(), 16);
+        return;
+      }
+      gl.deleteSync(this.fence);
+      this.fence = null;
+    }
     const upscales = upscalePasses(native, { width: this.canvas.width, height: this.canvas.height });
     try {
       if (!this.steps || this.chainUpscales !== upscales || this.chainNative?.width !== native.width || this.chainNative?.height !== native.height) {
@@ -263,5 +277,7 @@ export class Anime4KWebGLRenderer {
     gl.bindTexture(gl.TEXTURE_2D, textures.MAIN.texture);
     gl.uniform1i(gl.getUniformLocation(this.present, "image"), 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    this.fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    gl.flush();
   }
 }
