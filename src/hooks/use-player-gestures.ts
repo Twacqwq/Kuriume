@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import type Artplayer from "artplayer";
-import { gestureTime, playerGesture, tapZone, type GestureChange, type TapZone } from "@/lib/player-gestures";
+import { gestureTime, playerGesture, type GestureChange } from "@/lib/player-gestures";
 import { mobileControl, type PlayerLevels } from "@/lib/mobile-player";
 import { isMobileApp } from "@/lib/platform";
 import { diagnose } from "@/lib/diagnostics";
 
 export type GestureFeedback =
   | { kind: "seek" | "volume" | "brightness" | "error"; text: string }
-  | { kind: "skip"; zone: Exclude<TapZone, "center">; seconds: number; text: string }
   | { kind: "speed"; rate: number; text: string };
 
 export interface GestureOptions {
@@ -19,17 +18,15 @@ export interface GestureOptions {
 }
 
 const DOUBLE_TAP_MS = 300;
-const SKIP_STREAK_MS = 700;
-const SKIP_SECONDS = 10;
 const LONG_PRESS_MS = 450;
 const LONG_PRESS_RATES = [1.5, 2, 3] as const;
 const IGNORED_TARGETS = "button, input, select, a, [role=button], [role=slider], .art-controls, .art-progress, .art-settings, .art-state, [data-player-chrome]";
 
 /**
- * Touch grammar for the mobile player: tap toggles the controls, double tap on
- * the sides skips 10 s (further taps keep adding), double tap in the middle
- * plays/pauses, long press plays at 2× until release, horizontal swipes preview
- * a seek that commits on release, vertical swipes adjust brightness/volume.
+ * Touch grammar for the mobile player: tap toggles the controls, double tap
+ * anywhere plays/pauses, long press plays at 2× until release, horizontal
+ * swipes preview a seek that commits on release, vertical swipes adjust
+ * brightness/volume.
  */
 export function usePlayerGestures(art: Artplayer | null, language: string, options?: { current: GestureOptions }) {
   const [feedback, setFeedback] = useState<GestureFeedback | null>(null);
@@ -59,8 +56,7 @@ export function usePlayerGestures(art: Artplayer | null, language: string, optio
     // enough: under load the click can come late and toggle the controls back.
     let touchTapped = false;
     // Tap state
-    let lastTap: { at: number; zone: TapZone; controlsBefore: boolean } | null = null;
-    let streak: { zone: Exclude<TapZone, "center">; until: number; seconds: number } | null = null;
+    let lastTap: { at: number; controlsBefore: boolean } | null = null;
     // Long press state
     let pressTimer: ReturnType<typeof setTimeout> | undefined;
     let press: { rate: number; restore: number; startY: number } | null = null;
@@ -190,33 +186,21 @@ export function usePlayerGestures(art: Artplayer | null, language: string, optio
       cancel();
       if (tapped && event.touches.length === 0) {
         touchTapped = true;
-        tap(tapped.x);
+        tap();
       }
     };
-    const skip = (zone: Exclude<TapZone, "center">, now: number) => {
-      if (!Number.isFinite(art.duration) || art.duration <= 0) return;
-      const seconds = streak && streak.zone === zone && now < streak.until ? streak.seconds + SKIP_SECONDS : SKIP_SECONDS;
-      streak = { zone, until: now + SKIP_STREAK_MS, seconds };
-      const target = art.currentTime + (zone === "right" ? SKIP_SECONDS : -SKIP_SECONDS);
-      art.currentTime = Math.min(Math.max(0, target), Math.max(0, art.duration - 0.1));
-      show({ kind: "skip", zone, seconds, text: zone === "right" ? `+${seconds}s` : `-${seconds}s` }, SKIP_STREAK_MS);
-    };
-    const tap = (clientX: number) => {
-      const rect = container.getBoundingClientRect();
-      const zone = tapZone(clientX - rect.left, rect.width);
+    const tap = () => {
       const now = performance.now();
       if (opts().locked) { opts().onLockedTap?.(); return; }
-      // A tap while a skip streak runs keeps skipping in that direction.
-      if (zone !== "center" && streak?.zone === zone && now < streak.until) { skip(zone, now); lastTap = null; return; }
+      // The second tap of a double tap plays/pauses and undoes the first
+      // tap's controls toggle.
       if (lastTap && now - lastTap.at < DOUBLE_TAP_MS) {
         if (art.controls) art.controls.show = lastTap.controlsBefore;
-        if (zone === "center") {
-          art.toggle?.();
-        } else skip(zone, now);
+        art.toggle?.();
         lastTap = null;
         return;
       }
-      lastTap = { at: now, zone, controlsBefore: Boolean(art.controls?.show) };
+      lastTap = { at: now, controlsBefore: Boolean(art.controls?.show) };
       art.controls?.toggle?.();
     };
     const click = (event: MouseEvent) => {
@@ -227,7 +211,7 @@ export function usePlayerGestures(art: Artplayer | null, language: string, optio
       event.stopPropagation();
       // Already handled on touchend; this is the WebView's follow-up click.
       if (touchTapped) { touchTapped = false; return; }
-      tap(event.clientX);
+      tap();
     };
     const background = () => { diagnose("player_background", "info", { message: document.hidden ? "Document became hidden; pausing playback" : "Native lifecycle interruption; pausing playback" }); cancel(); pending = null; ready = false; art.pause(); void control("finish").catch(() => {}); };
     const visibility = () => { if (document.hidden) background(); };
