@@ -122,7 +122,7 @@
 .artplayer-app .kuriume-player-button[aria-pressed="true"],
 .artplayer-app .art-control-setting[aria-expanded="true"] {
   color: var(--primary-readable);
-  background-color: rgb(144 72 64 / 22%);
+  background-color: color-mix(in srgb, var(--primary) 22%, transparent);
 }
 
 .artplayer-app .kuriume-player-button:disabled {
@@ -180,7 +180,7 @@
 
 .artplayer-app .art-video-player .art-settings .art-setting-panel .art-setting-item.art-current {
   color: var(--primary-readable);
-  background-color: rgb(144 72 64 / 16%);
+  background-color: color-mix(in srgb, var(--primary) 16%, transparent);
 }
 
 .artplayer-app .art-video-player .art-settings .art-setting-panel .art-setting-item .art-setting-item-left {
@@ -329,10 +329,10 @@
   white-space: nowrap;
 }
 
-/* Anime4K toggle: borderless text in the bar, like 倍速; on turns it 栗梅.
-   #cc6b5f is 栗梅 lifted just enough to stay legible over the bar's dark
-   gradient (5.8:1 on black; the #a4534a fill colour is 3.9:1). Manrope
-   with the "4K" heavier reads as a spec label rather than a sentence. */
+/* Anime4K toggle: borderless text in the bar, like 倍速; on turns it the
+   theme's primary, lifted (--primary-strong) to stay legible over the bar's
+   dark gradient (栗梅 #cc6b5f is 5.8:1 on black; the #a4534a fill is 3.9:1).
+   Manrope with the "4K" heavier reads as a spec label rather than a sentence. */
 .artplayer-app .kuriume-player-button.kuriume-anime4k-toggle {
   width: auto;
   min-width: 48px;
@@ -354,7 +354,7 @@
 }
 .kuriume-anime4k-word { font-weight: 600; letter-spacing: 0.005em; }
 .kuriume-anime4k-mark { font-weight: 800; letter-spacing: -0.01em; }
-.kuriume-anime4k-toggle[aria-pressed="true"] .kuriume-anime4k-badge { color: #cc6b5f; }
+.kuriume-anime4k-toggle[aria-pressed="true"] .kuriume-anime4k-badge { color: var(--primary-strong); }
 .kuriume-anime4k-toggle[data-unsupported="true"] .kuriume-anime4k-badge { opacity: 0.4; }
 @media (prefers-reduced-motion: reduce) {
   .kuriume-anime4k-badge { transition: none; }

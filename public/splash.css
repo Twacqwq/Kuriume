@@ -4,9 +4,14 @@
    Keep it out of index.html: an inline <style> or <script> there makes Tauri
    add a nonce to the CSP, which disables 'unsafe-inline' and blocks the
    <style> ArtPlayer injects at runtime (the player then renders unstyled). */
-html { background-color: #3a201c; }
+/* Splash colour per theme (src/lib/theme.ts), shown until the wallpaper loads. */
+:root { --splash-bg: #3a201c; }
+:root[data-theme="yozakura"] { --splash-bg: #33202d; }
+:root[data-theme="gunjo"] { --splash-bg: #1a2638; }
+:root[data-theme="wakatake"] { --splash-bg: #1d2a1d; }
+html { background-color: var(--splash-bg); }
 @font-face { font-family: "Manrope"; font-weight: 200 800; font-display: swap; src: url("/fonts/manrope-vf.woff2") format("woff2"); }
-#splash { position: fixed; inset: 0; z-index: 2147483000; overflow: hidden; background: #3a201c; transition: opacity 0.4s ease; animation: sp-failsafe 0.4s 8s forwards; }
+#splash { position: fixed; inset: 0; z-index: 2147483000; overflow: hidden; background: var(--splash-bg); transition: opacity 0.4s ease; animation: sp-failsafe 0.4s 8s forwards; }
 #splash.sp-out { opacity: 0; pointer-events: none; }
 
 /* The wallpaper fills a portrait screen; on a wide window it is shown whole,

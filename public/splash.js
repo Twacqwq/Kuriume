@@ -3,6 +3,14 @@
 // note in splash.css). Add a wallpaper by putting it in public/splash/ and
 // listing it here.
 (function () {
+  // The colour theme (src/lib/theme.ts) applies before anything paints.
+  try {
+    var theme = localStorage.getItem("kuriume:theme");
+    if (theme && /^[a-z]+$/.test(theme)) document.documentElement.setAttribute("data-theme", theme);
+  } catch (error) { /* storage unavailable: default theme */ }
+})();
+
+(function () {
   var WALLPAPERS = ["/splash/1.webp"];
   var LAST_KEY = "kuriume:splash-last";
   var splash = document.getElementById("splash");

@@ -16,6 +16,8 @@
   --primary: #a4534a;
   --primary-foreground: #fff8f6;
   --primary-readable: #e0a59c;
+  /* 栗梅 lifted for text over video and dark gradients (5.8:1 on black). */
+  --primary-strong: #cc6b5f;
   --highlight: #c8a36c;
   --highlight-foreground: #1d150c;
   --destructive-readable: #ee8585;
@@ -38,6 +40,106 @@
   --sidebar-border: #342d2c;
   /* Cover-derived tint for detail pages; set inline from the artwork. */
   --cover-tone: 164 83 74;
+}
+/* Built-in themes (src/lib/theme.ts). Each keeps the 深栗 structure: dark
+   neutrals with a faint cast of the theme's hue, one saturated primary, a
+   warm reminder colour, and near-neutral text. All text pairs meet WCAG AA
+   (primary-readable on cards 9:1+, button text on primary 4.8:1+). */
+:root[data-theme="yozakura"] {
+  /* 夜桜: night-blue violet neutrals, sakura pink, moonlit gold. */
+  --background: #121018;
+  --foreground: #ece9f0;
+  --card: #1c1924;
+  --card-foreground: #ece9f0;
+  --popover: #221e2b;
+  --popover-foreground: #ece9f0;
+  --primary: #ad4f6b;
+  --primary-foreground: #fff7f9;
+  --primary-readable: #f0a6bb;
+  --primary-strong: #e07c98;
+  --highlight: #d9b66e;
+  --highlight-foreground: #1c1508;
+  --secondary: #27222f;
+  --secondary-foreground: #ece9f0;
+  --muted: #27222f;
+  --muted-foreground: #a39cad;
+  --accent: #2b2534;
+  --accent-foreground: #ece9f0;
+  --border: #332d3c;
+  --input: #332d3c;
+  --ring: #ad4f6b;
+  --sidebar: #0e0c13;
+  --sidebar-foreground: #ece9f0;
+  --sidebar-primary: #ad4f6b;
+  --sidebar-primary-foreground: #fff7f9;
+  --sidebar-accent: #27222f;
+  --sidebar-accent-foreground: #ece9f0;
+  --sidebar-border: #332d3c;
+  --cover-tone: 173 79 107;
+}
+:root[data-theme="gunjo"] {
+  /* 群青: a deep evening-sky blue with sunset orange for reminders. */
+  --background: #0f1218;
+  --foreground: #e8ecf2;
+  --card: #181d25;
+  --card-foreground: #e8ecf2;
+  --popover: #1d232c;
+  --popover-foreground: #e8ecf2;
+  --primary: #3d6bb0;
+  --primary-foreground: #f5f9ff;
+  --primary-readable: #9cc0f0;
+  --primary-strong: #6f9de0;
+  --highlight: #e2a65e;
+  --highlight-foreground: #1e1308;
+  --secondary: #222934;
+  --secondary-foreground: #e8ecf2;
+  --muted: #222934;
+  --muted-foreground: #98a2b1;
+  --accent: #262e3a;
+  --accent-foreground: #e8ecf2;
+  --border: #2d3542;
+  --input: #2d3542;
+  --ring: #3d6bb0;
+  --sidebar: #0c0f14;
+  --sidebar-foreground: #e8ecf2;
+  --sidebar-primary: #3d6bb0;
+  --sidebar-primary-foreground: #f5f9ff;
+  --sidebar-accent: #222934;
+  --sidebar-accent-foreground: #e8ecf2;
+  --sidebar-border: #2d3542;
+  --cover-tone: 61 107 176;
+}
+:root[data-theme="wakatake"] {
+  /* 若竹: young-bamboo green over moss-dark neutrals, 山吹 yellow reminders. */
+  --background: #10140f;
+  --foreground: #e9eee8;
+  --card: #191e18;
+  --card-foreground: #e9eee8;
+  --popover: #1e241d;
+  --popover-foreground: #e9eee8;
+  --primary: #437a52;
+  --primary-foreground: #f4fbf5;
+  --primary-readable: #9fd3aa;
+  --primary-strong: #76b585;
+  --highlight: #d9b45c;
+  --highlight-foreground: #1c1606;
+  --secondary: #232a22;
+  --secondary-foreground: #e9eee8;
+  --muted: #232a22;
+  --muted-foreground: #9aa598;
+  --accent: #273026;
+  --accent-foreground: #e9eee8;
+  --border: #2e372d;
+  --input: #2e372d;
+  --ring: #437a52;
+  --sidebar: #0c100b;
+  --sidebar-foreground: #e9eee8;
+  --sidebar-primary: #437a52;
+  --sidebar-primary-foreground: #f4fbf5;
+  --sidebar-accent: #232a22;
+  --sidebar-accent-foreground: #e9eee8;
+  --sidebar-border: #2e372d;
+  --cover-tone: 67 122 82;
 }
 /* Detail pages: a cover-coloured glow behind the hero that fades into the
    canvas, so the page below the artwork is not a flat black field. */
