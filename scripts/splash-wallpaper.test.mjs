@@ -17,19 +17,21 @@ function launch(storage) {
   return { art, backdrop, classes };
 }
 
+const listed = JSON.parse(source.match(/WALLPAPERS = (\[[^\]]*\])/)[1]);
+
 test("each launch shows a listed wallpaper, never the same one twice in a row", async () => {
   const storage = new Map();
   let previous = null;
   const seen = new Set();
   for (let i = 0; i < 200; i++) {
     const { art, backdrop } = launch(storage);
-    assert.match(art.src, /^\/splash\/\d+\.webp$/);
+    assert.ok(listed.includes(art.src));
     assert.equal(backdrop.src, art.src);
-    assert.notEqual(art.src, previous);
+    if (listed.length > 1) assert.notEqual(art.src, previous);
     previous = art.src;
     seen.add(art.src);
   }
-  assert.ok(seen.size > 1);
+  assert.equal(seen.size, listed.length, "every wallpaper comes up");
   for (const path of seen) await stat(new URL(`../public${path}`, import.meta.url));
 });
 

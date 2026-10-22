@@ -3,7 +3,7 @@
 // note in splash.css). Add a wallpaper by putting it in public/splash/ and
 // listing it here.
 (function () {
-  var WALLPAPERS = ["/splash/1.webp", "/splash/2.webp", "/splash/3.webp", "/splash/4.webp"];
+  var WALLPAPERS = ["/splash/1.webp"];
   var LAST_KEY = "kuriume:splash-last";
   var splash = document.getElementById("splash");
   if (!splash || WALLPAPERS.length === 0) return;
