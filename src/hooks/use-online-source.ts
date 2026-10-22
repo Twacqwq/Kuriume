@@ -207,8 +207,36 @@ export function useOnlineSource(
       providerId !== stateRef.current.selectedSource
     )
       return;
-    patch({ ...EMPTY_SELECTION, searching: true });
     const manual = manualQuery !== null;
+    // The work was matched on this source before: open that match right away
+    // and search only to fill the picker, without making playback wait for it.
+    const remembered = manual
+      ? undefined
+      : restoredPlaybackCandidate(providerId, [], contextRef.current.bindings);
+    if (remembered) {
+      patch({ ...EMPTY_SELECTION, searchResults: [remembered] });
+      void loadEpisodes(providerId, remembered);
+      void playbackSourceApi
+        .search(
+          providerId,
+          playbackSearchRequest(
+            query,
+            alternativeTitleKey ? alternativeTitleKey.split("\u0000") : [],
+            contextRef.current,
+            false,
+          ),
+        )
+        .then((searchResults) => {
+          if (requestId !== searchRequestRef.current) return;
+          const saved = searchResults.find((candidate) => candidate.id === remembered.id) ?? remembered;
+          patch({ searchResults: [saved, ...searchResults.filter((candidate) => candidate.id !== saved.id)] });
+        })
+        .catch(() => { /* The remembered match is enough to play. */ });
+      return () => {
+        if (requestId === searchRequestRef.current) searchRequestRef.current += 1;
+      };
+    }
+    patch({ ...EMPTY_SELECTION, searching: true });
     void playbackSourceApi
       .search(
         providerId,

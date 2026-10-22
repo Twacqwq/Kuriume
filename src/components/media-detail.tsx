@@ -38,6 +38,8 @@ function readEpisodeView(): "grid" | "list" {
 
 interface MediaDetailProps {
   media: AnimeInfo;
+  /** Drawn from a list entry while the full lookup runs: hold the synopsis. */
+  pendingDetails?: boolean;
   episodes: AnimeEpisodes[];
   characters: AnimeCharacters[];
   libraryEntry: LibraryEntry | null;
@@ -51,6 +53,7 @@ interface MediaDetailProps {
 
 export function MediaDetail({
   media,
+  pendingDetails = false,
   episodes,
   characters,
   libraryEntry,
@@ -186,7 +189,16 @@ export function MediaDetail({
       </section>
 
       <div className="mx-auto max-w-7xl space-y-8 px-4 pt-5 md:space-y-12 md:px-6 md:pt-8 lg:px-10">
-        {description && (
+        {pendingDetails ? (
+          <section className="max-w-3xl" aria-busy="true" aria-label={language === "zh" ? "简介载入中" : "Loading synopsis"}>
+            <div className="mb-4 h-5 w-16 rounded-md bg-white/6" />
+            <div className="space-y-3">
+              <div className="h-3.5 rounded bg-white/5" />
+              <div className="h-3.5 rounded bg-white/5" />
+              <div className="h-3.5 w-2/3 rounded bg-white/5" />
+            </div>
+          </section>
+        ) : description && (
           <section className="max-w-3xl" aria-labelledby="anime-synopsis">
             <h2 id="anime-synopsis" className="mb-3 text-lg font-bold tracking-tight">{language === "zh" ? "简介" : "Synopsis"}</h2>
             {description.length > 220 ? (

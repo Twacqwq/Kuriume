@@ -34,7 +34,7 @@ export function TodayUpdates() {
         <h2 id="today-updates-title" className="text-lg font-bold tracking-tight">{zh ? "今日更新" : "New today"}</h2>
         <Link to="/calendar" className="flex min-h-11 items-center rounded-lg px-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary-readable">{zh ? "日历" : "Schedule"}</Link>
       </div>
-      <div className="hide-scrollbar -mx-4 mt-3 grid auto-cols-[min(72%,17rem)] grid-flow-col snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0 lg:auto-cols-[minmax(0,1fr)] lg:grid-flow-row lg:grid-cols-3">
+      <div className="hide-scrollbar -mx-4 mt-3 grid auto-cols-[min(72%,17rem)] grid-flow-col snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 md:scroll-px-0 md:mx-0 md:px-0 lg:auto-cols-[minmax(0,1fr)] lg:grid-flow-row lg:grid-cols-3">
         {items.map((media) => {
           const slot = media.schedule;
           const aired = slot ? slot.airing_at <= now : false;

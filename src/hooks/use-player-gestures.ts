@@ -129,7 +129,10 @@ export function usePlayerGestures(art: Artplayer | null, language: string, optio
           show({ kind: "speed", rate: 2, text: zh ? "2× 倍速中" : "2× speed" }, 0);
         }, LONG_PRESS_MS);
       }
-      const initial = { x: touch.clientX - rect.left, y, width: rect.width, height: rect.height, position: art.currentTime, duration: art.duration };
+      // A touch that may be the second half of a double tap needs a longer
+      // drag before it seeks or changes levels.
+      const slop = lastTap && performance.now() - lastTap.at < DOUBLE_TAP_MS ? 2 : 1;
+      const initial = { x: touch.clientX - rect.left, y, width: rect.width, height: rect.height, position: art.currentTime, duration: art.duration, slop };
       move = playerGesture({ ...initial, ...levels });
       change = null;
       clearTimeout(timer);
@@ -142,7 +145,7 @@ export function usePlayerGestures(art: Artplayer | null, language: string, optio
     };
     const update = (event: TouchEvent) => {
       if (event.touches.length !== 1) { cancel(); return; }
-      if (tapStart && Math.hypot(event.touches[0].clientX - tapStart.x, event.touches[0].clientY - tapStart.y) > 10) tapStart = null;
+      if (tapStart && Math.hypot(event.touches[0].clientX - tapStart.x, event.touches[0].clientY - tapStart.y) > 16) tapStart = null;
       const rect = container.getBoundingClientRect(), touch = event.touches[0];
       if (press) {
         // While held, sliding up/down picks 1.5× / 2× / 3×.

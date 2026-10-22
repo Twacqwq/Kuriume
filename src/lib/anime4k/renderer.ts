@@ -30,6 +30,7 @@ function loadNetworks(quality: Anime4KQuality): Promise<Networks> {
 }
 
 import { targetSize, upscalePasses, type Anime4KQuality, type Size } from "./sizing";
+import { MAX_IN_FLIGHT, PaceMeter } from "./pace";
 
 export type { Anime4KQuality } from "./sizing";
 
@@ -67,8 +68,7 @@ export class Anime4KRenderer {
   private chain: Chain | null = null;
   private frameHandle = 0;
   private stopped = false;
-  private slowFrames = 0;
-  private measured = 0;
+  private pace = new PaceMeter(() => this.onEvent({ type: "slow", quality: this.quality }));
   private renderPipeline: GPURenderPipeline;
   private sampler: GPUSampler;
   private format: GPUTextureFormat;
@@ -124,6 +124,11 @@ export class Anime4KRenderer {
     this.quality = quality;
     if (quality === "fast") this.networks = FAST;
     this.disposeChain();
+  }
+
+  /** After a seek the decoder catches up for a moment; do not judge that. */
+  restartPacing() {
+    this.pace.reset();
   }
 
   /** Match the canvas backing store to the box the video occupies on screen. */
@@ -190,19 +195,19 @@ export class Anime4KRenderer {
   private disposeChain() {
     for (const texture of this.chain?.textures ?? []) texture.destroy();
     this.chain = null;
+    this.pace.reset();
   }
 
   private bitmapPending = false;
-  /** One frame on the GPU at a time: queueing more starves the page's own
-   *  compositing, so taps would update the controls but never show them. */
-  private inFlight = false;
+  /** Frames submitted and not yet finished on the GPU (see pace.ts). */
+  private inFlight = 0;
   private redraw = false;
 
   private draw() {
     if (this.stopped) return;
-    if (this.inFlight) {
+    if (this.inFlight >= MAX_IN_FLIGHT) {
       if (this.video.paused) this.redraw = true;
-      else this.measure(Infinity);
+      else this.pace.record(false);
       return;
     }
     if (this.source === "bitmap") {
@@ -238,27 +243,13 @@ export class Anime4KRenderer {
     present.setBindGroup(0, this.chain.bindGroup);
     present.draw(6);
     present.end();
-    const submitted = performance.now();
     this.device.queue.submit([encoder.finish()]);
-    this.inFlight = true;
-    void this.device.queue.onSubmittedWorkDone().then(() => {
-      this.inFlight = false;
-      if (!this.video.paused) this.measure(performance.now() - submitted);
+    this.inFlight += 1;
+    if (!this.video.paused) this.pace.record(true);
+    const done = () => {
+      this.inFlight = Math.max(0, this.inFlight - 1);
       if (this.redraw && !this.stopped) { this.redraw = false; this.draw(); }
-    }, () => { this.inFlight = false; });
-  }
-
-  /** Report when the GPU cannot keep up with playback: most frames over
-   *  budget, or dropped because the previous one was still running. */
-  private measure(elapsedMs: number) {
-    if (this.stopped) return;
-    const budget = 1000 / 30;
-    this.measured += 1;
-    if (elapsedMs > budget) this.slowFrames += 1;
-    if (this.measured < 90) return;
-    const slow = this.slowFrames / this.measured > 0.5;
-    this.measured = 0;
-    this.slowFrames = 0;
-    if (slow) this.onEvent({ type: "slow", quality: this.quality });
+    };
+    void this.device.queue.onSubmittedWorkDone().then(done, done);
   }
 }

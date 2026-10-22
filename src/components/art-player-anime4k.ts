@@ -5,18 +5,25 @@ import { choosePath, cueText, nextPath, readPath, writePath, type Anime4KPath } 
 
 export type { Anime4KPath } from "@/lib/anime4k/paths";
 
-const PREFERENCE_KEY = "kuriume:anime4k";
+/** Earlier builds kept the choice across launches; it is no longer read. */
+const LEGACY_PREFERENCE_KEY = "kuriume:anime4k";
+try { localStorage.removeItem(LEGACY_PREFERENCE_KEY); } catch { /* storage unavailable */ }
+
+// Anime4K costs battery and GPU time, so every launch starts with it off. Once
+// turned on it stays on for the next episodes until the app is closed.
+let enabledThisSession = false;
 
 export function readAnime4KPreference(): boolean {
-  try { return localStorage.getItem(PREFERENCE_KEY) === "on"; } catch { return false; }
+  return enabledThisSession;
 }
 
 export function writeAnime4KPreference(enabled: boolean) {
-  try { localStorage.setItem(PREFERENCE_KEY, enabled ? "on" : "off"); } catch { /* per-device preference only */ }
+  enabledThisSession = enabled;
 }
 
 type BackendRenderer = {
   setQuality(quality: Anime4KQuality): void;
+  restartPacing(): void;
   resize(box: { width: number; height: number }): void;
   stop(): void;
 };
@@ -77,6 +84,8 @@ export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; 
   video.addEventListener("loadedmetadata", onMetadata);
   video.addEventListener("resize", onMetadata);
   art.on("aspectRatio", layout);
+  const onSeeked = () => renderer?.restartPacing();
+  video.addEventListener("seeked", onSeeked);
 
   const renderCaptions = () => {
     const lines: string[] = [];
@@ -205,6 +214,7 @@ export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; 
       observer.disconnect();
       video.removeEventListener("loadedmetadata", onMetadata);
       video.removeEventListener("resize", onMetadata);
+      video.removeEventListener("seeked", onSeeked);
       video.textTracks.removeEventListener("addtrack", onTracks);
       video.textTracks.removeEventListener("change", onTracks);
       art.off("aspectRatio", layout);

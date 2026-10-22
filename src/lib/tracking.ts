@@ -39,6 +39,17 @@ export function latestEntry(history: readonly WatchHistoryEntry[], mediaId: stri
   return latest;
 }
 
+/** One row per work, its most recent episode, newest first. History stores a
+ *  row per episode watched. */
+export function latestPerWork<T extends Pick<WatchHistoryEntry, "media_id" | "watched_at">>(history: readonly T[]): T[] {
+  const latest = new Map<string, T>();
+  for (const entry of history) {
+    const current = latest.get(entry.media_id);
+    if (!current || entry.watched_at > current.watched_at) latest.set(entry.media_id, entry);
+  }
+  return [...latest.values()].sort((a, b) => b.watched_at.localeCompare(a.watched_at));
+}
+
 /** Catalog IDs ("anilist:1", "bangumi:2") of the works being followed. */
 export function followedIds(entries: readonly LibraryEntry[]): Set<string> {
   return new Set(entries.filter((entry) => entry.status === "following").map((entry) => `${entry.provider}:${entry.external_id}`));

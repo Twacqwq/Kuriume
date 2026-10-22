@@ -18,7 +18,7 @@ test("player diagnostics do not flood progress or change playback callbacks, and
       art = this;
       this.listeners = new Map();
       this.setting = { find: () => null };
-      this.video = { paused: false, videoWidth: 1920, videoHeight: 1080, getVideoPlaybackQuality: () => ({ droppedVideoFrames: 2 }) };
+      this.video = { paused: false, pause() { this.paused = true; }, addEventListener() {}, videoWidth: 1920, videoHeight: 1080, getVideoPlaybackQuality: () => ({ droppedVideoFrames: 2 }) };
       this.currentTime = 30; this.duration = 1500; this.isReady = false;
     }
     on(name, fn) { this.listeners.set(name, fn); }
