@@ -13,12 +13,18 @@
 
   <body>
     <div id="splash" aria-hidden="true">
-      <div class="sp-center">
-        <img class="sp-icon" src="/splash-icon.png" alt="" width="116" height="116" decoding="sync" />
-        <div class="sp-name">Kuriume</div>
-        <div class="sp-sub">栗梅</div>
+      <img class="sp-backdrop" alt="" decoding="async" />
+      <img class="sp-art" alt="" decoding="async" />
+      <div class="sp-scrim"></div>
+      <div class="sp-brand">
+        <img class="sp-icon" src="/splash-icon.png" alt="" width="56" height="56" decoding="sync" />
+        <div class="sp-text">
+          <div class="sp-name">Kuriume</div>
+          <div class="sp-sub">栗梅</div>
+        </div>
       </div>
     </div>
+    <script src="/splash.js"></script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
