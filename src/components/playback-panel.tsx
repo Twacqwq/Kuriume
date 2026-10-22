@@ -8,6 +8,7 @@ import type { useOnlineSource } from "@/hooks/use-online-source";
 import type { usePlaybackResolver } from "@/hooks/use-playback-resolver";
 import type { PlaybackCandidate } from "@/lib/online-source";
 import { playbackErrorMessage } from "@/lib/playback-error";
+import { roadLabel, streamLabel } from "@/lib/source-labels";
 import { cn } from "@/lib/utils";
 import { Check, ChevronRight, Loader2, Play, RefreshCw, Search } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -34,12 +35,6 @@ export interface PlaybackPanelProps {
 
 const zhLabel = (zh: boolean, chinese: string, english: string) => (zh ? chinese : english);
 
-export function roadDisplayLabel(source: Source, roadId: string | undefined, label: string | undefined, zh: boolean) {
-  const isHiAnime = source.selectedSource === "builtin:hianime";
-  if (isHiAnime && roadId === "sub") return zh ? "原声 · Sub" : "Original · Sub";
-  if (isHiAnime && roadId === "dub") return zh ? "配音 · Dub" : "Dubbed · Dub";
-  return label;
-}
 
 /**
  * Below the video (phones/tablets in portrait) the panel is three rows: the
@@ -66,8 +61,8 @@ function StackedPanel(props: PlaybackPanelProps) {
     if (container && active) container.scrollLeft = Math.max(0, active.offsetLeft - container.clientWidth / 2 + active.offsetWidth / 2);
   }, [episodeNumber, episodes.length]);
   const serverValue = [
-    roadDisplayLabel(source, road?.id, road?.label, zh),
-    props.assetIsCurrent && resolver.sources.length > 1 ? resolver.selectedSource?.name : undefined,
+    road ? roadLabel(source.selectedSource, road.id, source.selectedRoadIndex, zh) : undefined,
+    props.assetIsCurrent && resolver.sources.length > 1 ? streamLabel(resolver.selectedIndex, zh) : undefined,
   ].filter(Boolean).join(" · ");
 
   return (
@@ -271,7 +266,7 @@ function ServerOptions({ source, resolver, assetIsCurrent }: { source: Source; r
             {source.roads.map((road, index) => (
               <ToggleGroupItem key={road.id} value={String(index)} size="sm"
                 className="h-auto min-h-12 max-w-full rounded-xl border border-border/70 px-3 py-2 text-sm whitespace-normal [overflow-wrap:anywhere] data-[state=on]:border-primary/50 data-[state=on]:bg-primary/16 data-[state=on]:text-primary-readable">
-                {roadDisplayLabel(source, road.id, road.label, zh)}
+                {roadLabel(source.selectedSource, road.id, index, zh)}
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
@@ -279,15 +274,15 @@ function ServerOptions({ source, resolver, assetIsCurrent }: { source: Source; r
       )}
       {hasStreams && (
         <section>
-          <PanelLabel>{zhLabel(zh, "播放线路", "Stream")}</PanelLabel>
-          <ToggleGroup type="single" spacing={2} aria-label={zhLabel(zh, "播放线路", "Stream")}
+          <PanelLabel>{zhLabel(zh, "节点", "Mirror")}</PanelLabel>
+          <ToggleGroup type="single" spacing={2} aria-label={zhLabel(zh, "节点", "Mirror")}
             value={resolver.selectedSource?.name ?? ""}
             onValueChange={(name) => { if (name) resolver.selectSource(name); }}
             className="mt-3 flex w-full flex-wrap justify-start gap-2">
-            {resolver.sources.map((item) => (
+            {resolver.sources.map((item, index) => (
               <ToggleGroupItem key={item.name} value={item.name}
                 className="h-auto min-h-12 max-w-full rounded-xl border border-border/70 px-3 py-2 text-sm whitespace-normal [overflow-wrap:anywhere] data-[state=on]:border-primary/50 data-[state=on]:bg-primary/16 data-[state=on]:text-primary-readable">
-                {item.name}
+                {streamLabel(index, zh)}
                 {resolver.failedNames.includes(item.name) && <span className="ml-1 text-xs text-destructive-readable">{zhLabel(zh, "失败", "failed")}</span>}
               </ToggleGroupItem>
             ))}

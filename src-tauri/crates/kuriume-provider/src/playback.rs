@@ -37,6 +37,37 @@ pub struct PlaybackProviderDescriptor {
     pub capabilities: PlaybackProviderCapabilities,
 }
 
+/// The name a playback source is shown under: the site's registrable domain
+/// label, lowercase ASCII (`https://www.agedm.io` → `agedm`,
+/// `https://next.xifanacg.com` → `xifanacg`). Built-in and imported sources
+/// follow the same rule, so names stay short, English and recognisable from
+/// the site's address. `None` when the URL has no usable host.
+pub fn source_name(site: &str) -> Option<String> {
+    // `domain()` is None for IP addresses: they name no site.
+    let host = reqwest::Url::parse(site.trim())
+        .ok()?
+        .domain()?
+        .to_ascii_lowercase();
+    let labels: Vec<&str> = host.split('.').filter(|label| !label.is_empty()).collect();
+    let name = match labels.as_slice() {
+        [] => return None,
+        [only] => *only,
+        // Two-part public suffixes such as .com.cn or .co.jp.
+        [.., name, second, top]
+            if top.len() == 2
+                && ["com", "net", "org", "co", "ac", "edu", "gov", "ne", "or"].contains(second) =>
+        {
+            *name
+        }
+        [.., name, _top] => *name,
+    };
+    let name: String = name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .collect();
+    (!name.is_empty()).then_some(name)
+}
+
 /// Provider search input. Alternative titles let native providers attempt a
 /// catalog's romaji/English/native aliases without coupling to its data model.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -184,7 +215,7 @@ impl RulePlaybackProvider {
         };
         let descriptor = PlaybackProviderDescriptor {
             id: rule.id.clone(),
-            display_name: rule.name.clone(),
+            display_name: source_name(&rule.base_url).unwrap_or_else(|| rule.name.clone()),
             built_in: rule.id.starts_with("builtin:"),
             capabilities,
         };
@@ -505,7 +536,7 @@ mod tests {
         let descriptor = provider.descriptor();
 
         assert_eq!(descriptor.id, "builtin:age");
-        assert_eq!(descriptor.display_name, "AGE动漫");
+        assert_eq!(descriptor.display_name, "agedm");
         assert!(descriptor.built_in);
         assert!(descriptor.capabilities.search);
         assert!(descriptor.capabilities.episodes);
@@ -591,5 +622,23 @@ mod tests {
         assert_eq!(value["mimeType"], "application/x-mpegURL");
         assert_eq!(value["allowedHosts"][0], "media.example");
         assert!(value.get("mime_type").is_none());
+    }
+
+    #[test]
+    fn source_names_come_from_the_site_domain() {
+        for (site, name) in [
+            ("https://www.agedm.io", "agedm"),
+            ("https://next.xifanacg.com", "xifanacg"),
+            ("https://anime1.me/", "anime1"),
+            ("https://hianime.at", "hianime"),
+            ("https://www.example.com.cn/path", "example"),
+            ("https://video.site.co.jp", "site"),
+            ("http://localhost:8080", "localhost"),
+        ] {
+            assert_eq!(source_name(site).as_deref(), Some(name), "{site}");
+        }
+        assert_eq!(source_name("not a url"), None);
+        assert_eq!(source_name("http://127.0.0.1/"), None);
+        assert_eq!(source_name("http://[::1]/"), None);
     }
 }

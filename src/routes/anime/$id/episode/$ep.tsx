@@ -24,6 +24,7 @@ import {
   settingsQueryOptions,
   sourceBindingApi,
 } from "@/lib/store";
+import { streamLabel } from "@/lib/source-labels";
 import { cn } from "@/lib/utils";
 import { detailQueryOptions, episodesQueryOptions, useCatalogRedirect } from "@/routes/anime/$id";
 import { useQuery } from "@tanstack/react-query";
@@ -393,7 +394,10 @@ function EpisodePage() {
               hasSelection={!!onlineSource.selectedAnime}
               onRetry={retryPlayback}
               fallback={fallbackProvider ? { name: fallbackProvider.displayName, onSelect: () => onlineSource.selectSource(fallbackProvider.id) } : null}
-              nextStream={resolver.nextStream ? { name: resolver.nextStream, onSelect: () => resolver.selectSource(resolver.nextStream!) } : null}
+              nextStream={resolver.nextStream ? {
+                name: streamLabel(resolver.sources.findIndex((item) => item.name === resolver.nextStream), language === "zh"),
+                onSelect: () => resolver.selectSource(resolver.nextStream!),
+              } : null}
               // Inline, the source chip sits right below; fullscreen hides it.
               onChooseSource={isFullscreen && !isSidePanel ? () => setPanelDrawer("source") : undefined}
               fullscreen={isFullscreen}
@@ -509,7 +513,7 @@ function PlaybackEmptyState({
         )}
         {nextStream && (
           <Button size="sm" onClick={nextStream.onSelect}>
-            {zh ? `换用线路 ${nextStream.name}` : `Try stream ${nextStream.name}`}
+            {zh ? `换用${nextStream.name}` : `Try ${nextStream.name}`}
           </Button>
         )}
         {fallback && (error || hasSelection) && (
