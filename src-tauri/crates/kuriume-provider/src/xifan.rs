@@ -36,7 +36,8 @@ impl Xifan {
             client: http::client(),
             descriptor: PlaybackProviderDescriptor {
                 id: "builtin:xifan".into(),
-                display_name: "稀饭 Next".into(),
+                display_name: crate::playback::source_name("https://next.xifanacg.com")
+                    .unwrap_or_default(),
                 built_in: true,
                 capabilities: PlaybackProviderCapabilities {
                     search: true,

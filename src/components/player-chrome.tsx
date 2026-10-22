@@ -1,5 +1,5 @@
 import type Artplayer from "artplayer";
-import { ArrowLeft, ChevronsLeft, ChevronsRight, CircleAlert, Gauge, Lock, LockOpen, MoveHorizontal, Play, RotateCcw, Sun, Volume2, Waypoints, X } from "lucide-react";
+import { ArrowLeft, CircleAlert, Gauge, Lock, LockOpen, MoveHorizontal, Play, RotateCcw, Sun, Volume2, Waypoints, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { GestureFeedback } from "@/hooks/use-player-gestures";
 import { gestureTime } from "@/lib/player-gestures";
@@ -348,16 +348,6 @@ function Shortcuts({ zh }: { zh: boolean }) {
 
 function GestureLayer({ gesture }: { gesture: GestureFeedback | null }) {
   if (!gesture) return null;
-  if (gesture.kind === "skip") {
-    return (
-      <div role="status" aria-live="polite" className={cn("player-skip absolute inset-y-0 grid w-[38%] place-items-center", gesture.zone === "left" ? "left-0 rounded-r-[50%]" : "right-0 rounded-l-[50%]")}>
-        <div className="flex flex-col items-center gap-1 text-sm font-bold tabular-nums">
-          {gesture.zone === "left" ? <ChevronsLeft size={26} /> : <ChevronsRight size={26} />}
-          {gesture.text}
-        </div>
-      </div>
-    );
-  }
   if (gesture.kind === "speed") {
     return (
       <div role="status" aria-live="polite" className="absolute inset-x-0 top-4 flex justify-center">

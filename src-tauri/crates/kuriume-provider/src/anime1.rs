@@ -34,7 +34,7 @@ impl Anime1 {
             catalog: Mutex::new(None),
             descriptor: PlaybackProviderDescriptor {
                 id: "builtin:anime1".into(),
-                display_name: "Anime1".into(),
+                display_name: crate::playback::source_name("https://anime1.me").unwrap_or_default(),
                 built_in: true,
                 capabilities: PlaybackProviderCapabilities {
                     search: true,

@@ -42,7 +42,7 @@ export function TodayUpdates() {
           const label = slot ? (zh ? `第 ${slot.episode} 话` : `Episode ${slot.episode}`) : "";
           const content = (
             <>
-              <div className="h-20 w-14 shrink-0 overflow-hidden rounded-lg bg-white/5">
+              <div className="h-20 w-14 shrink-0 overflow-hidden rounded-lg bg-overlay/5">
                 {media.cover && <img src={media.cover} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />}
               </div>
               <div className="flex min-w-0 flex-1 flex-col py-0.5">

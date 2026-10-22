@@ -157,14 +157,14 @@ export function HeroBanner({ items }: HeroBannerProps) {
       >
         <div className="flex items-end gap-4">
           <div className="min-w-0">
-            <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-white/75 md:mb-3">
+            <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-foreground/75 md:mb-3">
               {media.year && <span>{media.year}</span>}
               {media.format && <span>· {formatMediaFormat(media.format, language)}</span>}
               {media.score && <span>· {media.score.toFixed(1)}</span>}
             </div>
             <h1
               id={`hero-title-${media.id.replace(":", "-")}`}
-              className="line-clamp-2 max-w-2xl text-balance text-[1.375rem] font-bold leading-[1.2] tracking-[-0.025em] text-white md:line-clamp-3 md:text-4xl xl:text-5xl"
+              className="line-clamp-2 max-w-2xl text-balance text-[1.375rem] font-bold leading-[1.2] tracking-[-0.025em] text-foreground md:line-clamp-3 md:text-4xl xl:text-5xl"
             >
               {title}
             </h1>
@@ -172,7 +172,7 @@ export function HeroBanner({ items }: HeroBannerProps) {
         </div>
 
         {description && (
-          <p className="mt-4 hidden max-w-xl text-sm leading-6 text-white/75 md:line-clamp-2">
+          <p className="mt-4 hidden max-w-xl text-sm leading-6 text-foreground/75 md:line-clamp-2">
             {description}
           </p>
         )}
@@ -180,7 +180,7 @@ export function HeroBanner({ items }: HeroBannerProps) {
         {hasNavigation && (
           <div className="mt-3 flex gap-1.5 md:hidden" aria-hidden="true">
             {items.map((item, index) => (
-              <span key={item.id} className={`h-1 rounded-full transition-all duration-200 motion-reduce:transition-none ${index === activeIndex ? "w-5 bg-white" : "w-1.5 bg-white/40"}`} />
+              <span key={item.id} className={`h-1 rounded-full transition-all duration-200 motion-reduce:transition-none ${index === activeIndex ? "w-5 bg-foreground" : "w-1.5 bg-foreground/40"}`} />
             ))}
           </div>
         )}
@@ -193,12 +193,12 @@ export function HeroBanner({ items }: HeroBannerProps) {
             </Link>
           </Button>
           {hasNavigation && (
-            <div className="flex shrink-0 items-center gap-1 text-white md:ml-3">
-              <Button type="button" variant="ghost" size="icon-lg" onClick={() => move(-1)} aria-label={language === "zh" ? "上一部作品" : "Previous anime"} className="size-12 rounded-xl text-white/80 hover:bg-white/12 hover:text-white">
+            <div className="flex shrink-0 items-center gap-1 text-foreground md:ml-3">
+              <Button type="button" variant="ghost" size="icon-lg" onClick={() => move(-1)} aria-label={language === "zh" ? "上一部作品" : "Previous anime"} className="size-12 rounded-xl text-foreground/80 hover:bg-overlay/12 hover:text-foreground">
                 <ChevronLeft aria-hidden="true" />
               </Button>
-              <span className="hidden text-xs tabular-nums text-white/75 min-[360px]:block">{activeIndex + 1} / {items.length}</span>
-              <Button type="button" variant="ghost" size="icon-lg" onClick={() => move(1)} aria-label={language === "zh" ? "下一部作品" : "Next anime"} className="size-12 rounded-xl text-white/80 hover:bg-white/12 hover:text-white">
+              <span className="hidden text-xs tabular-nums text-foreground/75 min-[360px]:block">{activeIndex + 1} / {items.length}</span>
+              <Button type="button" variant="ghost" size="icon-lg" onClick={() => move(1)} aria-label={language === "zh" ? "下一部作品" : "Next anime"} className="size-12 rounded-xl text-foreground/80 hover:bg-overlay/12 hover:text-foreground">
                 <ChevronRight aria-hidden="true" />
               </Button>
             </div>

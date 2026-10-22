@@ -39,12 +39,3 @@ export function gestureTime(seconds: number) {
   const value = Math.max(0, Math.floor(seconds));
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
 }
-
-export type TapZone = "left" | "center" | "right";
-/** Side thirds skip on double tap; the middle third plays/pauses. */
-export function tapZone(x: number, width: number): TapZone {
-  if (width <= 0) return "center";
-  if (x < width * 0.35) return "left";
-  if (x > width * 0.65) return "right";
-  return "center";
-}

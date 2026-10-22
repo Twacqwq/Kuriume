@@ -28,7 +28,10 @@ import {
   ExternalLink,
   Github,
   Info,
+  Palette,
 } from "lucide-react";
+import { useTheme } from "@/hooks/use-theme";
+import { setTheme, THEMES } from "@/lib/theme";
 import { useState } from "react";
 import { useAppUpdate } from "@/hooks/use-app-update";
 import { openExternal, plainReleaseNotes, PROJECT_URL } from "@/lib/app-update";
@@ -153,6 +156,7 @@ function SettingsPage() {
                 </SelectContent>
               </Select>
             </SettingRow>
+            <ThemePicker zh={zh} />
             <SettingRow icon={<Database />} label={zh ? "数据源" : "Data source"} htmlFor="catalog-source">
               <Select
                 value={catalogSource}
@@ -181,6 +185,50 @@ function SettingsPage() {
           </SettingsGroup>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Built-in colour themes; applies at once and is kept on this device. */
+function ThemePicker({ zh }: { zh: boolean }) {
+  const current = useTheme();
+  return (
+    <div className="px-4 py-3">
+      <div className="flex min-h-11 items-center gap-3 text-muted-foreground [&_svg]:size-4.5 [&_svg]:shrink-0 [&_svg]:stroke-[1.8]">
+        <Palette aria-hidden="true" />
+        <span id="theme-label" className="text-sm leading-snug text-foreground">{zh ? "主题" : "Theme"}</span>
+      </div>
+      <div role="radiogroup" aria-labelledby="theme-label" className="mt-2 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        {THEMES.map((theme) => {
+          const selected = theme.id === current;
+          return (
+            <button
+              key={theme.id}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => setTheme(theme.id)}
+              className={cn(
+                "group relative flex min-h-12 flex-col overflow-hidden rounded-xl border text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-readable motion-reduce:transition-none",
+                selected ? "border-primary-readable/70" : "border-border hover:border-muted-foreground/50",
+              )}
+            >
+              {/* A miniature of the theme: canvas, a card, its primary and reminder colours. */}
+              <span aria-hidden="true" className="flex h-16 items-end gap-1.5 p-2.5" style={{ backgroundColor: theme.background }}>
+                <span className="flex h-full flex-1 flex-col justify-end gap-1 rounded-md p-1.5" style={{ backgroundColor: theme.card }}>
+                  <span className="h-1.5 w-3/4 rounded-full" style={{ backgroundColor: theme.primary }} />
+                  <span className="h-1.5 w-1/2 rounded-full opacity-35" style={{ backgroundColor: "#ffffff" }} />
+                </span>
+                <span className="size-4 rounded-full" style={{ backgroundColor: theme.highlight }} />
+              </span>
+              <span className="flex items-center justify-between gap-2 bg-card px-3 py-2 text-sm font-medium">
+                {zh ? theme.zh : theme.en}
+                {selected && <Check className="size-4 text-primary-readable" aria-hidden="true" />}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

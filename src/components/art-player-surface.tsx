@@ -16,8 +16,8 @@ import type { Anime4KEvent } from "@/lib/anime4k/renderer";
 import { PLAYBACK_RATES, PlayerChrome, type PlayerEpisode, type PlayerNext, type PlayerSheet } from "@/components/player-chrome";
 import "@/components/art-player-skin.css";
 import { diagnose, diagnosticMessage, type DiagnosticCode } from "@/lib/diagnostics";
+import { themePrimary } from "@/lib/theme";
 
-const KURIUME = "#a4534a";
 // Fullscreen belongs to the desktop page, including the double-click shortcut.
 Artplayer.DBCLICK_FULLSCREEN = false;
 Artplayer.SETTING_ITEM_HEIGHT = 48;
@@ -172,7 +172,8 @@ export function ArtPlayerSurface({
       url: asset.url,
       ...(mediaType ? { type: mediaType } : {}),
       ...(poster ? { poster } : {}),
-      theme: KURIUME,
+      // The played bar follows the app theme in effect when the player opens.
+      theme: themePrimary(),
       icons: playerIcons,
       cssVar: { "--art-control-opacity": 1, "--art-control-icon-scale": 1 },
       lang: language === "zh" ? "zh-cn" : "en",

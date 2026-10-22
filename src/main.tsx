@@ -10,7 +10,11 @@ import "./main.css";
 import { installErrorDiagnostics } from "@/lib/diagnostics";
 import { linkFollowedToCatalog, prefetchBrowseData } from "@/lib/catalog-queries";
 import { dismissSplash } from "@/lib/splash";
+import { applyTheme, readTheme } from "@/lib/theme";
 
+// public/splash.js already set it before first paint; this also covers the
+// browser chrome colour and any page loaded without the splash script.
+applyTheme(readTheme());
 const removeErrorDiagnostics = installErrorDiagnostics();
 if (import.meta.hot) import.meta.hot.dispose(removeErrorDiagnostics);
 // Start once, outside StrictMode effects. Pages share these queries and own

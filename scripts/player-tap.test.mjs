@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import ts from "typescript";
-import { tapZone } from "../src/lib/player-gestures.ts";
 
 const data = (text) => `data:text/javascript;base64,${Buffer.from(text).toString("base64")}`;
 const effects = [];
@@ -21,13 +20,6 @@ const source = await readFile(new URL("../src/hooks/use-player-gestures.ts", imp
 const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
 const { usePlayerGestures } = await import(data(outputText.replace(/from "([^"]+)"/g, (_, name) => `from "${imports[name]}"`)));
 delete globalThis.__tapTest;
-
-test("tap zones split the player into thirds", () => {
-  assert.equal(tapZone(10, 300), "left");
-  assert.equal(tapZone(150, 300), "center");
-  assert.equal(tapZone(290, 300), "right");
-  assert.equal(tapZone(10, 0), "center");
-});
 
 function fixture(options) {
   const surface = new EventTarget();
@@ -58,34 +50,24 @@ function fixture(options) {
   return { art, click, touch, controlsShown: () => shown, done: () => { cleanup(); globalThis.document = documentBefore; } };
 }
 
-test("single tap toggles controls; double tap on a side skips and keeps the controls as they were", () => {
+test("single tap toggles controls; a double tap anywhere plays/pauses and leaves the controls as they were", async () => {
   const f = fixture();
+  const pause = () => new Promise((resolve) => setTimeout(resolve, 350));
   try {
     f.click(150);
     assert.equal(f.controlsShown(), true, "single tap reveals");
-    f.click(150);
-    // second tap within the double-tap window in the middle toggles playback
-    assert.equal(f.art.toggles, 1);
-    assert.equal(f.controlsShown(), false, "controls return to their state before the first tap");
-    const before = f.art.currentTime;
-    return new Promise((resolve) => setTimeout(() => {
-      f.click(280);
-      f.click(280);
-      assert.equal(f.art.currentTime, before + 10);
-      f.click(280);
-      assert.equal(f.art.currentTime, before + 20, "further taps keep skipping");
-      assert.equal(f.controlsShown(), false);
-      setTimeout(() => {
-        f.click(20);
-        f.click(20);
-        assert.equal(f.art.currentTime, before + 10);
-        f.done();
-        resolve();
-      }, 800);
-    }, 350));
-  } catch (error) {
+    await pause();
+    for (const x of [20, 150, 280]) {
+      const toggles = f.art.toggles;
+      f.click(x);
+      f.click(x);
+      assert.equal(f.art.toggles, toggles + 1, `double tap at ${x} plays/pauses`);
+      assert.equal(f.art.currentTime, 100, "no side skipping");
+      assert.equal(f.controlsShown(), true, "controls back to their state before the first tap");
+      await pause();
+    }
+  } finally {
     f.done();
-    throw error;
   }
 });
 

@@ -43,7 +43,7 @@ impl HiAnime {
                 .expect("valid HiAnime HTTP client"),
             descriptor: PlaybackProviderDescriptor {
                 id: "builtin:hianime".into(),
-                display_name: "HiAnime".into(),
+                display_name: crate::playback::source_name(SITE).unwrap_or_default(),
                 built_in: true,
                 capabilities: PlaybackProviderCapabilities {
                     search: true,

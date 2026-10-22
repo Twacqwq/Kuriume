@@ -48,7 +48,7 @@ pub use models::{
     GetListQuery, PagedResult, SearchQuery, SortBy, Weekday,
 };
 pub use playback::{
-    PlaybackCandidate, PlaybackEpisode, PlaybackHeaders, PlaybackProvider,
+    source_name, PlaybackCandidate, PlaybackEpisode, PlaybackHeaders, PlaybackProvider,
     PlaybackProviderCapabilities, PlaybackProviderDescriptor, PlaybackResolveRequest, PlaybackRoad,
     PlaybackSearch, PlaybackSource, PlaybackSubtitle, ResolvePlan, RulePlaybackProvider,
 };

@@ -72,7 +72,7 @@ function HomePage() {
                     search={{ t: entry.position }}
                     className="press group relative flex min-w-0 snap-start gap-3 overflow-hidden rounded-xl bg-card p-3 outline-none transition-colors active:bg-secondary hover:bg-secondary focus-visible:ring-[3px] focus-visible:ring-primary-readable motion-reduce:transition-none"
                   >
-                    <div className="h-22 w-15 shrink-0 overflow-hidden rounded-lg bg-white/5">
+                    <div className="h-22 w-15 shrink-0 overflow-hidden rounded-lg bg-overlay/5">
                       {entry.cover && (
                         <img
                           src={entry.cover}
