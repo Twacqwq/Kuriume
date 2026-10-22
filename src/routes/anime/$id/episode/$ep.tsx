@@ -62,7 +62,13 @@ function EpisodePage() {
   const progressRef = useRef<Parameters<typeof historyApi.upsert>[0] | null>(null);
 
   const redirecting = useCatalogRedirect(id);
-  const { data: media, error: detailError } = useQuery({ ...detailQueryOptions(id, language), enabled: !redirecting });
+  const { data: media, error: detailError } = useQuery({
+    ...detailQueryOptions(id, language),
+    // Source matching needs the full title list; a list entry would start a
+    // search that the real details then restart.
+    placeholderData: undefined,
+    enabled: !redirecting,
+  });
   const { data: storedMedia, isError: storedMediaError } = useQuery({
     queryKey: ["stored-media", id, language],
     queryFn: () => mediaApi.ensure(media!, language),
@@ -185,8 +191,9 @@ function EpisodePage() {
     resolver.reset,
   ]);
 
-  // A failed source no longer throws the viewer out of fullscreen. Each
-  // provider is tried automatically at most once per episode, in order.
+  // A failed source no longer throws the viewer out of fullscreen. The empty
+  // state offers the next provider not yet tried this episode; switching is
+  // always the viewer's choice.
   const triedProvidersRef = useRef(new Set<string>());
   useEffect(() => { triedProvidersRef.current = new Set(); }, [episodeNumber]);
   const playbackFailed = resolver.phase === "error" || (!!onlineSource.error && !!onlineSource.selectedSource);
@@ -386,7 +393,9 @@ function EpisodePage() {
               hasSelection={!!onlineSource.selectedAnime}
               onRetry={retryPlayback}
               fallback={fallbackProvider ? { name: fallbackProvider.displayName, onSelect: () => onlineSource.selectSource(fallbackProvider.id) } : null}
-              autoFallback={resolver.phase === "error"}
+              nextStream={resolver.nextStream ? { name: resolver.nextStream, onSelect: () => resolver.selectSource(resolver.nextStream!) } : null}
+              // Inline, the source chip sits right below; fullscreen hides it.
+              onChooseSource={isFullscreen && !isSidePanel ? () => setPanelDrawer("source") : undefined}
               fullscreen={isFullscreen}
               title={episodeLabel(episodeNumber, language)}
               onExitFullscreen={fullscreen.close}
@@ -420,15 +429,14 @@ function episodeLabel(episodeNumber: number, language: string) {
   return language === "zh" ? `第 ${episodeNumber} 话` : `Episode ${episodeNumber}`;
 }
 
-const FALLBACK_DELAY_S = 3;
-
 function PlaybackEmptyState({
   status,
   error,
   hasSelection,
   onRetry,
   fallback,
-  autoFallback,
+  nextStream,
+  onChooseSource,
   fullscreen,
   title,
   onExitFullscreen,
@@ -438,26 +446,14 @@ function PlaybackEmptyState({
   hasSelection: boolean;
   onRetry: () => void;
   fallback: { name: string; onSelect: () => void } | null;
-  autoFallback: boolean;
+  nextStream: { name: string; onSelect: () => void } | null;
+  onChooseSource?: () => void;
   fullscreen: boolean;
   title: string;
   onExitFullscreen: () => void;
 }) {
   const language = useDisplayLanguage();
   const zh = language === "zh";
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const fallbackRef = useRef(fallback);
-  fallbackRef.current = fallback;
-  const fallbackName = fallback?.name;
-  useEffect(() => {
-    if (!error || !autoFallback || !fallbackName) { setCountdown(null); return; }
-    setCountdown(FALLBACK_DELAY_S);
-    const timer = setInterval(() => setCountdown((value) => (value === null ? null : value - 1)), 1000);
-    return () => clearInterval(timer);
-  }, [error, autoFallback, fallbackName]);
-  useEffect(() => {
-    if (countdown === 0) { setCountdown(null); fallbackRef.current?.onSelect(); }
-  }, [countdown]);
 
   const exitBar = fullscreen && (
     <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-2 px-2 pt-[max(4px,env(safe-area-inset-top))]">
@@ -511,14 +507,18 @@ function PlaybackEmptyState({
             {zh ? "重试" : "Retry"}
           </Button>
         )}
-        {fallback && (error || hasSelection) && (
-          <Button size="sm" onClick={() => { setCountdown(null); fallback.onSelect(); }}>
-            {zh ? `换到 ${fallback.name}` : `Try ${fallback.name}`}
-            {countdown !== null && <span className="tabular-nums opacity-80">· {countdown}s</span>}
+        {nextStream && (
+          <Button size="sm" onClick={nextStream.onSelect}>
+            {zh ? `换用线路 ${nextStream.name}` : `Try stream ${nextStream.name}`}
           </Button>
         )}
-        {countdown !== null && (
-          <Button variant="ghost" size="sm" onClick={() => setCountdown(null)}>{zh ? "取消" : "Cancel"}</Button>
+        {fallback && (error || hasSelection) && (
+          <Button size="sm" variant={nextStream ? "secondary" : "default"} onClick={fallback.onSelect}>
+            {zh ? `换到 ${fallback.name}` : `Try ${fallback.name}`}
+          </Button>
+        )}
+        {onChooseSource && (error || hasSelection) && (
+          <Button variant="ghost" size="sm" onClick={onChooseSource}>{zh ? "选择播放源" : "Choose source"}</Button>
         )}
         {fullscreen && !hasSelection && !status && (
           <Button variant="secondary" size="sm" onClick={onExitFullscreen}>{zh ? "退出全屏去匹配" : "Exit to match"}</Button>

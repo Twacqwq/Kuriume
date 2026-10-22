@@ -3,7 +3,7 @@ import { HeroBanner } from "@/components/hero-banner";
 import { HomePageLoading } from "@/components/page-loading";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { TodayUpdates } from "@/components/today-updates";
-import { minutesLeft } from "@/lib/tracking";
+import { latestPerWork, minutesLeft } from "@/lib/tracking";
 import { StoredMediaTitle } from "@/components/stored-media-title";
 import { Button } from "@/components/ui/button";
 import { useCatalogSource, useDisplayLanguage } from "@/hooks/use-display-language";
@@ -33,10 +33,13 @@ function HomePage() {
   const source = useCatalogSource();
   const { data: firstPage, dataUpdatedAt, isError, isPending, refetch } = useQuery(spotlightQuery(language, source));
   const spotlight = firstPage?.data?.slice(0, 12) ?? [];
-  const { data: history = [], refetch: refetchHistory } = useQuery({
-    queryKey: historyListQueryKey(12, 0),
-    queryFn: () => historyApi.list(12, 0),
+  // Each episode is its own history row; "continue watching" shows one
+  // card per work, so read enough rows to fill it.
+  const { data: historyRows = [], refetch: refetchHistory } = useQuery({
+    queryKey: historyListQueryKey(80, 0),
+    queryFn: () => historyApi.list(80, 0),
   });
+  const history = latestPerWork(historyRows);
 
   // Also covers a language change after the route has already mounted. Wait
   // before mounting AnimeGrid so its first page reuses the spotlight response.
@@ -52,7 +55,7 @@ function HomePage() {
               <h2 id="continue-watching-title" className="text-lg font-bold tracking-tight">{language === "zh" ? "继续观看" : "Continue watching"}</h2>
               <Link to="/watchlist" search={{ view: "history" }} className="flex min-h-11 items-center rounded-lg px-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary-readable">{language === "zh" ? "全部" : "View all"}</Link>
             </div>
-            <div className="hide-scrollbar -mx-4 mt-3 grid auto-cols-[min(84%,20rem)] grid-flow-col snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 sm:auto-cols-[min(65%,22rem)] md:mx-0 md:px-0 lg:grid-flow-row lg:auto-cols-auto lg:grid-cols-3">
+            <div className="hide-scrollbar -mx-4 mt-3 grid auto-cols-[min(84%,20rem)] grid-flow-col snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 md:scroll-px-0 sm:auto-cols-[min(65%,22rem)] md:mx-0 md:px-0 lg:grid-flow-row lg:auto-cols-auto lg:grid-cols-3">
               {history.slice(0, 6).map((entry) => {
                 const percent =
                   entry.duration > 0
@@ -120,7 +123,7 @@ function HomePage() {
           <h2 id="season-focus-title" className="text-lg font-bold tracking-tight">
             {language === "zh" ? "本季焦点" : "Season picks"}
           </h2>
-          <div className="hide-scrollbar -mx-4 mt-4 grid auto-cols-[42%] grid-flow-col snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 min-[480px]:auto-cols-[30%] sm:auto-cols-[23%] md:mx-0 md:px-0 lg:grid-flow-row lg:auto-cols-auto lg:grid-cols-4 lg:gap-4 xl:grid-cols-7">
+          <div className="hide-scrollbar -mx-4 mt-4 grid auto-cols-[42%] grid-flow-col snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 md:scroll-px-0 min-[480px]:auto-cols-[30%] sm:auto-cols-[23%] md:mx-0 md:px-0 lg:grid-flow-row lg:auto-cols-auto lg:grid-cols-4 lg:gap-4 xl:grid-cols-7">
             {spotlight.slice(5, 12).map((media) => (
               <Link
                 key={media.id}

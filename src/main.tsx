@@ -31,7 +31,10 @@ const router = createRouter({
   defaultErrorComponent: RouteError,
   defaultPendingMs: 0,
   defaultPendingMinMs: 150,
-  scrollRestoration: true,
+  // Pages scroll inside the app shell's <main>; __root keeps its position per
+  // history entry. A function keeps the router's onRendered event (which
+  // __root listens to) while switching off the router's own restoring.
+  scrollRestoration: () => false,
 });
 
 // Data alone is not enough: a cold lazy route can still flash its pending UI.

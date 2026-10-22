@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { airedEpisodes, minutesLeft, watchedThrough } from "../src/lib/tracking.ts";
+import { airedEpisodes, latestPerWork, minutesLeft, watchedThrough } from "../src/lib/tracking.ts";
 
 const entry = (episode, position, duration = 1440, external_id = "1") => ({ provider: "anilist", external_id, episode, position, duration, watched_at: "" });
 
@@ -30,4 +30,15 @@ test("Bangumi history counts only for the Bangumi entry", () => {
   const bangumi = { ...entry(4, 1400, 1440, "21"), provider: "bangumi" };
   assert.equal(watchedThrough([bangumi], "bangumi:21"), 4);
   assert.equal(watchedThrough([bangumi], "anilist:21"), 0);
+});
+
+test("history shows one row per work: its latest episode, newest work first", () => {
+  const rows = [
+    { media_id: "a", episode: 3, watched_at: "2026-10-20T10:00:00Z" },
+    { media_id: "b", episode: 1, watched_at: "2026-10-21T09:00:00Z" },
+    { media_id: "a", episode: 4, watched_at: "2026-10-21T12:00:00Z" },
+    { media_id: "a", episode: 2, watched_at: "2026-10-19T08:00:00Z" },
+  ];
+  assert.deepEqual(latestPerWork(rows).map((row) => `${row.media_id}${row.episode}`), ["a4", "b1"]);
+  assert.deepEqual(latestPerWork([]), []);
 });

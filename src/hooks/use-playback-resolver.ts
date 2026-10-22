@@ -77,20 +77,21 @@ export function usePlaybackResolver() {
     setState((current) => {
       const selectedIndex = current.sources.findIndex((source) => source.name === name);
       if (selectedIndex < 0) return current;
-      return { ...current, selectedIndex, phase: "ready", error: null, failedNames: [] };
+      // Failed marks stay, so the picker keeps showing what already failed.
+      return { ...current, selectedIndex, phase: "ready", error: null };
     });
   }, []);
 
+  // A failing stream stops here and the viewer picks what to try next. Moving
+  // on automatically raced the old stream, which sometimes started after all
+  // and kept playing unseen behind the next attempt.
   const reportError = useCallback((asset: PlayableAsset, message: string) => {
     setState((current) => {
       const selected = current.sources[current.selectedIndex];
       // Late events from a disposed player must not fail the next episode/line.
       if (current.phase !== "ready" || selected?.asset !== asset) return current;
-      const failedNames = [...current.failedNames, selected.name];
-      const next = nextPlaybackSource(current.sources, failedNames);
-      return next >= 0
-        ? { ...current, selectedIndex: next, failedNames, error: null }
-        : { ...current, phase: "error", failedNames, error: message };
+      const failedNames = current.failedNames.includes(selected.name) ? current.failedNames : [...current.failedNames, selected.name];
+      return { ...current, phase: "error", failedNames, error: message };
     });
   }, []);
 
@@ -100,12 +101,15 @@ export function usePlaybackResolver() {
   }, []);
 
   const selectedSource = state.sources[state.selectedIndex];
+  const untried = state.phase === "error" ? nextPlaybackSource(state.sources, state.failedNames) : -1;
+  /** Another stream of the same episode that has not failed yet, if any. */
+  const nextStream = untried >= 0 ? state.sources[untried].name : null;
   const diagnosticId = selectedSource?.asset.diagnosticId;
   useEffect(() => {
     if (state.phase === "ready" && state.failedNames.length > 0) {
-      diagnose("player_fallback", "warn", { operation: diagnosticId, attempt: state.failedNames.length });
+      diagnose("player_fallback", "info", { operation: diagnosticId, attempt: state.failedNames.length });
     }
   }, [diagnosticId, state.phase, state.selectedIndex, state.failedNames.length]);
   return { ...state, asset: state.phase === "ready" ? selectedSource?.asset ?? null : null,
-    selectedSource, resolve, selectSource, reportError, reset };
+    selectedSource, nextStream, resolve, selectSource, reportError, reset };
 }

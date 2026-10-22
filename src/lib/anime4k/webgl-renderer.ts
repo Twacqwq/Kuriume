@@ -11,6 +11,7 @@ import upscaleSource from "./glsl/Anime4K_Upscale_CNN_x2_M.glsl?raw";
 import { evaluateSize, fragmentSource, parseHookShader, type HookPass } from "./glsl/mpv-hook";
 import type { Anime4KEvent, Anime4KQuality, FrameSource } from "./renderer";
 import { targetSize, upscalePasses, type Size } from "./sizing";
+import { MAX_IN_FLIGHT, PaceMeter } from "./pace";
 
 const VERTEX = `#version 300 es
 out vec2 v_pos;
@@ -49,11 +50,9 @@ export class Anime4KWebGLRenderer {
   private chainUpscales = -1;
   private frameHandle = 0;
   private stopped = false;
-  private lastPresented: number | undefined;
-  /** One frame on the GPU at a time (see the WebGPU renderer). */
-  private fence: WebGLSync | null = null;
-  private callbacks = 0;
-  private skipped = 0;
+  /** Frames not yet finished on the GPU, oldest first (see pace.ts). */
+  private fences: WebGLSync[] = [];
+  private pace = new PaceMeter(() => this.onEvent({ type: "slow", quality: "fast" }));
   private onLost = (event: Event) => {
     event.preventDefault();
     if (!this.stopped) this.onEvent({ type: "error", message: "WebGL context lost" });
@@ -82,6 +81,11 @@ export class Anime4KWebGLRenderer {
   /** WebGL2 always runs the M networks. */
   setQuality(_quality: Anime4KQuality) {}
 
+  /** After a seek the decoder catches up for a moment; do not judge that. */
+  restartPacing() {
+    this.pace.reset();
+  }
+
   resize(box: Size, pixelRatio = window.devicePixelRatio || 1) {
     const native = { width: this.video.videoWidth, height: this.video.videoHeight };
     if (!native.width || !native.height || !box.width || !box.height) return;
@@ -102,7 +106,8 @@ export class Anime4KWebGLRenderer {
     this.canvas.removeEventListener("webglcontextlost", this.onLost);
     this.disposeChain();
     const gl = this.gl;
-    if (this.fence) gl.deleteSync(this.fence);
+    for (const fence of this.fences) gl.deleteSync(fence);
+    this.fences = [];
     gl.deleteTexture(this.frame);
     for (const { program } of this.programs.values()) gl.deleteProgram(program);
     gl.deleteProgram(this.present);
@@ -113,27 +118,13 @@ export class Anime4KWebGLRenderer {
   private schedule() {
     if (this.stopped) return;
     if ("requestVideoFrameCallback" in this.video) {
-      this.frameHandle = this.video.requestVideoFrameCallback((_now, metadata) => {
-        this.measure(metadata.presentedFrames);
+      this.frameHandle = this.video.requestVideoFrameCallback(() => {
         this.draw();
         this.schedule();
       });
     } else {
       this.frameHandle = requestAnimationFrame(() => { if (!this.video.paused) this.draw(); this.schedule(); });
     }
-  }
-
-  /** Too slow when most decoded frames are skipped between our callbacks. */
-  private measure(presented: number) {
-    if (this.video.paused) { this.lastPresented = undefined; return; }
-    if (this.lastPresented !== undefined && presented - this.lastPresented > 1) this.skipped += 1;
-    this.lastPresented = presented;
-    this.callbacks += 1;
-    if (this.callbacks < 90) return;
-    const slow = this.skipped / this.callbacks > 0.5;
-    this.callbacks = 0;
-    this.skipped = 0;
-    if (slow) this.onEvent({ type: "slow", quality: "fast" });
   }
 
   private compile(type: number, source: string) {
@@ -222,6 +213,7 @@ export class Anime4KWebGLRenderer {
       gl.deleteTexture(step.target.texture);
     }
     this.steps = null;
+    this.pace.reset();
   }
 
   private draw() {
@@ -229,16 +221,15 @@ export class Anime4KWebGLRenderer {
     const gl = this.gl;
     const native = { width: this.video.videoWidth, height: this.video.videoHeight };
     if (!native.width || !native.height || this.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || gl.isContextLost()) return;
-    if (this.fence) {
-      const status = gl.getSyncParameter(this.fence, gl.SYNC_STATUS);
-      if (status !== gl.SIGNALED) {
-        // Still busy: skip this frame (counted as skipped by measure()); when
-        // paused, look again shortly so the last frame still gets drawn.
-        if (this.video.paused) setTimeout(() => this.draw(), 16);
-        return;
-      }
-      gl.deleteSync(this.fence);
-      this.fence = null;
+    while (this.fences.length && gl.getSyncParameter(this.fences[0], gl.SYNC_STATUS) === gl.SIGNALED) {
+      gl.deleteSync(this.fences.shift()!);
+    }
+    if (this.fences.length >= MAX_IN_FLIGHT) {
+      // Still busy: drop this frame; when paused, look again shortly so the
+      // last frame still gets drawn.
+      if (this.video.paused) setTimeout(() => this.draw(), 16);
+      else this.pace.record(false);
+      return;
     }
     const upscales = upscalePasses(native, { width: this.canvas.width, height: this.canvas.height });
     try {
@@ -277,7 +268,9 @@ export class Anime4KWebGLRenderer {
     gl.bindTexture(gl.TEXTURE_2D, textures.MAIN.texture);
     gl.uniform1i(gl.getUniformLocation(this.present, "image"), 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    this.fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    const fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    if (fence) this.fences.push(fence);
     gl.flush();
+    if (!this.video.paused) this.pace.record(true);
   }
 }

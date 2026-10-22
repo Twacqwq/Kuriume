@@ -18,6 +18,8 @@ interface HeroBannerProps {
 }
 
 const HERO_DETAIL_DELAY_MS = 800;
+/** Time each highlight stays before the carousel moves on by itself. */
+export const HERO_AUTOPLAY_MS = 6000;
 
 export function HeroBanner({ items }: HeroBannerProps) {
   const language = useDisplayLanguage();
@@ -56,6 +58,20 @@ export function HeroBanner({ items }: HeroBannerProps) {
     if (current >= items.length && items.length > 0) setCurrent(0);
   }, [current, items.length]);
 
+  // Advances on its own, but holds while it is touched, hovered or focused,
+  // and not at all with reduced motion. Each slide gets the full interval,
+  // including right after a manual swipe.
+  const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const [held, setHeld] = useState(false);
+  const autoplay = items.length > 1 && !reducedMotion && !held;
+  useEffect(() => {
+    if (!autoplay) return;
+    const timer = setTimeout(() => setCurrent((index) => (index + 1) % items.length), HERO_AUTOPLAY_MS);
+    return () => clearTimeout(timer);
+  }, [autoplay, activeIndex, items.length]);
+  // Phones: a horizontal swipe changes the highlight; a tap opens it.
+  const swipe = useRef<{ x: number; y: number } | null>(null);
+
   useEffect(() => {
     if (!nextArtwork) return;
     const image = new Image();
@@ -84,13 +100,13 @@ export function HeroBanner({ items }: HeroBannerProps) {
   const move = (offset: number) => {
     setCurrent((index) => (index + offset + items.length) % items.length);
   };
-  // Phones: a horizontal swipe changes the highlight; a tap opens it.
-  const swipe = useRef<{ x: number; y: number } | null>(null);
   const onTouchStart = (event: React.TouchEvent) => {
+    setHeld(true);
     const touch = event.touches[0];
     swipe.current = event.touches.length === 1 ? { x: touch.clientX, y: touch.clientY } : null;
   };
   const onTouchEnd = (event: React.TouchEvent) => {
+    setHeld(false);
     const start = swipe.current;
     swipe.current = null;
     const touch = event.changedTouches[0];
@@ -110,6 +126,13 @@ export function HeroBanner({ items }: HeroBannerProps) {
       className="relative isolate flex aspect-[16/10] flex-col overflow-hidden rounded-2xl bg-card min-[480px]:aspect-[16/8] md:aspect-auto md:min-h-[clamp(400px,48vh,520px)]"
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
+      onTouchCancel={() => { swipe.current = null; setHeld(false); }}
+      // Touch screens send a compatibility mouseenter after a tap and never
+      // leave; only a real mouse holds the carousel by hovering.
+      onPointerEnter={(event) => { if (event.pointerType === "mouse") setHeld(true); }}
+      onPointerLeave={(event) => { if (event.pointerType === "mouse") setHeld(false); }}
+      onFocus={() => setHeld(true)}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHeld(false); }}
     >
       <Link to="/anime/$id" params={{ id: media.id }} aria-labelledby={`hero-title-${media.id.replace(":", "-")}`}
         className="absolute inset-0 z-20 rounded-2xl outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-primary-readable md:hidden" />
@@ -196,7 +219,8 @@ export function HeroBanner({ items }: HeroBannerProps) {
         </div>
       )}
 
-      <p className="sr-only" aria-live="polite" aria-atomic="true">
+      {/* Announce only changes the viewer made, not every automatic step. */}
+      <p className="sr-only" aria-live={autoplay ? "off" : "polite"} aria-atomic="true">
         {language === "zh" ? `${title}，第 ${activeIndex + 1} 部，共 ${items.length} 部` : `${title}, ${activeIndex + 1} of ${items.length}`}
       </p>
     </section>

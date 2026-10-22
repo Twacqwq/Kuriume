@@ -136,3 +136,36 @@ export function linkFollowedToCatalog(): Promise<void> {
   })().finally(() => { linking = undefined; });
   return linking;
 }
+
+const LISTING_KEYS = new Set(["anime-list", "home-season-page", "search", "search-suggest", "calendar"]);
+
+/**
+ * The entry for `id` from a list already on screen (home, search, schedule):
+ * enough to draw the details page at once while its own lookup finishes. No
+ * request is made, so catalog rate limits are unaffected.
+ */
+export function listedAnime(id: string): AnimeInfo | undefined {
+  const scan = (value: unknown, depth = 0): AnimeInfo | undefined => {
+    if (!value || typeof value !== "object" || depth > 4) return undefined;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = scan(item, depth + 1);
+        if (found) return found;
+      }
+      return undefined;
+    }
+    const record = value as Record<string, unknown>;
+    if (record.id === id && typeof record.title === "string") return value as AnimeInfo;
+    for (const key of ["data", "pages", "items"]) {
+      const found = scan(record[key], depth + 1);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  for (const [key, data] of queryClient.getQueriesData({ predicate: (query) => LISTING_KEYS.has(String(query.queryKey[0])) })) {
+    if (!key) continue;
+    const found = scan(data);
+    if (found) return found;
+  }
+  return undefined;
+}

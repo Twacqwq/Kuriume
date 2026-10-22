@@ -235,6 +235,9 @@ export function ArtPlayerSurface({
       },
       customType: {
         async m3u8(video, url) {
+          // ArtPlayer calls this a tick after construction, possibly after
+          // this player was already torn down.
+          if (disposed) return;
           const proxied = url.startsWith("kuriume-media:") || url.startsWith("http://kuriume-media.localhost/");
           // AVFoundation cannot request Tauri's custom scheme; Hls.js feeds
           // the same in-app video element through MediaSource in that case.
@@ -348,6 +351,7 @@ export function ArtPlayerSurface({
       unbindProgress();
       anime4kController.destroy();
       anime4kRef.current = null;
+      silence(art.video);
       art.destroy(false);
       artRef.current = null;
       setGesturePlayer(null);
@@ -564,4 +568,19 @@ export function ArtPlayerSurface({
       />
     </div>
   );
+}
+
+/**
+ * Stops a player's <video> for good. A slow source can finish loading after
+ * its player was replaced (another line, source or episode); the element,
+ * possibly detached, would then play unseen and keep sounding after leaving
+ * the page. Mute it, drop autoplay, and pause any later start.
+ */
+function silence(video: HTMLVideoElement) {
+  video.autoplay = false;
+  video.muted = true;
+  const stop = () => { video.pause(); };
+  video.addEventListener("play", stop);
+  video.addEventListener("playing", stop);
+  video.pause();
 }

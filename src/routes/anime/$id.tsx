@@ -2,7 +2,7 @@ import { createFileRoute, Outlet, redirect, useNavigate, useRouterState } from "
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect } from "react";
-import { counterpartQueryOptions } from "@/lib/catalog-queries";
+import { counterpartQueryOptions, listedAnime } from "@/lib/catalog-queries";
 import { queryClient } from "@/lib/query-client";
 import { useCatalogSource } from "@/hooks/use-display-language";
 import { catalogProviderFor, catalogSourceOf, DEFAULT_CATALOG_SOURCE, DEFAULT_DISPLAY_LANGUAGE, settingsQueryOptions, type DisplayLanguage } from "@/lib/store";
@@ -14,6 +14,8 @@ export const detailQueryOptions = (
 ) => ({
   queryKey: ["anime-detail", id, language],
   staleTime: 30 * 60 * 1000,
+  // Opened from a list: draw from the list's entry while the lookup runs.
+  placeholderData: () => listedAnime(id),
   // Tauri requests cannot be aborted. Consuming a query signal here lets an
   // unmounting card cancel the route loader's shared request during navigation.
   queryFn: () =>
@@ -88,8 +90,12 @@ export const Route = createFileRoute("/anime/$id")({
       params.id,
       language,
     ]);
+    // From a list the page can draw at once; the full lookup finishes there.
+    const listed = cached ? undefined : listedAnime(params.id);
+    if (listed) void queryClient.prefetchQuery(detailQueryOptions(params.id, language));
     const detail =
       cached ??
+      listed ??
       (await queryClient.fetchQuery(detailQueryOptions(params.id, language)));
     if (!detail) return;
 

@@ -198,7 +198,7 @@ const CalendarCard = memo(function CalendarCard({ item, followed }: { item: Anim
           <CalendarCoverFallback title={title} />
         )}
         {item.score != null && item.score > 0 && (
-          <div className="absolute top-2 right-2 hidden items-center gap-1 rounded-md bg-black/80 px-1.5 py-1 text-xs text-yellow-300 lg:flex">
+          <div className="absolute top-2 right-2 hidden items-center gap-1 rounded-md bg-black/80 px-1.5 py-1 text-xs font-semibold tabular-nums text-yellow-300 lg:flex">
             <Star aria-hidden="true" size={10} fill="currentColor" />
             {item.score.toFixed(1)}
           </div>
@@ -225,7 +225,7 @@ const CalendarCard = memo(function CalendarCard({ item, followed }: { item: Anim
         {!item.schedule && item.total_episodes > 0 && (
           <p className="text-sm text-muted-foreground lg:text-xs">{language === "zh" ? `共 ${item.total_episodes} 话` : `${item.total_episodes} episodes`}</p>
         )}
-        {item.score != null && item.score > 0 && <p className="flex items-center gap-1.5 text-xs text-muted-foreground lg:hidden"><Star aria-hidden="true" size={12} className="text-yellow-300" />{item.score.toFixed(1)}</p>}
+        {item.score != null && item.score > 0 && <p className="flex items-center gap-1.5 text-xs font-semibold tabular-nums text-yellow-300 lg:hidden"><Star aria-hidden="true" size={12} fill="currentColor" />{item.score.toFixed(1)}</p>}
       </div>
     </Link>
   );

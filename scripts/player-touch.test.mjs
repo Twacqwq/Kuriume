@@ -42,7 +42,7 @@ test("touch seeking commits once on release; cancel, controls, edges and multipl
     await new Promise((resolve) => setImmediate(resolve));
     touch("touchstart", [[100, 100]]);
     assert.equal(touch("touchmove", [[106, 100]]).defaultPrevented, false);
-    assert.equal(touch("touchmove", [[200, 100]]).defaultPrevented, true);
+    assert.equal(touch("touchmove", [[228, 100]]).defaultPrevented, true);
     assert.equal(art.currentTime, 300);
     touch("touchend", []);
     assert.equal(art.currentTime, 330);
@@ -53,7 +53,7 @@ test("touch seeking commits once on release; cancel, controls, edges and multipl
     for (const scenario of ["cancel", "multi", "edge", "control", "progress"]) {
       surface.closest = (selector) => scenario === "control" || (scenario === "progress" && selector.includes(".art-progress")) ? {} : null;
       touch("touchstart", [[scenario === "edge" ? 10 : 100, 100]]);
-      touch("touchmove", [[200, 100]]);
+      touch("touchmove", [[228, 100]]);
       if (scenario === "multi") touch("touchmove", [[200, 100], [240, 100]]);
       if (scenario === "cancel") touch("touchcancel", []);
       touch("touchend", []);

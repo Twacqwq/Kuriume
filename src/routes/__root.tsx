@@ -18,10 +18,58 @@ function RootComponent() {
   const [searchOpen, setSearchOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
 
-  const pathname = matches[matches.length - 1]?.pathname;
+
+  // Each history entry keeps its own scroll position: back returns to where
+  // the list was, a new page starts at the top. The position is read before
+  // navigating; scroll events during the swap would record the next page's.
   useEffect(() => {
-    mainRef.current?.scrollTo(0, 0);
-  }, [pathname]);
+    const main = mainRef.current;
+    if (!main) return;
+    const saved = new Map<string, number>();
+    const keyOf = (location: { href: string; state: { __TSR_key?: string } }) => location.state.__TSR_key ?? location.href;
+    let leaving: { key: string; pathname: string } | null = null;
+    let frame = 0;
+    let stop = () => {};
+    const offBefore = router.subscribe("onBeforeNavigate", ({ fromLocation }) => {
+      if (!fromLocation) return;
+      const key = keyOf(fromLocation);
+      leaving = { key, pathname: fromLocation.pathname };
+      saved.delete(key);
+      saved.set(key, main.scrollTop);
+      if (saved.size > 100) saved.delete(saved.keys().next().value!);
+    });
+    const offRendered = router.subscribe("onRendered", ({ toLocation }) => {
+      const from = leaving;
+      leaving = null;
+      if (!from || from.key === keyOf(toLocation)) return;
+      stop();
+      const top = saved.get(keyOf(toLocation));
+      // A filter or tab change on the same page keeps its place.
+      if (top === undefined && from.pathname === toLocation.pathname) return;
+      const target = top ?? 0;
+      // The page may still swap a loading state for its content and grow for
+      // a few frames: hold the position until then, unless the user scrolls.
+      const deadline = performance.now() + 800;
+      const apply = () => {
+        if (main.scrollTop !== target) main.scrollTop = target;
+        if (performance.now() < deadline) frame = requestAnimationFrame(apply);
+        else stop();
+      };
+      const release = () => stop();
+      stop = () => {
+        cancelAnimationFrame(frame);
+        main.removeEventListener("touchstart", release);
+        main.removeEventListener("wheel", release);
+        main.removeEventListener("keydown", release);
+        stop = () => {};
+      };
+      main.addEventListener("touchstart", release, { passive: true });
+      main.addEventListener("wheel", release, { passive: true });
+      main.addEventListener("keydown", release);
+      apply();
+    });
+    return () => { offBefore(); offRendered(); stop(); };
+  }, [router]);
 
   const openSearch = useCallback(() => setSearchOpen(true), []);
   const closeSearch = useCallback(() => setSearchOpen(false), []);

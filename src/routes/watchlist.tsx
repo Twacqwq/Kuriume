@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { calendarQueryOptions } from "@/lib/catalog-queries";
-import { airedEpisodes, airingClock, latestEntry, watchedThrough } from "@/lib/tracking";
+import { airedEpisodes, airingClock, latestEntry, latestPerWork, watchedThrough } from "@/lib/tracking";
 import type { AiringSlot, AnimeInfo } from "@/lib/types";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import {
@@ -173,7 +173,7 @@ function LibraryPage() {
           <Button variant="outline" onClick={() => void activeQuery.refetch()}>{language === "zh" ? "重试" : "Retry"}</Button>
         </div>
       ) : view === "history" ? (
-        <HistoryList history={history} />
+        <HistoryList history={latestPerWork(history)} />
       ) : filtered.length > 0 ? (
         <div className="mt-2 grid grid-cols-1 gap-x-8 lg:grid-cols-2">
           {filtered.map((entry) => (
