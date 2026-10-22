@@ -38,108 +38,130 @@
   --sidebar-accent: #2a2424;
   --sidebar-accent-foreground: #eeeae8;
   --sidebar-border: #342d2c;
+  /* Subtle fills and hairlines on the page (white on dark themes, black on
+     light ones) and the colour hero artwork fades into. */
+  --overlay: #ffffff;
+  --scrim: #000000;
+  /* Scores shown on the page (cover badges stay yellow on black). */
+  --score: #fde047;
+  /* What --primary-readable and --highlight become on the always-dark player. */
+  --primary-on-dark: #e0a59c;
+  --highlight-on-dark: #c8a36c;
   /* Cover-derived tint for detail pages; set inline from the artwork. */
   --cover-tone: 164 83 74;
 }
-/* Built-in themes (src/lib/theme.ts). Each keeps the 深栗 structure: dark
-   neutrals with a faint cast of the theme's hue, one saturated primary, a
-   warm reminder colour, and near-neutral text. All text pairs meet WCAG AA
-   (primary-readable on cards 9:1+, button text on primary 4.8:1+). */
-:root[data-theme="yozakura"] {
-  /* 夜桜: night-blue violet neutrals, sakura pink, moonlit gold. */
-  --background: #121018;
-  --foreground: #ece9f0;
-  --card: #1c1924;
-  --card-foreground: #ece9f0;
-  --popover: #221e2b;
-  --popover-foreground: #ece9f0;
-  --primary: #ad4f6b;
-  --primary-foreground: #fff7f9;
-  --primary-readable: #f0a6bb;
+/* Built-in themes (src/lib/theme.ts). Same structure as 深栗: one saturated
+   primary, a warm reminder colour, near-neutral text; light themes keep the
+   page light and only the player dark. Every text pair meets WCAG AA
+   (scripts/themes.test.mjs). */
+:root[data-theme="kinari"] {
+  --score: #8a6000;
+  /* 生成り: unbleached-paper cream with 栗梅 ink, the light 深栗. */
+  color-scheme: light;
+  --background: #f4eee6;
+  --foreground: #2b211d;
+  --card: #fcf8f3;
+  --card-foreground: #2b211d;
+  --popover: #fffcf8;
+  --popover-foreground: #2b211d;
+  --primary: #9a473e;
+  --primary-foreground: #fffaf8;
+  --primary-readable: #8a3e36;
+  --highlight: #7a5812;
+  --highlight-foreground: #fffaf0;
+  --destructive-readable: #b23a3a;
+  --secondary: #ebe3da;
+  --secondary-foreground: #2b211d;
+  --muted: #ebe3da;
+  --muted-foreground: #6b5e58;
+  --accent: #e6ddd3;
+  --accent-foreground: #2b211d;
+  --border: #ded2c6;
+  --input: #ded2c6;
+  --ring: #9a473e;
+  --sidebar: #eee6dd;
+  --sidebar-foreground: #2b211d;
+  --sidebar-primary: #9a473e;
+  --sidebar-primary-foreground: #fffaf8;
+  --sidebar-accent: #e6ddd3;
+  --sidebar-accent-foreground: #2b211d;
+  --sidebar-border: #ded2c6;
+  --overlay: #000000;
+  --scrim: #f4eee6;
+  --cover-tone: 154 71 62;
+}
+:root[data-theme="sakura"] {
+  --score: #8a6000;
+  /* 桜霞: spring-haze pink, sakura primary, a gold that reads on light. */
+  color-scheme: light;
+  --background: #f6eef2;
+  --foreground: #2c2027;
+  --card: #fdf8fa;
+  --card-foreground: #2c2027;
+  --popover: #fffbfc;
+  --popover-foreground: #2c2027;
+  --primary: #a8476a;
+  --primary-foreground: #fff8fa;
+  --primary-readable: #96395b;
   --primary-strong: #e07c98;
-  --highlight: #d9b66e;
-  --highlight-foreground: #1c1508;
-  --secondary: #27222f;
-  --secondary-foreground: #ece9f0;
-  --muted: #27222f;
-  --muted-foreground: #a39cad;
-  --accent: #2b2534;
-  --accent-foreground: #ece9f0;
-  --border: #332d3c;
-  --input: #332d3c;
-  --ring: #ad4f6b;
-  --sidebar: #0e0c13;
-  --sidebar-foreground: #ece9f0;
-  --sidebar-primary: #ad4f6b;
-  --sidebar-primary-foreground: #fff7f9;
-  --sidebar-accent: #27222f;
-  --sidebar-accent-foreground: #ece9f0;
-  --sidebar-border: #332d3c;
-  --cover-tone: 173 79 107;
+  --primary-on-dark: #f0a6bb;
+  --highlight: #7a5812;
+  --highlight-foreground: #fffaf0;
+  --destructive-readable: #b23a3a;
+  --secondary: #eee2e8;
+  --secondary-foreground: #2c2027;
+  --muted: #eee2e8;
+  --muted-foreground: #715f69;
+  --accent: #e9dbe2;
+  --accent-foreground: #2c2027;
+  --border: #e2d1da;
+  --input: #e2d1da;
+  --ring: #a8476a;
+  --sidebar: #f0e5ea;
+  --sidebar-foreground: #2c2027;
+  --sidebar-primary: #a8476a;
+  --sidebar-primary-foreground: #fff8fa;
+  --sidebar-accent: #e9dbe2;
+  --sidebar-accent-foreground: #2c2027;
+  --sidebar-border: #e2d1da;
+  --overlay: #000000;
+  --scrim: #f6eef2;
+  --cover-tone: 168 71 106;
 }
-:root[data-theme="gunjo"] {
-  /* 群青: a deep evening-sky blue with sunset orange for reminders. */
-  --background: #0f1218;
-  --foreground: #e8ecf2;
-  --card: #181d25;
-  --card-foreground: #e8ecf2;
-  --popover: #1d232c;
-  --popover-foreground: #e8ecf2;
-  --primary: #3d6bb0;
+:root[data-theme="ai"] {
+  /* 藍: deep indigo, plainly blue rather than black, with 蜜柑 reminders. */
+  --background: #182033;
+  --foreground: #e8ecf4;
+  --card: #212a40;
+  --card-foreground: #e8ecf4;
+  --popover: #263048;
+  --popover-foreground: #e8ecf4;
+  --primary: #3a6cae;
   --primary-foreground: #f5f9ff;
-  --primary-readable: #9cc0f0;
-  --primary-strong: #6f9de0;
-  --highlight: #e2a65e;
-  --highlight-foreground: #1e1308;
-  --secondary: #222934;
-  --secondary-foreground: #e8ecf2;
-  --muted: #222934;
-  --muted-foreground: #98a2b1;
-  --accent: #262e3a;
-  --accent-foreground: #e8ecf2;
-  --border: #2d3542;
-  --input: #2d3542;
-  --ring: #3d6bb0;
-  --sidebar: #0c0f14;
-  --sidebar-foreground: #e8ecf2;
-  --sidebar-primary: #3d6bb0;
+  --primary-readable: #a8c7ef;
+  --primary-strong: #7aa8e6;
+  --primary-on-dark: #a8c7ef;
+  --highlight: #e6b36a;
+  --highlight-foreground: #22170a;
+  --highlight-on-dark: #e6b36a;
+  --destructive-readable: #f09a9a;
+  --secondary: #29334c;
+  --secondary-foreground: #e8ecf4;
+  --muted: #29334c;
+  --muted-foreground: #a3adc2;
+  --accent: #2e3954;
+  --accent-foreground: #e8ecf4;
+  --border: #36425f;
+  --input: #36425f;
+  --ring: #3a6cae;
+  --sidebar: #131a2a;
+  --sidebar-foreground: #e8ecf4;
+  --sidebar-primary: #3a6cae;
   --sidebar-primary-foreground: #f5f9ff;
-  --sidebar-accent: #222934;
-  --sidebar-accent-foreground: #e8ecf2;
-  --sidebar-border: #2d3542;
-  --cover-tone: 61 107 176;
-}
-:root[data-theme="wakatake"] {
-  /* 若竹: young-bamboo green over moss-dark neutrals, 山吹 yellow reminders. */
-  --background: #10140f;
-  --foreground: #e9eee8;
-  --card: #191e18;
-  --card-foreground: #e9eee8;
-  --popover: #1e241d;
-  --popover-foreground: #e9eee8;
-  --primary: #437a52;
-  --primary-foreground: #f4fbf5;
-  --primary-readable: #9fd3aa;
-  --primary-strong: #76b585;
-  --highlight: #d9b45c;
-  --highlight-foreground: #1c1606;
-  --secondary: #232a22;
-  --secondary-foreground: #e9eee8;
-  --muted: #232a22;
-  --muted-foreground: #9aa598;
-  --accent: #273026;
-  --accent-foreground: #e9eee8;
-  --border: #2e372d;
-  --input: #2e372d;
-  --ring: #437a52;
-  --sidebar: #0c100b;
-  --sidebar-foreground: #e9eee8;
-  --sidebar-primary: #437a52;
-  --sidebar-primary-foreground: #f4fbf5;
-  --sidebar-accent: #232a22;
-  --sidebar-accent-foreground: #e9eee8;
-  --sidebar-border: #2e372d;
-  --cover-tone: 67 122 82;
+  --sidebar-accent: #29334c;
+  --sidebar-accent-foreground: #e8ecf4;
+  --sidebar-border: #36425f;
+  --cover-tone: 58 108 174;
 }
 /* Detail pages: a cover-coloured glow behind the hero that fades into the
    canvas, so the page below the artwork is not a flat black field. */
@@ -154,6 +176,13 @@
 }
 /* Video needs a neutral surround: a warm frame makes the picture look cooler. */
 .player-page {
+  color-scheme: dark;
+  --primary-readable: var(--primary-on-dark);
+  --highlight: var(--highlight-on-dark);
+  --highlight-foreground: #1d150c;
+  --destructive-readable: #ee8585;
+  --overlay: #ffffff;
+  --scrim: #000000;
   --background: #0e0e0f;
   --card: #171718;
   --popover: #1c1c1d;
@@ -163,6 +192,10 @@
   --border: #2f2f30;
   --input: #2f2f30;
   --foreground: #eeeeee;
+  --card-foreground: #eeeeee;
+  --popover-foreground: #eeeeee;
+  --secondary-foreground: #eeeeee;
+  --accent-foreground: #eeeeee;
   --muted-foreground: #a2a2a4;
 }
 @theme inline {
@@ -179,6 +212,9 @@
   --color-primary-readable: var(--primary-readable);
   --color-highlight: var(--highlight);
   --color-highlight-foreground: var(--highlight-foreground);
+  --color-overlay: var(--overlay);
+  --color-score: var(--score);
+  --color-scrim: var(--scrim);
   --color-destructive-readable: var(--destructive-readable);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -249,15 +285,15 @@ body,
 body {
   @apply m-0 font-sans text-foreground antialiased;
   background:
-    radial-gradient(circle at 82% -10%, rgba(164, 83, 74, 0.09), transparent 30rem),
+    radial-gradient(circle at 82% -10%, color-mix(in srgb, var(--primary) 9%, transparent), transparent 30rem),
     var(--background);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
 
 ::selection {
-  background: rgba(164, 83, 74, 0.45);
-  color: #fff;
+  background: color-mix(in srgb, var(--primary) 45%, transparent);
+  color: var(--foreground);
 }
 
 .artplayer-app video::cue {

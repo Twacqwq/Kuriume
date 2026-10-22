@@ -32,7 +32,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
   const settingsActive = currentPath === "/settings" || currentPath.startsWith("/settings/");
 
   return (
-    <aside className="app-sidebar relative z-40 hidden h-full w-20 shrink-0 flex-col border-r border-white/6 bg-sidebar/92 px-3 pb-4 pt-8 md:flex lg:w-56">
+    <aside className="app-sidebar relative z-40 hidden h-full w-20 shrink-0 flex-col border-r border-overlay/6 bg-sidebar/92 px-3 pb-4 pt-8 md:flex lg:w-56">
       {!isMobileApp && <div
         className="absolute inset-x-0 top-0 h-8"
         data-tauri-drag-region
@@ -62,7 +62,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
       >
         <Search size={16} />
         <span className="sr-only flex-1 text-left lg:not-sr-only">{language === "zh" ? "搜索动画" : "Search anime"}</span>
-        <kbd className="hidden rounded border border-white/8 px-1.5 py-0.5 text-[10px] lg:block">
+        <kbd className="hidden rounded border border-overlay/10 px-1.5 py-0.5 text-[10px] lg:block">
           {shortcutLabel}
         </kbd>
       </Button>
@@ -82,7 +82,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
                 "relative flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl px-1 text-[10px] outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-primary-readable lg:min-h-11 lg:flex-row lg:justify-start lg:gap-3 lg:px-3 lg:text-sm",
                 active
                   ? "bg-primary/14 text-foreground"
-                  : "text-muted-foreground hover:bg-white/4 hover:text-foreground",
+                  : "text-muted-foreground hover:bg-overlay/5 hover:text-foreground",
               )}
             >
               {active && (
@@ -107,7 +107,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
             "flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl px-1 text-[10px] outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-primary-readable lg:min-h-11 lg:flex-row lg:justify-start lg:gap-3 lg:px-3 lg:text-sm",
             settingsActive
               ? "bg-primary/14 text-foreground"
-              : "text-muted-foreground hover:bg-white/4 hover:text-foreground",
+              : "text-muted-foreground hover:bg-overlay/5 hover:text-foreground",
           )}
         >
           <span className="relative grid place-items-center">

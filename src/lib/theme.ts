@@ -5,16 +5,21 @@
  * app never flashes the default palette.
  */
 export const THEMES = [
-  { id: "chestnut", zh: "深栗", en: "Chestnut", background: "#141112", card: "#1e1a1a", primary: "#a4534a", highlight: "#c8a36c" },
-  { id: "yozakura", zh: "夜桜", en: "Night sakura", background: "#121018", card: "#1c1924", primary: "#ad4f6b", highlight: "#d9b66e" },
-  { id: "gunjo", zh: "群青", en: "Ultramarine", background: "#0f1218", card: "#181d25", primary: "#3d6bb0", highlight: "#e2a65e" },
-  { id: "wakatake", zh: "若竹", en: "Young bamboo", background: "#10140f", card: "#191e18", primary: "#437a52", highlight: "#d9b45c" },
+  { id: "chestnut", zh: "深栗", en: "Chestnut", dark: true, background: "#141112", card: "#1e1a1a", primary: "#a4534a", highlight: "#c8a36c" },
+  { id: "kinari", zh: "生成り", en: "Kinari", dark: false, background: "#f4eee6", card: "#fcf8f3", primary: "#9a473e", highlight: "#7a5812" },
+  { id: "sakura", zh: "桜霞", en: "Sakura haze", dark: false, background: "#f6eef2", card: "#fdf8fa", primary: "#a8476a", highlight: "#7a5812" },
+  { id: "ai", zh: "藍", en: "Indigo", dark: true, background: "#182033", card: "#212a40", primary: "#3a6cae", highlight: "#e6b36a" },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]["id"];
 export const DEFAULT_THEME: ThemeId = "chestnut";
 /** Also read by public/splash.js; keep the two in step. */
 export const THEME_KEY = "kuriume:theme";
+
+/** Dark themes keep the `dark` variant (and dark form controls) on. */
+export function isDarkTheme(id: ThemeId): boolean {
+  return THEMES.find((theme) => theme.id === id)?.dark ?? true;
+}
 
 export function isThemeId(value: unknown): value is ThemeId {
   return THEMES.some((theme) => theme.id === value);

@@ -275,7 +275,7 @@ function LibraryCard({
               <span>{language === "zh" ? `看到第 ${latest.episode} 话` : `Episode ${latest.episode}`}</span>
               <span>{Math.round(percent)}%</span>
             </div>
-            <div className="mt-1.5 h-0.5 overflow-hidden rounded-full bg-white/6">
+            <div className="mt-1.5 h-0.5 overflow-hidden rounded-full bg-overlay/8">
               <div
                 className="h-full bg-primary"
                 style={{ width: `${percent}%` }}

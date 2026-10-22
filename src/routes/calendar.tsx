@@ -119,7 +119,7 @@ function CalendarPage() {
                 "relative flex min-h-12 shrink-0 items-center rounded-lg px-4 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-readable",
                 isToday
                   ? "bg-primary text-primary-foreground"
-                  : "bg-white/5 text-muted-foreground hover:bg-white/8 hover:text-foreground"
+                  : "bg-overlay/5 text-muted-foreground hover:bg-overlay/8 hover:text-foreground"
               )}
             >
               {isToday ? (language === "zh" ? "今天" : "Today") : (language === "zh" ? `周${WEEKDAY_SHORT[entry.weekday.id % 7]}` : WEEKDAY_EN[entry.weekday.id % 7].slice(0, 3))}
@@ -225,7 +225,7 @@ const CalendarCard = memo(function CalendarCard({ item, followed }: { item: Anim
         {!item.schedule && item.total_episodes > 0 && (
           <p className="text-sm text-muted-foreground lg:text-xs">{language === "zh" ? `共 ${item.total_episodes} 话` : `${item.total_episodes} episodes`}</p>
         )}
-        {item.score != null && item.score > 0 && <p className="flex items-center gap-1.5 text-xs font-semibold tabular-nums text-yellow-300 lg:hidden"><Star aria-hidden="true" size={12} fill="currentColor" />{item.score.toFixed(1)}</p>}
+        {item.score != null && item.score > 0 && <p className="flex items-center gap-1.5 text-xs font-semibold tabular-nums text-score lg:hidden"><Star aria-hidden="true" size={12} fill="currentColor" />{item.score.toFixed(1)}</p>}
       </div>
     </Link>
   );

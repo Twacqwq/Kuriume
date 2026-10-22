@@ -26,7 +26,7 @@ export function MobileNavigation({ onSearch }: { onSearch: () => void }) {
         <Search size={21} />
       </button>
     </header>
-    <nav aria-label={language === "zh" ? "主导航" : "Main navigation"} className="mobile-tabbar order-last z-40 grid shrink-0 grid-cols-4 border-t border-white/5 bg-sidebar md:hidden">
+    <nav aria-label={language === "zh" ? "主导航" : "Main navigation"} className="mobile-tabbar order-last z-40 grid shrink-0 grid-cols-4 border-t border-overlay/6 bg-sidebar md:hidden">
       {items.map(({ to, icon: Icon, label }) => {
         const active = path === to || (to !== "/" && path.startsWith(to));
         return <Link key={to} to={to} aria-current={active ? "page" : undefined} className={cn("flex min-h-16 flex-col items-center justify-center gap-0.5 text-[11px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-primary-readable", active ? "text-primary-readable" : "text-muted-foreground")}>

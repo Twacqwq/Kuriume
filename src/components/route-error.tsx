@@ -50,7 +50,7 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
         {detail && (
           <details className="mt-3 text-left text-xs text-muted-foreground">
             <summary className="mx-auto w-fit cursor-pointer rounded px-2 py-1 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary-readable">{zh ? "错误详情" : "Error details"}</summary>
-            <p className="mt-2 max-h-40 overflow-auto break-all rounded-lg bg-white/5 p-3 leading-5 select-text">{detail}</p>
+            <p className="mt-2 max-h-40 overflow-auto break-all rounded-lg bg-overlay/5 p-3 leading-5 select-text">{detail}</p>
           </details>
         )}
       </div>

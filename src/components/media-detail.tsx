@@ -141,18 +141,18 @@ export function MediaDetail({
             )}
           </div>
           <div className="min-w-0 max-w-3xl">
-            <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-white/75">
+            <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-foreground/75">
               {media.format && <MetaPill>{formatMediaFormat(media.format, language)}</MetaPill>}
               {media.year && <span>{media.year}</span>}
               {media.total_episodes > 0 && (
                 <>
-                  <span className="text-white/25">·</span>
+                  <span className="text-foreground/25">·</span>
                   <span>{language === "zh" ? `${media.total_episodes} 话` : `${media.total_episodes} episodes`}</span>
                 </>
               )}
               {media.score && (
                 <>
-                  <span className="text-white/25">·</span>
+                  <span className="text-foreground/25">·</span>
                   <span className="inline-flex items-center gap-1 text-highlight">
                     <Star size={12} fill="currentColor" />
                     {media.score.toFixed(1)}
@@ -160,7 +160,7 @@ export function MediaDetail({
                 </>
               )}
             </div>
-            <h1 className="text-balance text-2xl font-bold leading-tight tracking-[-0.025em] text-white [overflow-wrap:anywhere] md:text-4xl xl:text-5xl">
+            <h1 className="text-balance text-2xl font-bold leading-tight tracking-[-0.025em] text-foreground [overflow-wrap:anywhere] md:text-4xl xl:text-5xl">
               {title}
             </h1>
           </div>
@@ -191,11 +191,11 @@ export function MediaDetail({
       <div className="mx-auto max-w-7xl space-y-8 px-4 pt-5 md:space-y-12 md:px-6 md:pt-8 lg:px-10">
         {pendingDetails ? (
           <section className="max-w-3xl" aria-busy="true" aria-label={language === "zh" ? "简介载入中" : "Loading synopsis"}>
-            <div className="mb-4 h-5 w-16 rounded-md bg-white/6" />
+            <div className="mb-4 h-5 w-16 rounded-md bg-overlay/6" />
             <div className="space-y-3">
-              <div className="h-3.5 rounded bg-white/5" />
-              <div className="h-3.5 rounded bg-white/5" />
-              <div className="h-3.5 w-2/3 rounded bg-white/5" />
+              <div className="h-3.5 rounded bg-overlay/5" />
+              <div className="h-3.5 rounded bg-overlay/5" />
+              <div className="h-3.5 w-2/3 rounded bg-overlay/5" />
             </div>
           </section>
         ) : description && (
@@ -233,7 +233,7 @@ export function MediaDetail({
             </div>
           </div>
           {episodes.length === 0 ? (
-            <p className="mt-5 rounded-xl border border-white/5 bg-card/50 p-6 text-sm text-muted-foreground">
+            <p className="mt-5 rounded-xl border border-overlay/5 bg-card/50 p-6 text-sm text-muted-foreground">
               {language === "zh" ? "暂无剧集信息" : "No episode information yet"}
             </p>
           ) : episodeView === "grid" ? (
@@ -254,7 +254,7 @@ export function MediaDetail({
                   >
                     {episode.ep}
                     {percent > 2 && !watched && (
-                      <span aria-hidden="true" className="absolute inset-x-2 bottom-1.5 h-0.5 overflow-hidden rounded-full bg-white/10">
+                      <span aria-hidden="true" className="absolute inset-x-2 bottom-1.5 h-0.5 overflow-hidden rounded-full bg-overlay/10">
                         <span className="block h-full bg-primary" style={{ width: `${percent}%` }} />
                       </span>
                     )}
@@ -291,7 +291,7 @@ export function MediaDetail({
                       </div>
                     </div>
                     {percent > 0 && (
-                      <span className="absolute inset-x-0 bottom-0 h-0.5 bg-white/6">
+                      <span className="absolute inset-x-0 bottom-0 h-0.5 bg-overlay/8">
                         <span className="block h-full bg-primary" style={{ width: `${percent}%` }} />
                       </span>
                     )}
@@ -343,7 +343,7 @@ export function MediaDetail({
                   key={character.id}
                   className="flex min-w-0 items-center gap-3"
                 >
-                  <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-white/5">
+                  <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-overlay/5">
                     {character.avatar && (
                       <img
                         src={character.avatar}
@@ -371,7 +371,7 @@ export function MediaDetail({
       </div>
 
       <div aria-hidden={actionsVisible} inert={actionsVisible}
-        className={cn("detail-sticky-cta fixed inset-x-0 bottom-0 z-30 border-t border-white/6 bg-background/92 px-4 pt-3 backdrop-blur-md transition-transform duration-200 motion-reduce:transition-none md:hidden",
+        className={cn("detail-sticky-cta fixed inset-x-0 bottom-0 z-30 border-t border-overlay/6 bg-background/92 px-4 pt-3 backdrop-blur-md transition-transform duration-200 motion-reduce:transition-none md:hidden",
           actionsVisible ? "translate-y-full" : "translate-y-0")}>
         <div className="flex items-center gap-3">
           <Button asChild size="lg" className="min-h-12 flex-1 gap-2 rounded-xl px-5">
@@ -408,9 +408,9 @@ function HeroArtwork({ media }: { media: AnimeInfo }) {
           )}
         />
       )}
-      <div className="absolute inset-0 bg-black/25" />
+      <div className="absolute inset-0 bg-scrim/25" />
       <div className="absolute inset-0 hidden bg-linear-to-r from-background via-background/55 to-background/10 lg:block" />
-      <div className="absolute inset-0 bg-linear-to-t from-black/45 via-black/20 to-black/10" />
+      <div className="absolute inset-0 bg-linear-to-t from-scrim/45 via-scrim/20 to-scrim/10" />
     </div>
   );
 }
@@ -432,7 +432,7 @@ function SectionHeading({
 
 function MetaPill({ children }: { children: React.ReactNode }) {
   return (
-    <span className="rounded-full border border-white/12 bg-black/20 px-2.5 py-1 backdrop-blur">
+    <span className="rounded-full border border-foreground/12 bg-scrim/20 px-2.5 py-1 backdrop-blur">
       {children}
     </span>
   );

@@ -6,9 +6,9 @@
    <style> ArtPlayer injects at runtime (the player then renders unstyled). */
 /* Splash colour per theme (src/lib/theme.ts), shown until the wallpaper loads. */
 :root { --splash-bg: #3a201c; }
-:root[data-theme="yozakura"] { --splash-bg: #33202d; }
-:root[data-theme="gunjo"] { --splash-bg: #1a2638; }
-:root[data-theme="wakatake"] { --splash-bg: #1d2a1d; }
+:root[data-theme="kinari"] { --splash-bg: #eadfd2; }
+:root[data-theme="sakura"] { --splash-bg: #f0e1e8; }
+:root[data-theme="ai"] { --splash-bg: #1d2a44; }
 html { background-color: var(--splash-bg); }
 @font-face { font-family: "Manrope"; font-weight: 200 800; font-display: swap; src: url("/fonts/manrope-vf.woff2") format("woff2"); }
 #splash { position: fixed; inset: 0; z-index: 2147483000; overflow: hidden; background: var(--splash-bg); transition: opacity 0.4s ease; animation: sp-failsafe 0.4s 8s forwards; }

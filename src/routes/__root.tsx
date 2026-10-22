@@ -7,6 +7,8 @@ import { mobileControl } from "@/lib/mobile-player";
 import { SearchPanel } from "@/components/search-panel";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
+import { useTheme } from "@/hooks/use-theme";
+import { isDarkTheme } from "@/lib/theme";
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -17,6 +19,7 @@ function RootComponent() {
   const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
+  const theme = useTheme();
 
 
   // Each history entry keeps its own scroll position: back returns to where
@@ -113,7 +116,7 @@ function RootComponent() {
   );
 
   return (
-    <div className="app-shell dark flex h-full min-w-0 flex-col overflow-hidden bg-background md:flex-row" data-mobile={isMobileApp}>
+    <div className={`app-shell ${isDarkTheme(theme) ? "dark " : ""}flex h-full min-w-0 flex-col overflow-hidden bg-background md:flex-row`} data-mobile={isMobileApp}>
       {!isPlayerPage && !isMobileApp && (
         <div
           className="fixed left-20 right-0 top-0 z-50 hidden h-8 md:block lg:left-56"
