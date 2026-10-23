@@ -9,6 +9,7 @@ import {
   historyListQueryKey,
   libraryApi,
   LIBRARY_STATUSES,
+  libraryStatusLabel,
   type LibraryEntry,
   type LibraryStatus,
   type WatchHistoryEntry,
@@ -17,9 +18,10 @@ import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { calendarQueryOptions } from "@/lib/catalog-queries";
 import { airedEpisodes, airingClock, latestEntry, latestPerWork, watchedThrough } from "@/lib/tracking";
-import type { AiringSlot, AnimeInfo } from "@/lib/types";
+import type { AiringSlot, AnimeInfo, MediaKind } from "@/lib/types";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import {
+  BookOpen,
   Check,
   Clock3,
   Library,
@@ -27,6 +29,16 @@ import {
 } from "lucide-react";
 
 type LibraryView = LibraryStatus | "history";
+/** The library lists anime and manga together; this narrows it to one. */
+type KindFilter = MediaKind | "all";
+
+const KIND_FILTERS = [
+  { id: "all", zh: "全部", en: "All" },
+  { id: "anime", zh: "动画", en: "Anime" },
+  { id: "manga", zh: "漫画", en: "Manga" },
+] as const;
+
+const entryKind = (entry: LibraryEntry): MediaKind => entry.kind === "manga" ? "manga" : "anime";
 
 const VIEWS = [
   ...LIBRARY_STATUSES,
@@ -34,17 +46,19 @@ const VIEWS = [
 ] as const;
 
 export const Route = createFileRoute("/watchlist")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): { view: LibraryView; kind?: MediaKind } => ({
     view: VIEWS.some((item) => item.id === search.view)
       ? (search.view as LibraryView)
       : ("following" as LibraryView),
+    kind: search.kind === "anime" || search.kind === "manga" ? search.kind : undefined,
   }),
   component: LibraryPage,
 });
 
 function LibraryPage() {
   const language = useDisplayLanguage();
-  const { view } = Route.useSearch();
+  const { view, kind: kindParam } = Route.useSearch();
+  const kindFilter: KindFilter = kindParam ?? "all";
   const router = useRouter();
   const queryClient = useQueryClient();
   const library = useQuery({
@@ -55,7 +69,9 @@ function LibraryPage() {
     queryKey: historyListQueryKey(200, 0),
     queryFn: () => historyApi.list(200, 0),
   });
-  const entries = library.data ?? [];
+  const allEntries = library.data ?? [];
+  const entries = kindFilter === "all" ? allEntries : allEntries.filter((entry) => entryKind(entry) === kindFilter);
+  const hasManga = allEntries.some((entry) => entryKind(entry) === "manga");
   const history = historyQuery.data ?? [];
   const activeQuery = view === "history" ? historyQuery : library;
   const refreshLibrary = () => Promise.all([
@@ -94,7 +110,7 @@ function LibraryPage() {
   }
   const progress = new Map<string, { aired: number | null; through: number; next: AiringSlot | null }>();
   for (const entry of entries) {
-    if (entry.status !== "following") continue;
+    if (entry.status !== "following" || entryKind(entry) === "manga") continue;
     const mediaId = catalogId(entry.provider, entry.external_id);
     const media = airing.get(mediaId);
     const slot = media?.schedule ?? null;
@@ -125,7 +141,7 @@ function LibraryPage() {
 
   return (
     <div className="mx-auto min-h-full max-w-7xl px-4 pb-8 pt-4 md:px-6 md:pb-16 md:pt-14 lg:px-10">
-      <h1 className="sr-only text-3xl font-bold tracking-tight md:not-sr-only">{language === "zh" ? "追番" : "Following"}</h1>
+      <h1 className="sr-only text-3xl font-bold tracking-tight md:not-sr-only">{language === "zh" ? "追番/追漫" : "Following"}</h1>
 
       <nav aria-label={language === "zh" ? "资料库分类" : "Library categories"} className="hide-scrollbar flex gap-1 overflow-x-auto whitespace-nowrap border-b border-border/60 md:mt-6">
         {VIEWS.map((item) => (
@@ -136,7 +152,7 @@ function LibraryPage() {
             onClick={() =>
               router.navigate({
                 to: "/watchlist",
-                search: { view: item.id },
+                search: { view: item.id, kind: kindParam },
                 replace: true,
               })
             }
@@ -147,7 +163,7 @@ function LibraryPage() {
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            {item[language]}
+            {item.id === "history" ? item[language] : libraryStatusLabel(item.id, kindFilter, language)}
             {item.id !== "history" && library.data && (
               <span className="text-xs tabular-nums text-muted-foreground">
                 {entries.filter((entry) => entry.status === item.id).length}
@@ -159,6 +175,19 @@ function LibraryPage() {
           </button>
         ))}
       </nav>
+
+      {view !== "history" && (hasManga || kindFilter !== "all") && (
+        <div role="radiogroup" aria-label={language === "zh" ? "作品类型" : "Kind of work"} className="mt-4 flex gap-2">
+          {KIND_FILTERS.map((item) => (
+            <button key={item.id} type="button" role="radio" aria-checked={kindFilter === item.id}
+              onClick={() => router.navigate({ to: "/watchlist", search: { view, kind: item.id === "all" ? undefined : item.id }, replace: true })}
+              className={cn("min-h-10 rounded-full border px-4 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-readable motion-reduce:transition-none",
+                kindFilter === item.id ? "border-primary/50 bg-primary/16 font-medium text-primary-readable" : "border-border/80 text-muted-foreground hover:text-foreground")}>
+              {item[language]}
+            </button>
+          ))}
+        </div>
+      )}
 
       {(setStatus.isError || remove.isError) && (
         <p role="alert" className="mt-4 text-sm text-destructive-readable">
@@ -193,7 +222,7 @@ function LibraryPage() {
           ))}
         </div>
       ) : (
-        <EmptyLibrary view={view} />
+        <EmptyLibrary view={view} kind={kindFilter} />
       )}
     </div>
   );
@@ -216,6 +245,9 @@ function LibraryCard({
 }) {
   const language = useDisplayLanguage();
   const routeId = catalogId(entry.provider, entry.external_id);
+  if (entryKind(entry) === "manga") {
+    return <MangaLibraryCard entry={entry} routeId={routeId} pending={pending} onSetStatus={onSetStatus} onRemove={onRemove} />;
+  }
   const percent =
     latest && latest.duration > 0
       ? Math.min(100, (latest.position / latest.duration) * 100)
@@ -306,6 +338,50 @@ function LibraryCard({
   );
 }
 
+/** Manga have no reading progress yet: the card opens the work and holds its status. */
+function MangaLibraryCard({
+  entry,
+  routeId,
+  pending,
+  onSetStatus,
+  onRemove,
+}: {
+  entry: LibraryEntry;
+  routeId: string;
+  pending: boolean;
+  onSetStatus: (status: LibraryStatus) => void;
+  onRemove: () => void;
+}) {
+  const language = useDisplayLanguage();
+  return (
+    <article className="flex min-w-0 items-start gap-3 border-b border-border/60 py-5 sm:gap-4">
+      <Link
+        to="/manga/$id"
+        params={{ id: routeId }}
+        className="press h-24 w-16 shrink-0 overflow-hidden rounded-lg bg-card outline-none focus-visible:ring-2 focus-visible:ring-primary-readable sm:h-30 sm:w-20"
+        aria-label={entry.title}
+      >
+        {entry.cover && <img src={entry.cover} alt="" loading="lazy" className="h-full w-full object-cover" />}
+      </Link>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Link
+          to="/manga/$id"
+          params={{ id: routeId }}
+          className="line-clamp-2 rounded-sm text-base font-medium leading-snug outline-none transition-colors hover:text-primary-readable focus-visible:ring-2 focus-visible:ring-primary-readable motion-reduce:transition-none"
+        >
+          <StoredMediaTitle provider={entry.provider} externalId={entry.external_id} fallback={entry.title} />
+        </Link>
+        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <BookOpen size={12} aria-hidden="true" />{language === "zh" ? "漫画" : "Manga"}
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2 [&>button]:min-h-12 [&>button]:rounded-xl [&>button]:bg-transparent [&>button]:px-2 [&>button]:text-xs [&>button]:text-muted-foreground [&>button:hover]:bg-secondary">
+          <LibraryControl kind="manga" entry={entry} compact disabled={pending} onSetStatus={onSetStatus} onRemove={onRemove} />
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function weekdayLabel(airingAt: number, language: string) {
   const date = new Date(airingAt * 1000);
   const days = Math.round((new Date(date).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86_400_000);
@@ -368,7 +444,7 @@ function HistoryList({ history }: { history: WatchHistoryEntry[] }) {
   );
 }
 
-function EmptyLibrary({ view }: { view: LibraryView }) {
+function EmptyLibrary({ view, kind = "all" }: { view: LibraryView; kind?: KindFilter }) {
   const language = useDisplayLanguage();
   const icon =
     view === "history" ? (
@@ -378,10 +454,11 @@ function EmptyLibrary({ view }: { view: LibraryView }) {
     ) : (
       <Library size={30} />
     );
+  const manga = kind === "manga";
   const label = {
     history: language === "zh" ? "暂无观看记录" : "No watch history yet",
-    following: language === "zh" ? "还没有追番" : "No anime followed yet",
-    completed: language === "zh" ? "还没有看完的动画" : "No completed anime yet",
+    following: language === "zh" ? (manga ? "还没有追漫" : "还没有追番") : (manga ? "No manga followed yet" : "No anime followed yet"),
+    completed: language === "zh" ? (manga ? "还没有读完的漫画" : "还没有看完的动画") : (manga ? "No completed manga yet" : "No completed anime yet"),
   }[view];
   return (
     <div className="flex min-h-[360px] flex-col items-center justify-center gap-3 text-center text-muted-foreground">
@@ -389,7 +466,9 @@ function EmptyLibrary({ view }: { view: LibraryView }) {
       <p className="text-sm">{label}</p>
       {view === "following" && (
         <Button asChild variant="outline" size="sm" className="mt-2 rounded-full">
-          <Link to="/">{language === "zh" ? "浏览首页" : "Browse home"}</Link>
+          {manga
+            ? <Link to="/manga">{language === "zh" ? "浏览漫画" : "Browse manga"}</Link>
+            : <Link to="/">{language === "zh" ? "浏览首页" : "Browse home"}</Link>}
         </Button>
       )}
     </div>

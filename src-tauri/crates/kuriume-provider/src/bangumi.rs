@@ -1,6 +1,8 @@
-//! Bangumi (bgm.tv) as an animation catalog, beside AniList. Bangumi is
-//! Chinese-first: titles and synopses need no second localisation lookup.
-//! It has no broadcast times (only dates) and almost no English titles.
+//! Bangumi (bgm.tv) as an animation and manga catalog, beside AniList.
+//! Bangumi is Chinese-first: titles and synopses need no second localisation
+//! lookup. It has no broadcast times (only dates) and almost no English
+//! titles. Manga are book subjects; a series has its own subject and each
+//! volume another, and the catalog shows series.
 //! See <https://bangumi.github.io/api/>.
 use async_trait::async_trait;
 use reqwest::{Client, RequestBuilder, StatusCode};
@@ -16,7 +18,7 @@ use crate::anilist::localized_synopses;
 use crate::error::{ProviderError, Result};
 use crate::models::{
     AnimeInfo, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery, GetListQuery,
-    PagedResult, SearchQuery, SortBy, Weekday,
+    MediaKind, PagedResult, RelatedMedia, SearchQuery, SortBy, Weekday,
 };
 use crate::provider::AnimeProvider;
 use crate::user_agent::USER_AGENT;
@@ -28,7 +30,12 @@ const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const CACHE_LIMIT: usize = 400;
 /// Bangumi dates are Beijing dates.
 const SHANGHAI_OFFSET: i64 = 8 * 60 * 60;
+const BOOK: u8 = 1;
 const ANIME: u8 = 2;
+/// Book category for comics (`SubjectBookCategory`).
+const COMIC: u16 = 1001;
+/// At most this many related works per entry.
+const RELATION_LIMIT: usize = 24;
 /// Main-story episodes (not SP/OP/ED/PV).
 const MAIN_EPISODE: u8 = 0;
 
@@ -102,9 +109,12 @@ impl Bangumi {
         let subject: Subject = self
             .send(self.client.get(format!("{API}/v0/subjects/{id}")))
             .await?;
-        if subject.subject_type.is_some_and(|kind| kind != ANIME) {
+        if subject
+            .subject_type
+            .is_some_and(|kind| kind != ANIME && kind != BOOK)
+        {
             return Err(ProviderError::NotFound(format!(
-                "Bangumi {id} is not an anime"
+                "Bangumi {id} is neither an anime nor a book"
             )));
         }
         remember(&self.subjects, [(id, subject.clone())]);
@@ -197,6 +207,52 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     (yoe + era * 400 + i64::from(month <= 2), month, day)
 }
 
+/// Bangumi subject type for a kind.
+fn subject_type(kind: MediaKind) -> u8 {
+    match kind {
+        MediaKind::Anime => ANIME,
+        MediaKind::Manga => BOOK,
+    }
+}
+
+/// The shared relation vocabulary for Bangumi's relation names, or `None`
+/// for links that are not another work (single volumes, collections).
+fn relation_key(relation: &str) -> Option<&'static str> {
+    Some(match relation {
+        "原作" => "SOURCE",
+        "动画" | "改编" => "ADAPTATION",
+        "续集" => "SEQUEL",
+        "前传" => "PREQUEL",
+        "番外篇" | "外传" => "SIDE_STORY",
+        "衍生" => "SPIN_OFF",
+        "不同演绎" | "不同版本" | "重制" => "ALTERNATIVE",
+        "单行本" | "系列" | "画集" | "合集" | "收录作品" | "相同世界观" => {
+            return None
+        }
+        _ => "OTHER",
+    })
+}
+
+/// Search results mix a manga series with its single volumes ("X (1)").
+/// Keep the series and drop the volumes of a series on the same page.
+fn series_only(subjects: Vec<Subject>) -> Vec<Subject> {
+    let series: Vec<String> = subjects
+        .iter()
+        .filter(|subject| subject.series)
+        .map(|subject| subject.name.trim().to_owned())
+        .filter(|name| !name.is_empty())
+        .collect();
+    subjects
+        .into_iter()
+        .filter(|subject| {
+            subject.series
+                || !series.iter().any(|name| {
+                    subject.name.trim() != name && subject.name.starts_with(name.as_str())
+                })
+        })
+        .collect()
+}
+
 fn now_unix() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -260,11 +316,27 @@ struct Subject {
     eps: u32,
     #[serde(default)]
     total_episodes: u32,
+    /// Books: the series subject rather than one volume.
+    #[serde(default)]
+    series: bool,
+    /// Books: volume count.
+    #[serde(default)]
+    volumes: u32,
     rating: Option<Rating>,
     #[serde(default)]
     tags: Vec<Tag>,
     #[serde(default)]
     meta_tags: Vec<String>,
+}
+
+/// An entry of `/v0/subjects/{id}/subjects`: a slim subject and how it
+/// relates to the requested one.
+#[derive(Debug, Clone, Deserialize)]
+struct RelatedSubject {
+    #[serde(flatten)]
+    subject: Subject,
+    #[serde(default)]
+    relation: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -367,6 +439,11 @@ fn is_genre_tag(tag: &str) -> bool {
         "游戏改",
         "轻小说改",
         "未确定",
+        "漫画",
+        "日本漫画",
+        "连载中",
+        "已完结",
+        "单行本",
     ];
     !SKIP.contains(&tag) && !tag.chars().next().is_some_and(|c| c.is_ascii_digit())
 }
@@ -392,10 +469,20 @@ impl Subject {
             .map(|url| url.replacen("http://", "https://", 1))
     }
 
+    fn kind(&self) -> MediaKind {
+        if self.subject_type == Some(BOOK) {
+            MediaKind::Manga
+        } else {
+            MediaKind::Anime
+        }
+    }
+
     fn format(&self) -> Option<String> {
         let platform = self.platform.as_deref()?;
         Some(
             match platform {
+                "漫画" => "MANGA",
+                "小说" => "NOVEL",
                 "TV" => "TV",
                 "剧场版" => "MOVIE",
                 "OVA" | "OAD" => "OVA",
@@ -438,6 +525,7 @@ impl Subject {
             .and_then(|date| date.get(..4))
             .and_then(|year| year.parse().ok());
         let today = today(now);
+        let kind = self.kind();
         let announced = self.total_episodes.max(self.eps);
         let (aired, status) = match episodes {
             Some(episodes) => {
@@ -456,12 +544,31 @@ impl Subject {
                     };
                 (Some(aired), Some(status.to_owned()))
             }
+            // A book's infobox names its end date once it has finished.
+            None if kind == MediaKind::Manga => (
+                None,
+                (!infobox_values(&self.infobox, &["结束"]).is_empty())
+                    .then(|| "FINISHED".to_owned()),
+            ),
             None => (
                 None,
                 date.as_deref()
                     .filter(|date| *date > today.as_str())
                     .map(|_| "NOT_YET_RELEASED".to_owned()),
             ),
+        };
+        let manga = kind == MediaKind::Manga;
+        let authors = if manga {
+            let mut authors = Vec::new();
+            for name in infobox_values(&self.infobox, &["作者", "原作", "作画"]) {
+                if !authors.contains(&name) {
+                    authors.push(name);
+                }
+            }
+            authors.truncate(4);
+            authors
+        } else {
+            Vec::new()
         };
         let summary = self.summary.as_deref().map(str::trim).unwrap_or_default();
         let (description_cn, description_ja) = localized_synopses(summary);
@@ -479,6 +586,7 @@ impl Subject {
             });
         AnimeInfo {
             id: format!("bangumi:{}", self.id),
+            kind,
             anilist_id: 0,
             mal_id: None,
             title_en: english.unwrap_or_else(|| title.clone()),
@@ -495,8 +603,12 @@ impl Subject {
                 .map(|rating| rating.score)
                 .filter(|score| *score > 0.0),
             year,
-            total_episodes: episodes
-                .map_or(announced, |episodes| announced.max(episodes.len() as u32)),
+            // A book's `eps` counts chapters.
+            total_episodes: if manga {
+                0
+            } else {
+                episodes.map_or(announced, |episodes| announced.max(episodes.len() as u32))
+            },
             air_date: date,
             genres,
             description: (!summary.is_empty()).then(|| summary.to_owned()),
@@ -504,10 +616,17 @@ impl Subject {
             description_ja,
             status,
             format: self.format(),
-            studios: infobox_values(&self.infobox, &["动画制作"]),
+            studios: if manga {
+                Vec::new()
+            } else {
+                infobox_values(&self.infobox, &["动画制作"])
+            },
             next_airing: None,
             aired_episodes: aired,
             schedule: None,
+            chapters: (manga && self.eps > 0).then_some(self.eps),
+            volumes: (manga && self.volumes > 0).then_some(self.volumes),
+            authors,
         }
     }
 }
@@ -554,10 +673,19 @@ impl AnimeProvider for Bangumi {
                     .json(&json!({
                         "keyword": keyword,
                         "sort": "match",
-                        "filter": { "type": [ANIME], "nsfw": false },
+                        "filter": { "type": [subject_type(query.kind)], "nsfw": false },
                     })),
             )
             .await?;
+        let mut response = response;
+        if query.kind == MediaKind::Manga {
+            // Books include novels, art books and single volumes.
+            let comics = std::mem::take(&mut response.data)
+                .into_iter()
+                .filter(|subject| matches!(subject.platform.as_deref(), None | Some("" | "漫画")))
+                .collect();
+            response.data = series_only(comics);
+        }
         self.remember_subjects(&response.data);
         Ok(paged(response, limit, query.offset, now_unix()))
     }
@@ -566,7 +694,10 @@ impl AnimeProvider for Bangumi {
         let id = Self::parse_id(id)?;
         let subject = self.subject(id).await?;
         // Episodes give the aired count; a failure leaves it unknown, not the page broken.
-        let episodes = self.all_episodes(id).await.ok();
+        let episodes = match subject.kind() {
+            MediaKind::Anime => self.all_episodes(id).await.ok(),
+            MediaKind::Manga => None,
+        };
         Ok(subject.into_info(episodes.as_deref(), now_unix()))
     }
 
@@ -581,11 +712,15 @@ impl AnimeProvider for Bangumi {
             SortBy::Date => "date",
         };
         let mut params = vec![
-            ("type", ANIME.to_string()),
+            ("type", subject_type(query.kind).to_string()),
             ("sort", sort.to_owned()),
             ("limit", limit.to_string()),
             ("offset", query.offset.to_string()),
         ];
+        if query.kind == MediaKind::Manga {
+            params.push(("cat", COMIC.to_string()));
+            params.push(("series", "true".into()));
+        }
         if let Some(year) = query.year {
             params.push(("year", year.to_string()));
         }
@@ -666,6 +801,26 @@ impl AnimeProvider for Bangumi {
                         .collect(),
                 ),
             })
+            .collect())
+    }
+
+    async fn get_relations(&self, id: &str) -> Result<Vec<RelatedMedia>> {
+        let id = Self::parse_id(id)?;
+        let related: Vec<RelatedSubject> = self
+            .send(self.client.get(format!("{API}/v0/subjects/{id}/subjects")))
+            .await?;
+        let now = now_unix();
+        Ok(related
+            .into_iter()
+            .filter(|related| matches!(related.subject.subject_type, Some(ANIME | BOOK)))
+            .filter_map(|related| {
+                let relation = relation_key(related.relation.trim())?;
+                Some(RelatedMedia {
+                    relation: relation.to_owned(),
+                    media: related.subject.into_info(None, now),
+                })
+            })
+            .take(RELATION_LIMIT)
             .collect())
     }
 
@@ -798,6 +953,111 @@ mod tests {
         assert_eq!(Bangumi::parse_id("bangumi:21").unwrap(), 21);
         assert!(Bangumi::parse_id("anilist:21").is_err());
         assert_eq!(episode(3, "").number(), 3);
+    }
+
+    fn comic(id: u64, name: &str, series: bool) -> Subject {
+        serde_json::from_value(json!({
+            "id": id, "type": 1, "name": name, "name_cn": "", "summary": "", "platform": "漫画",
+            "series": series, "volumes": 14, "eps": 140,
+            "infobox": [
+                { "key": "作者", "value": "山田鐘人" },
+                { "key": "作画", "value": "アベツカサ" },
+                { "key": "开始", "value": "2020-04-28" }
+            ],
+            "tags": [{ "name": "漫画", "count": 9 }, { "name": "奇幻", "count": 5 }]
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn book_subjects_map_to_manga_entries() {
+        let info = comic(304337, "葬送のフリーレン", true).into_info(None, NOW);
+        assert_eq!(info.kind, MediaKind::Manga);
+        assert_eq!(info.authors, ["山田鐘人", "アベツカサ"]);
+        assert_eq!((info.chapters, info.volumes), (Some(140), Some(14)));
+        assert_eq!(info.total_episodes, 0, "chapters are not episodes");
+        assert_eq!(info.format.as_deref(), Some("MANGA"));
+        assert_eq!(info.genres, ["奇幻"]);
+        assert!(info.studios.is_empty());
+        assert_eq!(info.status, None, "no end date: unknown, not ongoing");
+        let mut finished = comic(1, "完結作", true);
+        finished
+            .infobox
+            .push(serde_json::from_value(json!({ "key": "结束", "value": "2019-01-01" })).unwrap());
+        assert_eq!(
+            finished.into_info(None, NOW).status.as_deref(),
+            Some("FINISHED")
+        );
+        assert_eq!(subject().into_info(None, NOW).kind, MediaKind::Anime);
+        assert!(subject().into_info(None, NOW).authors.is_empty());
+    }
+
+    #[test]
+    fn manga_search_keeps_series_over_their_volumes() {
+        let kept = series_only(vec![
+            comic(1, "葬送のフリーレン", true),
+            comic(2, "葬送のフリーレン (1)", false),
+            comic(3, "葬送のフリーレン 2", false),
+            comic(4, "ダンジョン飯", false),
+        ]);
+        let ids: Vec<_> = kept.iter().map(|subject| subject.id).collect();
+        assert_eq!(ids, [1, 4]);
+    }
+
+    #[test]
+    fn relations_use_the_shared_vocabulary() {
+        let related: Vec<RelatedSubject> = serde_json::from_value(json!([
+            { "id": 400602, "type": 2, "name": "葬送のフリーレン", "name_cn": "葬送的芙莉莲",
+              "images": { "large": "http://lain.bgm.tv/l.jpg", "common": "", "medium": "" }, "relation": "动画" },
+            { "id": 9, "type": 1, "name": "葬送のフリーレン (1)", "name_cn": "", "relation": "单行本" }
+        ]))
+        .unwrap();
+        assert_eq!(relation_key(&related[0].relation), Some("ADAPTATION"));
+        assert_eq!(relation_key(&related[1].relation), None);
+        assert_eq!(relation_key("原作"), Some("SOURCE"));
+        assert_eq!(relation_key("角色出演"), Some("OTHER"));
+        let info = related[0].subject.clone().into_info(None, NOW);
+        assert_eq!(info.id, "bangumi:400602");
+        assert_eq!(info.kind, MediaKind::Anime);
+        assert_eq!(info.title_cn.as_deref(), Some("葬送的芙莉莲"));
+        assert_eq!(info.cover.as_deref(), Some("https://lain.bgm.tv/l.jpg"));
+    }
+
+    #[tokio::test]
+    #[ignore = "live Bangumi requests"]
+    async fn live_manga_lists_search_details_and_relations() {
+        let bangumi = Bangumi::new();
+        for soft in [SortBy::Rank, SortBy::Date] {
+            let query = GetListQuery {
+                limit: 5,
+                soft: Some(soft),
+                kind: MediaKind::Manga,
+                ..Default::default()
+            };
+            let list = bangumi.get_list(query, None).await.unwrap();
+            assert!(!list.data.is_empty());
+            assert!(list.data.iter().all(|item| item.kind == MediaKind::Manga));
+        }
+        let found = bangumi
+            .search(
+                SearchQuery {
+                    keyword: "葬送のフリーレン".into(),
+                    limit: 10,
+                    kind: MediaKind::Manga,
+                    ..Default::default()
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        let frieren = found.data.first().expect("Frieren manga");
+        let detail = bangumi.get_detail(&frieren.id, None).await.unwrap();
+        assert_eq!(detail.kind, MediaKind::Manga);
+        assert!(!detail.authors.is_empty(), "{detail:?}");
+        let relations = bangumi.get_relations(&frieren.id).await.unwrap();
+        assert!(relations
+            .iter()
+            .any(|item| item.relation == "ADAPTATION" && item.media.kind == MediaKind::Anime));
     }
 
     #[test]

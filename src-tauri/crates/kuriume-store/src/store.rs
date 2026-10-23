@@ -38,6 +38,13 @@ pub struct Settings {
     pub catalog_source: String,
 }
 
+/// Kinds of saved media: the catalog says which page a work opens on.
+const MEDIA_KINDS: [&str; 2] = ["anime", "manga"];
+
+fn default_kind() -> String {
+    "anime".into()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CatalogMediaInput {
     pub provider: String,
@@ -46,6 +53,9 @@ pub struct CatalogMediaInput {
     pub cover: Option<String>,
     pub banner: Option<String>,
     pub total_episodes: i32,
+    /// "anime" (default) or "manga".
+    #[serde(default = "default_kind")]
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +67,7 @@ pub struct StoredMedia {
     pub cover: Option<String>,
     pub banner: Option<String>,
     pub total_episodes: i32,
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -97,6 +108,7 @@ pub struct LibraryEntry {
     pub status: String,
     pub added_at: String,
     pub updated_at: String,
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,6 +187,7 @@ impl Store {
               cover TEXT,
               banner TEXT,
               total_episodes INTEGER NOT NULL DEFAULT 0,
+              kind TEXT NOT NULL DEFAULT 'anime',
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
@@ -318,6 +331,12 @@ impl Store {
                 "provider and external ID are required".into(),
             ));
         }
+        if !MEDIA_KINDS.contains(&input.kind.as_str()) {
+            return Err(StoreError::Invalid(format!(
+                "unknown media kind: {}",
+                input.kind
+            )));
+        }
         let existing = self
             .connection
             .query_row(
@@ -333,13 +352,14 @@ impl Store {
 
         self.connection.execute(
             r#"
-            INSERT INTO media (id, title, cover, banner, total_episodes)
-            VALUES (?1, ?2, ?3, ?4, ?5)
+            INSERT INTO media (id, title, cover, banner, total_episodes, kind)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               cover = COALESCE(excluded.cover, media.cover),
               banner = COALESCE(excluded.banner, media.banner),
               total_episodes = excluded.total_episodes,
+              kind = excluded.kind,
               updated_at = CURRENT_TIMESTAMP
             "#,
             params![
@@ -347,7 +367,8 @@ impl Store {
                 input.title,
                 input.cover,
                 input.banner,
-                input.total_episodes
+                input.total_episodes,
+                input.kind
             ],
         )?;
         self.connection.execute(
@@ -367,7 +388,7 @@ impl Store {
             .query_row(
                 r#"
                 SELECT m.id, e.provider, e.external_id, m.title, m.cover,
-                       m.banner, m.total_episodes
+                       m.banner, m.total_episodes, m.kind
                 FROM media m
                 JOIN external_identity e ON e.media_id = m.id AND e.scope = 'title'
                 WHERE m.id = ?1
@@ -829,6 +850,12 @@ fn migrate(connection: &mut Connection) -> Result<()> {
         [DEFAULT_DISPLAY_LANGUAGE],
     )?;
 
+    if !table_has_column(&transaction, "media", "kind")? {
+        // Everything saved before manga existed is an anime.
+        transaction
+            .execute_batch("ALTER TABLE media ADD COLUMN kind TEXT NOT NULL DEFAULT 'anime';")?;
+    }
+
     if !table_has_column(&transaction, "settings", "catalog_source")? {
         transaction.execute_batch(
             "ALTER TABLE settings ADD COLUMN catalog_source \
@@ -905,6 +932,7 @@ fn map_stored_media(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMedia> {
         cover: row.get(4)?,
         banner: row.get(5)?,
         total_episodes: row.get(6)?,
+        kind: row.get(7)?,
     })
 }
 
@@ -912,7 +940,7 @@ fn library_select(suffix: &str) -> String {
     format!(
         r#"
         SELECT l.media_id, e.provider, e.external_id, m.title, m.cover,
-               m.banner, m.total_episodes, l.status, l.added_at, l.updated_at
+               m.banner, m.total_episodes, l.status, l.added_at, l.updated_at, m.kind
         FROM library_entry l
         JOIN media m ON m.id = l.media_id
         JOIN external_identity e
@@ -934,6 +962,7 @@ fn map_library_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<LibraryEntry> 
         status: row.get(7)?,
         added_at: row.get(8)?,
         updated_at: row.get(9)?,
+        kind: row.get(10)?,
     })
 }
 
@@ -964,6 +993,7 @@ mod tests {
             cover: Some("https://example.com/cover.jpg".into()),
             banner: None,
             total_episodes: 1000,
+            kind: "anime".into(),
         }
     }
 
@@ -1014,6 +1044,83 @@ mod tests {
     }
 
     #[test]
+    fn manga_are_saved_and_listed_with_their_kind() {
+        let store = store();
+        let anime = store.ensure_media(&media()).unwrap();
+        let manga = store
+            .ensure_media(&CatalogMediaInput {
+                provider: "anilist".into(),
+                external_id: "118586".into(),
+                title: "葬送的芙莉莲".into(),
+                cover: None,
+                banner: None,
+                total_episodes: 0,
+                kind: "manga".into(),
+            })
+            .unwrap();
+        assert_eq!(
+            (anime.kind.as_str(), manga.kind.as_str()),
+            ("anime", "manga")
+        );
+        store
+            .library_add(&anime.id, LibraryStatus::Following)
+            .unwrap();
+        store
+            .library_add(&manga.id, LibraryStatus::Following)
+            .unwrap();
+        let mut kinds: Vec<_> = store
+            .library_list(None)
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.kind)
+            .collect();
+        kinds.sort();
+        assert_eq!(kinds, ["anime", "manga"]);
+        let mut unknown = media();
+        unknown.kind = "novel".into();
+        assert!(store.ensure_media(&unknown).is_err());
+    }
+
+    #[test]
+    fn media_saved_before_manga_existed_are_anime() {
+        let path = legacy_database_path();
+        {
+            let connection = Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    r#"
+                    CREATE TABLE media (
+                      id TEXT PRIMARY KEY,
+                      title TEXT NOT NULL,
+                      cover TEXT,
+                      banner TEXT,
+                      total_episodes INTEGER NOT NULL DEFAULT 0,
+                      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    INSERT INTO media (id, title) VALUES ('media-1', 'One Piece');
+                    CREATE TABLE external_identity (
+                      media_id TEXT NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+                      provider TEXT NOT NULL,
+                      external_id TEXT NOT NULL,
+                      scope TEXT NOT NULL DEFAULT 'title',
+                      confidence REAL NOT NULL DEFAULT 1.0,
+                      verified_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      PRIMARY KEY (provider, external_id, scope)
+                    );
+                    INSERT INTO external_identity (media_id, provider, external_id)
+                    VALUES ('media-1', 'anilist', '21');
+                    "#,
+                )
+                .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        assert_eq!(store.get_media("media-1").unwrap().unwrap().kind, "anime");
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn bangumi_items_appear_in_library_and_history_once() {
         let store = store();
         let media = store
@@ -1024,6 +1131,7 @@ mod tests {
                 cover: None,
                 banner: None,
                 total_episodes: 28,
+                kind: "anime".into(),
             })
             .unwrap();
         store
@@ -1064,6 +1172,7 @@ mod tests {
                 cover: None,
                 banner: None,
                 total_episodes: 1000,
+                kind: "anime".into(),
             })
             .unwrap();
         store

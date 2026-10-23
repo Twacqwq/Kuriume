@@ -1,7 +1,7 @@
 import { sharePoster } from "@/lib/view-transition";
 import { Link } from '@tanstack/react-router'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { AlertCircle, Film, RotateCcw, Star } from 'lucide-react'
+import { AlertCircle, BookOpen, Film, RotateCcw, Star } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 
@@ -11,7 +11,7 @@ import { LoadingStatus } from '@/components/page-loading'
 import { useDisplayLanguage } from '@/hooks/use-display-language'
 import { displayAnimeTitle } from '@/lib/display-language'
 import { BROWSE_CACHE } from '@/lib/catalog-queries'
-import type { AnimeInfo, PagedResult } from '@/lib/types'
+import { mediaKind, type AnimeInfo, type MediaKind, type PagedResult } from '@/lib/types'
 
 /* ── Responsive column count (matches Tailwind grid breakpoints) ── */
 
@@ -47,6 +47,8 @@ interface AnimeGridProps<TPageParam = any> {
   /** Reuse an already-fetched first page instead of requesting it twice. */
   initialPage?: PagedResult<AnimeInfo>
   initialPageUpdatedAt?: number
+  /** What the list shows, for its empty and error messages. */
+  kind?: MediaKind
 }
 
 export function AnimeGrid<TPageParam>({
@@ -58,6 +60,7 @@ export function AnimeGrid<TPageParam>({
   pageSize = 30,
   initialPage,
   initialPageUpdatedAt,
+  kind = 'anime',
 }: AnimeGridProps<TPageParam>) {
   const language = useDisplayLanguage()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -100,11 +103,13 @@ export function AnimeGrid<TPageParam>({
           return true
         }).map((item) => ({
           id: item.id,
+          kind: mediaKind(item),
           title: displayAnimeTitle(item, language),
           cover: item.cover ?? '',
           score: item.score ?? 0,
           year: item.year ?? 0,
           episodes: item.total_episodes,
+          volumes: item.volumes ?? 0,
           genre: [...new Set(item.genres)],
         })),
       ) ?? []
@@ -231,12 +236,12 @@ export function AnimeGrid<TPageParam>({
         </>
       ) : isError && items.length === 0 ? (
         <GridError
-          message={toErrorMessage(error)}
+          message={toErrorMessage(error, kind)}
           onRetry={() => void refetch()}
         />
       ) : items.length === 0 ? (
         <div role="status" className="flex min-h-56 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
-          <p>{isFetchingNextPage ? (language === 'zh' ? '正在搜索…' : 'Searching…') : (language === 'zh' ? '没有找到相关动画' : 'No anime found')}</p>
+          <p>{isFetchingNextPage ? (language === 'zh' ? '正在搜索…' : 'Searching…') : (language === 'zh' ? (kind === 'manga' ? '没有找到相关漫画' : '没有找到相关动画') : (kind === 'manga' ? 'No manga found' : 'No anime found'))}</p>
           {hasNextPage && (
             <Button variant="outline" size="sm" disabled={isFetchingNextPage} onClick={() => void fetchNextPage()}>
               {language === 'zh' ? '继续搜索' : 'Search more'}
@@ -341,11 +346,13 @@ function GridError({ message, onRetry }: { message: string; onRetry: () => void 
 
 interface AnimeCardItem {
   id: string
+  kind: MediaKind
   title: string
   cover: string
   score: number
   year: number
   episodes: number
+  volumes: number
   genre: string[]
 }
 
@@ -357,10 +364,14 @@ const AnimeCard = memo(function AnimeCard({ item }: AnimeCardProps) {
   const language = useDisplayLanguage();
   const [imgFailed, setImgFailed] = useState(false);
   const hasCover = item.cover && !imgFailed;
+  const manga = item.kind === 'manga';
+  // Manga list their volumes; chapter counts are rarely known.
+  const count = manga ? item.volumes : item.episodes;
+  const countLabel = manga ? (language === 'zh' ? ' 卷' : ' vols') : (language === 'zh' ? ' 话' : ' eps');
 
   return (
     <Link
-      to="/anime/$id"
+      to={manga ? '/manga/$id' : '/anime/$id'}
       params={{ id: String(item.id) }}
       viewTransition
       onClick={sharePoster}
@@ -378,7 +389,7 @@ const AnimeCard = memo(function AnimeCard({ item }: AnimeCardProps) {
             className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.025] motion-reduce:transition-none"
           />
         ) : (
-          <CoverFallback title={item.title} />
+          <CoverFallback title={item.title} manga={manga} />
         )}
         {/* Hover overlay */}
         <div className="absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/30 motion-reduce:transition-none" />
@@ -398,11 +409,11 @@ const AnimeCard = memo(function AnimeCard({ item }: AnimeCardProps) {
         <h3 className="min-h-10 text-sm leading-5 font-medium text-foreground line-clamp-2 group-hover:text-primary-readable transition-colors motion-reduce:transition-none">
           {item.title}
         </h3>
-        {(item.year > 0 || item.episodes > 0) && (
+        {(item.year > 0 || count > 0) && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {item.year > 0 && <span>{item.year}</span>}
-            {item.year > 0 && item.episodes > 0 && <span>·</span>}
-            {item.episodes > 0 && <span>{item.episodes}{language === "zh" ? " 话" : " eps"}</span>}
+            {item.year > 0 && count > 0 && <span>·</span>}
+            {count > 0 && <span>{count}{countLabel}</span>}
           </div>
         )}
         <div className="hidden gap-1.5 sm:flex">
@@ -418,7 +429,7 @@ const AnimeCard = memo(function AnimeCard({ item }: AnimeCardProps) {
 })
 
 /** Hash-based gradient fallback when no cover image is available */
-function CoverFallback({ title }: { title: string }) {
+function CoverFallback({ title, manga = false }: { title: string; manga?: boolean }) {
   const hue = hashStringToHue(title);
   return (
     <div
@@ -427,7 +438,9 @@ function CoverFallback({ title }: { title: string }) {
         background: `linear-gradient(135deg, hsl(${hue}, 40%, 20%) 0%, hsl(${(hue + 40) % 360}, 35%, 12%) 100%)`,
       }}
     >
-      <Film size={28} className="text-white/20" strokeWidth={1.5} />
+      {manga
+        ? <BookOpen size={28} className="text-white/20" strokeWidth={1.5} />
+        : <Film size={28} className="text-white/20" strokeWidth={1.5} />}
       <span className="line-clamp-3 text-center text-xs font-medium leading-relaxed text-white/50">
         {title}
       </span>
@@ -443,8 +456,8 @@ function hashStringToHue(str: string): number {
   return ((hash % 360) + 360) % 360;
 }
 
-function toErrorMessage(error: unknown) {
+function toErrorMessage(error: unknown, kind: MediaKind = 'anime') {
   if (error instanceof Error && error.message) return error.message
   if (typeof error === 'string' && error.trim()) return error
-  return '无法加载动画列表'
+  return kind === 'manga' ? '无法加载漫画列表' : '无法加载动画列表'
 }

@@ -1,5 +1,10 @@
+/** Catalog entries are anime or manga; IDs alone open either. */
+export type MediaKind = "anime" | "manga";
+
 export interface AnimeInfo {
   id: string;
+  /** Absent from entries cached before manga existed: anime. */
+  kind?: MediaKind;
   anilist_id: number;
   mal_id: number | null;
   title: string;
@@ -28,6 +33,23 @@ export interface AnimeInfo {
   aired_episodes?: number | null;
   /** Calendar entries only: the broadcast this entry stands for. */
   schedule?: AiringSlot | null;
+  /** Manga: published chapters / volumes, when known. */
+  chapters?: number | null;
+  volumes?: number | null;
+  /** Manga: writers and artists. */
+  authors?: string[];
+}
+
+export function mediaKind(media: Pick<AnimeInfo, "kind">): MediaKind {
+  return media.kind === "manga" ? "manga" : "anime";
+}
+
+/** How a related work stands to the page's work (`SOURCE`: its original). */
+export type RelationKind = "SOURCE" | "ADAPTATION" | "SEQUEL" | "PREQUEL" | "SIDE_STORY" | "SPIN_OFF" | "ALTERNATIVE" | "OTHER";
+
+export interface RelatedMedia {
+  relation: RelationKind;
+  media: AnimeInfo;
 }
 
 export interface AiringSlot {

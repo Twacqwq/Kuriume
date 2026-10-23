@@ -2,7 +2,7 @@ use crate::diagnostics::{observe, operation, Action, Event};
 use crate::store_commands::StoreState;
 use kuriume_provider::{
     find_counterpart, AnimeInfo, AnimeProvider, CalendarEntry, CharacterInfo, EpisodesInfo,
-    GetEpisodesQuery, GetListQuery, PagedResult, SearchQuery,
+    GetEpisodesQuery, GetListQuery, MediaKind, PagedResult, RelatedMedia, SearchQuery,
 };
 use std::{collections::HashMap, sync::Arc};
 use tauri::{command, AppHandle, State};
@@ -161,6 +161,25 @@ pub(crate) async fn get_characters(
     .map_err(|error| error.to_string())
 }
 
+/// Anime and manga linked to a catalog entry (its source manga, adaptations,
+/// sequels), from the catalog the ID names.
+#[command]
+pub(crate) async fn get_relations(
+    state: State<'_, ProviderState>,
+    provider: &str,
+    id: &str,
+) -> Result<Vec<RelatedMedia>, String> {
+    observe(
+        Event::CatalogRequest,
+        provider,
+        operation(),
+        Some(Action::Relations),
+        state.for_id(provider, id)?.get_relations(id),
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
 /// The chosen catalog's ID for a saved entry from the other catalog
 /// (`anilist:21` → `bangumi:975` while Bangumi is the source), or `None` when
 /// `id` already belongs to the chosen catalog, was never saved, or has no
@@ -215,6 +234,11 @@ pub(crate) async fn catalog_counterpart(
     let mut titles = vec![media.title];
     titles.extend(catalog.get(source_name)?.known_titles(id));
     let provider = catalog.get(target_name)?;
+    let kind = if media.kind == "manga" {
+        MediaKind::Manga
+    } else {
+        MediaKind::Anime
+    };
     let found = observe(
         Event::CatalogRequest,
         target_name,
@@ -222,6 +246,7 @@ pub(crate) async fn catalog_counterpart(
         Some(Action::Search),
         find_counterpart(
             provider.as_ref(),
+            kind,
             &titles,
             u32::try_from(media.total_episodes).unwrap_or(0),
         ),

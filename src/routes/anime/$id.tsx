@@ -47,7 +47,8 @@ export const charactersQueryOptions = (id: string) => ({
 });
 
 /** The same page (details or an episode) for another catalog ID. */
-function sameView(pathname: string, id: string) {
+export function sameView(pathname: string, id: string) {
+  if (pathname.startsWith("/manga/")) return { to: "/manga/$id" as const, params: { id } };
   const episode = /\/episode\/([^/]+)\/?$/.exec(pathname)?.[1];
   return episode
     ? { to: "/anime/$id/episode/$ep" as const, params: { id, ep: decodeURIComponent(episode) } }
@@ -98,6 +99,8 @@ export const Route = createFileRoute("/anime/$id")({
       listed ??
       (await queryClient.fetchQuery(detailQueryOptions(params.id, language)));
     if (!detail) return;
+    // Catalog IDs name anime and manga alike: a manga opens its own page.
+    if (detail.kind === "manga") throw redirect({ to: "/manga/$id", params: { id: params.id }, replace: true });
 
     // Episodes are needed by both the details and player pages. Characters
     // are fetched by the details page itself, never on the way to the player.

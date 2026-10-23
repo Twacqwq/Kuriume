@@ -13,7 +13,8 @@ const transpile = async (file, replacements) => {
   for (const [specifier, url] of Object.entries(replacements)) outputText = outputText.replaceAll(`"${specifier}"`, JSON.stringify(url));
   return data(outputText);
 };
-const storeUrl = await transpile("lib/store.ts", { "@tauri-apps/api/core": data("export const invoke=(...args)=>globalThis.__catalogInvoke(...args);") });
+const typesUrl = await transpile("lib/types.ts", {});
+const storeUrl = await transpile("lib/store.ts", { "@tauri-apps/api/core": data("export const invoke=(...args)=>globalThis.__catalogInvoke(...args);"), "@/lib/types": typesUrl });
 const { settingsQueryOptions } = await import(storeUrl);
 const catalog = await import(await transpile("lib/catalog-queries.ts", {
   "@/lib/store": storeUrl,

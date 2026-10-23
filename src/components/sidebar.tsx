@@ -6,6 +6,7 @@ import { useDisplayLanguage } from "@/hooks/use-display-language";
 import { Button } from "@/components/ui/button";
 import { Link, useMatches } from "@tanstack/react-router";
 import {
+  BookOpen,
   CalendarDays,
   Home,
   Library,
@@ -15,6 +16,7 @@ import {
 
 const NAVIGATION = [
   { icon: Home, label: "首页", english: "Home", to: "/" },
+  { icon: BookOpen, label: "漫画", english: "Manga", to: "/manga" },
   { icon: CalendarDays, label: "日历", english: "Calendar", to: "/calendar" },
   { icon: Library, label: "追番", english: "Following", to: "/watchlist" },
 ] as const;
@@ -61,7 +63,7 @@ export function Sidebar({ onSearchClick }: SidebarProps) {
         )}
       >
         <Search size={16} />
-        <span className="sr-only flex-1 text-left lg:not-sr-only">{language === "zh" ? "搜索动画" : "Search anime"}</span>
+        <span className="sr-only flex-1 text-left lg:not-sr-only">{language === "zh" ? (currentPath.startsWith("/manga") ? "搜索漫画" : "搜索动画") : (currentPath.startsWith("/manga") ? "Search manga" : "Search anime")}</span>
         <kbd className="hidden rounded border border-overlay/10 px-1.5 py-0.5 text-[10px] lg:block">
           {shortcutLabel}
         </kbd>

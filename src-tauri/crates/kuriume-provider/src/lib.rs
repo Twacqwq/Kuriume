@@ -16,6 +16,7 @@
 //!         keyword: "Frieren".into(),
 //!         offset: 0,
 //!         limit: 10,
+//!         ..Default::default()
 //!     }, None).await.unwrap();
 //!     println!("{:?}", result.data);
 //! }
@@ -45,7 +46,7 @@ pub use error::{ProviderError, Result};
 pub use hianime::HiAnime;
 pub use models::{
     AiringSlot, AnimeInfo, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery,
-    GetListQuery, PagedResult, SearchQuery, SortBy, Weekday,
+    GetListQuery, MediaKind, PagedResult, RelatedMedia, SearchQuery, SortBy, Weekday,
 };
 pub use playback::{
     source_name, PlaybackCandidate, PlaybackEpisode, PlaybackHeaders, PlaybackProvider,

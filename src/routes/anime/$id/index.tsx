@@ -1,20 +1,16 @@
 import { MediaDetail } from "@/components/media-detail";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
-import {
-  historyApi,
-  historyListQueryKey,
-  libraryApi,
-  mediaApi,
-  type LibraryStatus,
-} from "@/lib/store";
+import { useDetailLibrary } from "@/hooks/use-detail-library";
+import { relationsQueryOptions } from "@/lib/catalog-queries";
+import { historyApi, historyListQueryKey } from "@/lib/store";
 import {
   charactersQueryOptions,
   detailQueryOptions,
   episodesQueryOptions,
   useCatalogRedirect,
 } from "@/routes/anime/$id";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, Navigate, useRouter } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/anime/$id/")({
   component: AnimeDetailPage,
@@ -23,64 +19,33 @@ export const Route = createFileRoute("/anime/$id/")({
 function AnimeDetailPage() {
   const { id } = Route.useParams();
   const router = useRouter();
-  const queryClient = useQueryClient();
   const language = useDisplayLanguage();
   const redirecting = useCatalogRedirect(id);
   const { data: media, error: detailError, isPlaceholderData } = useQuery({ ...detailQueryOptions(id, language), enabled: !redirecting });
   // After a hover/touch preload the loader may not block navigation, so a
   // failed lookup surfaces here and goes to the route error screen.
   if (detailError) throw detailError;
+  const isManga = media?.kind === "manga";
   const { data: episodes = [] } = useQuery({
     ...episodesQueryOptions(id, media?.total_episodes ?? 0),
-    enabled: !!media,
+    enabled: !!media && !isManga,
   });
   const { data: characters = [] } = useQuery({
     ...charactersQueryOptions(id),
-    enabled: !!media,
+    enabled: !!media && !isManga,
   });
-  const { data: storedMedia } = useQuery({
-    queryKey: ["stored-media", id, language],
-    queryFn: () => mediaApi.ensure(media!, language),
-    enabled: !!media,
-    staleTime: Infinity,
+  const { data: relations = [] } = useQuery({
+    ...relationsQueryOptions(id),
+    enabled: !!media && !isPlaceholderData && !isManga,
   });
-  const { data: libraryEntry = null, isPending: libraryLoading, isError: libraryLoadError } = useQuery({
-    queryKey: ["library-entry", storedMedia?.id],
-    queryFn: () => libraryApi.get(storedMedia!.id),
-    enabled: !!storedMedia,
-  });
+  const library = useDetailLibrary(id, isManga ? undefined : media, language);
   const { data: history = [] } = useQuery({
     queryKey: historyListQueryKey(200, 0),
     queryFn: () => historyApi.list(200, 0),
   });
 
-  const setStatus = useMutation({
-    mutationFn: async (status: LibraryStatus) => {
-      if (!storedMedia) return;
-      if (libraryEntry) {
-        await libraryApi.setStatus(storedMedia.id, status);
-      } else {
-        await libraryApi.add(storedMedia.id, status);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["library-entry", storedMedia?.id],
-      });
-      queryClient.invalidateQueries({ queryKey: ["library-list"] });
-    },
-  });
-  const remove = useMutation({
-    mutationFn: async () => {
-      if (storedMedia) await libraryApi.remove(storedMedia.id);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["library-entry", storedMedia?.id],
-      });
-      queryClient.invalidateQueries({ queryKey: ["library-list"] });
-    },
-  });
+  // A manga ID reached through an anime link opens the manga page.
+  if (isManga) return <Navigate to="/manga/$id" params={{ id }} replace />;
 
   if (!media) {
     return (
@@ -96,20 +61,17 @@ function AnimeDetailPage() {
       pendingDetails={isPlaceholderData}
       episodes={episodes}
       characters={characters}
-      libraryEntry={libraryEntry}
-      libraryPending={!storedMedia || libraryLoading || libraryLoadError || setStatus.isPending || remove.isPending}
-      libraryError={libraryLoadError
-        ? (language === "zh" ? "追番状态读取失败，请重新打开详情页。" : "Could not load library status. Reopen this page to retry.")
-        : setStatus.isError || remove.isError
-          ? (language === "zh" ? "资料库更新失败，请重试。" : "Could not update your library. Please retry.")
-          : null}
+      relations={relations}
+      libraryEntry={library.entry}
+      libraryPending={library.pending}
+      libraryError={library.error}
       history={history}
       onBack={() => {
         if (router.history.canGoBack()) router.history.back();
         else void router.navigate({ to: "/", replace: true });
       }}
-      onSetLibraryStatus={(status) => setStatus.mutate(status)}
-      onRemoveFromLibrary={() => remove.mutate()}
+      onSetLibraryStatus={library.setStatus}
+      onRemoveFromLibrary={library.remove}
     />
   );
 }

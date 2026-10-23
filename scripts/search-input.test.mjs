@@ -9,8 +9,9 @@ const router = { useNavigate: () => (value) => navigations.push(value) };
 // Exercise the actual component handler without installing a DOM test framework.
 globalThis.__searchInputTestRouter = router;
 const imports = {
-  "@tanstack/react-router": moduleUrl("export const useNavigate = globalThis.__searchInputTestRouter.useNavigate"),
+  "@tanstack/react-router": moduleUrl("export const useNavigate = globalThis.__searchInputTestRouter.useNavigate; export const useRouterState = ({ select }) => select({ location: { pathname: '/', search: {} } })"),
   "lucide-react": moduleUrl("export const Search = () => null; export const X = () => null"),
+  "@/lib/utils": moduleUrl("export const cn = (...names) => names.filter(Boolean).join(' ')"),
   "@/components/ui/dialog": moduleUrl("export const Dialog = () => null; export const DialogContent = () => null; export const DialogTitle = () => null;"),
   "@/hooks/use-display-language": moduleUrl("export const useDisplayLanguage = () => 'zh'"),
   "@/components/search-suggestions": moduleUrl("export const SearchSuggestions = () => null; export const rememberSearch = () => {};"),

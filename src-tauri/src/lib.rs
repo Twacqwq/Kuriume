@@ -120,6 +120,7 @@ pub fn run() {
             crate::commands::get_episodes,
             crate::commands::get_calendar,
             crate::commands::get_characters,
+            crate::commands::get_relations,
             crate::commands::catalog_counterpart,
             crate::online_commands::playback_source_list,
             crate::online_commands::playback_source_list_rules,

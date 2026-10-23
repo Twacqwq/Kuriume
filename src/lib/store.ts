@@ -1,4 +1,4 @@
-import type { AnimeInfo } from "@/lib/types";
+import { mediaKind, type AnimeInfo, type MediaKind } from "@/lib/types";
 import { invoke } from "@tauri-apps/api/core";
 
 export type DisplayLanguage = "en" | "zh";
@@ -75,6 +75,7 @@ export interface StoredMedia {
   cover: string | null;
   banner: string | null;
   total_episodes: number;
+  kind: MediaKind;
 }
 
 export const mediaApi = {
@@ -90,6 +91,7 @@ export const mediaApi = {
         cover: media.cover,
         banner: media.banner,
         total_episodes: media.total_episodes,
+        kind: mediaKind(media),
       },
     }),
 };
@@ -128,6 +130,16 @@ export const LIBRARY_STATUSES = [
 
 export type LibraryStatus = (typeof LIBRARY_STATUSES)[number]["id"];
 
+/** A library status in the words for one kind of work (or for both). */
+export function libraryStatusLabel(status: LibraryStatus, kind: MediaKind | "all", language: DisplayLanguage): string {
+  const labels = {
+    anime: { following: ["追番中", "Following"], completed: ["已看完", "Completed"] },
+    manga: { following: ["追漫中", "Reading"], completed: ["已读完", "Completed"] },
+    all: { following: ["在追", "Following"], completed: ["已完成", "Completed"] },
+  } as const;
+  return labels[kind][status][language === "zh" ? 0 : 1];
+}
+
 export interface LibraryEntry {
   media_id: string;
   provider: string;
@@ -139,6 +151,8 @@ export interface LibraryEntry {
   status: LibraryStatus;
   added_at: string;
   updated_at: string;
+  /** Absent from responses of builds before manga existed. */
+  kind?: MediaKind;
 }
 
 export const libraryApi = {
