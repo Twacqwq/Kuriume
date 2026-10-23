@@ -43,6 +43,7 @@ test("player diagnostics do not flood progress or change playback callbacks, and
     "@/lib/anime4k/support": data("export const anime4kSupported=async()=>false;"),
     "@/lib/diagnostics": data("export const diagnose=(...args)=>globalThis.__playerDiag.records.push(args);export const diagnosticMessage=error=>String(error);"),
     "@/lib/theme": data("export const themePrimary=()=>\"#a4534a\";"),
+    "@/lib/media-url": data("export const isProxiedMedia=()=>false;"),
   };
   const source = await readFile(new URL("../src/components/art-player-surface.tsx", import.meta.url), "utf8");
   const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;

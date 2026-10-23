@@ -371,7 +371,7 @@ async fn sniff_video_url_impl(
                 break;
             }
             if seen.insert(url.clone()) {
-                match probe_media_url(&url).await {
+                match probe_media_url(&url, &episode_url).await {
                     Ok(mime) => return Ok((url, mime)),
                     Err(_) => {
                         eprintln!("[media-resolver] candidate did not return accessible MP4/HLS")
@@ -405,7 +405,7 @@ async fn sniff_video_url_impl(
         .await?;
         for url in urls.into_iter().take(16) {
             if url.len() <= 8_192 {
-                if let Ok(mime) = probe_media_url(&url).await {
+                if let Ok(mime) = probe_media_url(&url, &episode_url).await {
                     return Ok((url, mime));
                 }
             }
@@ -416,7 +416,10 @@ async fn sniff_video_url_impl(
     .map_err(|_| "Source resolution timed out".to_string())?
 }
 
-async fn probe_media_url(raw: &str) -> Result<&'static str, String> {
+/// Checks a candidate the way playback will request it (with the episode
+/// page as Referer), so a hotlink-protected file is judged by what the player
+/// will actually receive.
+async fn probe_media_url(raw: &str, referer: &str) -> Result<&'static str, String> {
     let url = validate_public_http_url(raw)?;
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(6))
@@ -426,6 +429,7 @@ async fn probe_media_url(raw: &str) -> Result<&'static str, String> {
     let mut response = client
         .get(url)
         .header("Range", "bytes=0-4095")
+        .header("Referer", referer)
         .send()
         .await
         .map_err(|error| error.to_string())?
@@ -603,12 +607,32 @@ async fn prepare_playback_asset(
             validate_provider_url(&page_url, &allowed_hosts, "sniff")?;
             let (url, mime) = sniff_video_url_impl(
                 app.clone(),
-                page_url,
+                page_url.clone(),
                 allowed_hosts,
                 headers.get("User-Agent").cloned(),
             )
             .await?;
-            validate_public_http_url(&url)?;
+            let media = validate_public_http_url(&url)?;
+            // A sniffed MP4 used to be played straight from its CDN, where the
+            // WebView's request carries no Referer (hotlink protection then
+            // answers with a web page) and needs CORS headers the CDN rarely
+            // sends: both surface as "Media error 4". Through the media proxy
+            // it is fetched like the page fetched it. HLS stays direct (hls.js
+            // already loads it over CORS); plain-HTTP media cannot be proxied.
+            let url = match media.host_str() {
+                Some(host) if mime == "video/mp4" && media.scheme() == "https" => {
+                    let mut headers = headers;
+                    headers.insert("Referer".into(), page_url);
+                    media_proxy.register(
+                        &url,
+                        headers,
+                        &[host.to_string()],
+                        Some(mime),
+                        Some(diagnostic_id),
+                    )?
+                }
+                _ => url,
+            };
             Ok(PlayableAsset::Direct {
                 diagnostic_id,
                 mime_type: Some(mime.into()),
