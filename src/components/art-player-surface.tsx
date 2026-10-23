@@ -542,8 +542,8 @@ export function ArtPlayerSurface({
   useEffect(() => { if (!isFullscreen) setSheet((current) => (current === "episodes" || current === "options" ? null : current)); }, [isFullscreen]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-black" data-player-locked={locked ? "" : undefined}>
-      <div ref={containerRef} className="artplayer-app h-full w-full overflow-hidden bg-black" data-mobile={isMobileApp} data-fullscreen={fullscreen.mode !== "normal"} data-locked={locked} data-testid="art-player-surface" />
+    <div className="relative h-full w-full overflow-hidden bg-background" data-player-locked={locked ? "" : undefined}>
+      <div ref={containerRef} className="artplayer-app h-full w-full overflow-hidden bg-background" data-mobile={isMobileApp} data-fullscreen={fullscreen.mode !== "normal"} data-locked={locked} data-testid="art-player-surface" />
       <PlayerChrome
         art={gesturePlayer}
         language={language}

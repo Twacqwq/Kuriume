@@ -5,6 +5,8 @@
 .artplayer-app .art-video-player,
 .artplayer-app .art-video-player.art-mobile {
   --art-font-color: var(--foreground);
+  /* Letterbox bars take the stage colour (the theme's darkest tone). */
+  --art-background-color: var(--background);
   --art-progress-color: rgb(255 255 255 / 18%);
   --art-loaded-color: rgb(255 255 255 / 34%);
   --art-hover-color: rgb(255 255 255 / 12%);
@@ -39,7 +41,7 @@
 .artplayer-app .art-video-player .art-bottom {
   padding-bottom: 8px;
   transition: opacity var(--art-transition-duration) ease-out;
-  background-image: linear-gradient(to top, rgb(0 0 0 / 88%), rgb(0 0 0 / 42%) 58%, transparent);
+  background-image: linear-gradient(to top, color-mix(in srgb, var(--background) 90%, transparent), color-mix(in srgb, var(--background) 45%, transparent) 58%, transparent);
 }
 
 /* Keyboard focus reveals the controls; a tap that leaves focus behind does not. */
@@ -199,7 +201,7 @@
 .artplayer-app .art-video-player .art-mask .art-state {
   border: 1px solid rgb(255 255 255 / 20%);
   border-radius: 50%;
-  background: rgb(16 14 16 / 80%);
+  background: color-mix(in srgb, var(--popover) 82%, transparent);
   color: var(--foreground);
   transform: none;
   transition: opacity 160ms ease-out;
@@ -239,7 +241,7 @@
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 14px;
   padding: 14px 20px;
-  background: rgb(16 14 16 / 92%);
+  background: color-mix(in srgb, var(--popover) 94%, transparent);
   color: var(--foreground);
   font-size: 14px;
   font-weight: 500;

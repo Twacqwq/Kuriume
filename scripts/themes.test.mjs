@@ -45,10 +45,17 @@ test("every built-in theme defines the full colour set, with readable text", () 
     assert.ok(contrast(get("highlight"), get("background")) >= 4.5, `${theme.id} reminder text`);
     assert.ok(contrast(get("destructive-readable"), get("background")) >= 4.5, `${theme.id} error text`);
     assert.ok(contrast(get("score"), get("background")) >= 4.5, `${theme.id} score text`);
-    // The player stays dark in every theme.
-    assert.ok(contrast(get("primary-strong"), "#000000") >= 4.5, `${theme.id} player accent over video`);
-    assert.ok(contrast(get("primary-on-dark"), "#171718") >= 4.5, `${theme.id} accent text on the player page`);
-    assert.ok(contrast(get("highlight-on-dark"), "#0e0e0f") >= 4.5, `${theme.id} reminder on the player page`);
+    // The video stage is dark in every theme: a dark theme's own tokens, or
+    // a light theme's dark sibling (`:root[data-theme=…] .player-video`).
+    const stageBody = block(`:root[data-theme="${theme.id}"] .player-video`);
+    assert.equal(Boolean(stageBody), !theme.dark, `${theme.id} stage palette only for light themes`);
+    const stage = (name) => value(stageBody, name) ?? get(name);
+    assert.ok(contrast(stage("foreground"), stage("background")) >= 7, `${theme.id} stage text`);
+    assert.ok(contrast(stage("muted-foreground"), stage("popover")) >= 4.5, `${theme.id} stage muted text`);
+    assert.ok(contrast(get("primary-on-dark"), stage("popover")) >= 4.5, `${theme.id} stage accent text`);
+    assert.ok(contrast(get("highlight-on-dark"), stage("background")) >= 4.5, `${theme.id} stage reminder`);
+    assert.ok(contrast(get("primary-strong"), stage("background")) >= 4.5, `${theme.id} Anime4K accent on the bar`);
+    assert.ok(contrast(get("primary-foreground"), get("primary")) >= 4.5, `${theme.id} stage buttons`);
     // Light themes switch off the dark variant and dark form controls.
     assert.equal(/color-scheme: light/.test(body), !theme.dark, `${theme.id} color-scheme`);
   }

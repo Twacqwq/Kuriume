@@ -174,31 +174,58 @@
 @media (min-width: 1024px) {
   .detail-artwork { mask-image: linear-gradient(to bottom, #000 50%, transparent 100%); }
 }
-/* The player page follows the theme; the video stage itself (picture,
-   controls, in-player sheets and the empty/error state over it) stays a
-   neutral dark in every theme, so light themes don't put dark text on it. */
+/* The video stage (picture, controls, in-player sheets, the state over the
+   picture) is always dark, in the theme's own colours: dark themes use their
+   tokens as they are; light themes switch to a dark sibling of themselves
+   below, so the stage reads as part of the page rather than a black hole. */
 .player-video {
   color-scheme: dark;
   --primary-readable: var(--primary-on-dark);
   --highlight: var(--highlight-on-dark);
+}
+:root[data-theme="kinari"] .player-video {
+  /* 生成り by night: cocoa neutrals, the same 栗梅. */
+  --background: #16110e;
+  --foreground: #f1ebe6;
+  --card: #201915;
+  --card-foreground: #f1ebe6;
+  --popover: #261e19;
+  --popover-foreground: #f1ebe6;
+  --secondary: #2c231e;
+  --secondary-foreground: #f1ebe6;
+  --muted: #2c231e;
+  --muted-foreground: #a99c94;
+  --accent: #30261f;
+  --accent-foreground: #f1ebe6;
+  --border: #382d26;
+  --input: #382d26;
   --highlight-foreground: #1d150c;
   --destructive-readable: #ee8585;
   --overlay: #ffffff;
   --scrim: #000000;
-  --background: #0e0e0f;
-  --card: #171718;
-  --popover: #1c1c1d;
-  --secondary: #252526;
-  --muted: #252526;
-  --accent: #2a2a2b;
-  --border: #2f2f30;
-  --input: #2f2f30;
-  --foreground: #eeeeee;
-  --card-foreground: #eeeeee;
-  --popover-foreground: #eeeeee;
-  --secondary-foreground: #eeeeee;
-  --accent-foreground: #eeeeee;
-  --muted-foreground: #a2a2a4;
+  --score: #fde047;
+}
+:root[data-theme="sakura"] .player-video {
+  /* 桜霞 by night: plum neutrals, the same sakura pink. */
+  --background: #171015;
+  --foreground: #f2eaef;
+  --card: #21181f;
+  --card-foreground: #f2eaef;
+  --popover: #281d25;
+  --popover-foreground: #f2eaef;
+  --secondary: #2e232b;
+  --secondary-foreground: #f2eaef;
+  --muted: #2e232b;
+  --muted-foreground: #ac9ca7;
+  --accent: #33262f;
+  --accent-foreground: #f2eaef;
+  --border: #3b2d37;
+  --input: #3b2d37;
+  --highlight-foreground: #1d150c;
+  --destructive-readable: #ee8585;
+  --overlay: #ffffff;
+  --scrim: #000000;
+  --score: #fde047;
 }
 @theme inline {
   --font-sans: "Manrope", "Noto Sans SC", -apple-system, BlinkMacSystemFont,

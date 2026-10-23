@@ -358,7 +358,7 @@ function EpisodePage() {
       </header>
 
       <div className="player-layout grid min-h-0 flex-1">
-        <section aria-label={language === "zh" ? "播放器" : "Player"} className={cn("player-video min-h-0 min-w-0 bg-black text-foreground", isFullscreen ? "fixed inset-0 z-50" : "relative")}>
+        <section aria-label={language === "zh" ? "播放器" : "Player"} className={cn("player-video min-h-0 min-w-0 bg-background text-foreground", isFullscreen ? "fixed inset-0 z-50" : "relative")}>
           {fullscreen.error && <p role="alert" className="absolute left-1/2 top-16 z-[80] -translate-x-1/2 rounded-lg bg-secondary px-4 py-2 text-sm text-foreground">{fullscreen.error}</p>}
           {resolver.asset && assetIsCurrent ? (
             <PlaybackSurface
