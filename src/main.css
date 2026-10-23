@@ -174,8 +174,10 @@
 @media (min-width: 1024px) {
   .detail-artwork { mask-image: linear-gradient(to bottom, #000 50%, transparent 100%); }
 }
-/* Video needs a neutral surround: a warm frame makes the picture look cooler. */
-.player-page {
+/* The player page follows the theme; the video stage itself (picture,
+   controls, in-player sheets and the empty/error state over it) stays a
+   neutral dark in every theme, so light themes don't put dark text on it. */
+.player-video {
   color-scheme: dark;
   --primary-readable: var(--primary-on-dark);
   --highlight: var(--highlight-on-dark);

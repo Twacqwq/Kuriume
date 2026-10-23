@@ -340,11 +340,11 @@ function EpisodePage() {
 
   return (
     <div className="player-page flex h-full min-h-0 w-full flex-col overflow-hidden bg-background text-foreground">
-      <header inert={isFullscreen} aria-hidden={isFullscreen} className={cn("player-header flex shrink-0 items-center gap-3 border-b border-white/6 px-3", isFullscreen && "invisible")}>
+      <header inert={isFullscreen} aria-hidden={isFullscreen} className={cn("player-header flex shrink-0 items-center gap-3 border-b border-overlay/6 px-3", isFullscreen && "invisible")}>
         <button
           type="button"
           onClick={goBack}
-          className="grid size-12 shrink-0 place-items-center rounded-full text-foreground/65 outline-none transition-colors hover:bg-white/6 hover:text-foreground active:bg-white/10 focus-visible:ring-[3px] focus-visible:ring-primary-readable"
+          className="grid size-12 shrink-0 place-items-center rounded-full text-foreground/65 outline-none transition-colors hover:bg-overlay/6 hover:text-foreground active:bg-overlay/10 focus-visible:ring-[3px] focus-visible:ring-primary-readable"
           aria-label={language === "zh" ? "返回" : "Back"}
         >
           <ArrowLeft size={18} />
@@ -358,7 +358,7 @@ function EpisodePage() {
       </header>
 
       <div className="player-layout grid min-h-0 flex-1">
-        <section aria-label={language === "zh" ? "播放器" : "Player"} className={cn("player-video min-h-0 min-w-0 bg-black", isFullscreen ? "fixed inset-0 z-50" : "relative")}>
+        <section aria-label={language === "zh" ? "播放器" : "Player"} className={cn("player-video min-h-0 min-w-0 bg-black text-foreground", isFullscreen ? "fixed inset-0 z-50" : "relative")}>
           {fullscreen.error && <p role="alert" className="absolute left-1/2 top-16 z-[80] -translate-x-1/2 rounded-lg bg-secondary px-4 py-2 text-sm text-foreground">{fullscreen.error}</p>}
           {resolver.asset && assetIsCurrent ? (
             <PlaybackSurface
@@ -407,7 +407,7 @@ function EpisodePage() {
           )}
         </section>
 
-        <aside inert={isFullscreen} aria-hidden={isFullscreen} aria-label={language === "zh" ? "播放与选集" : "Episodes and playback"} className={cn("player-options min-h-0 min-w-0 overflow-hidden border-white/6 bg-card/35", isFullscreen && "invisible")}>
+        <aside inert={isFullscreen} aria-hidden={isFullscreen} aria-label={language === "zh" ? "播放与选集" : "Episodes and playback"} className={cn("player-options min-h-0 min-w-0 overflow-hidden border-overlay/6 bg-card/35", isFullscreen && "invisible")}>
           <PlaybackPanel
             layout={isSidePanel ? "side" : "stacked"}
             source={onlineSource}
