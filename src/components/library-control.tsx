@@ -2,7 +2,8 @@ import { DropdownMenu } from "radix-ui";
 import { Bookmark, Check, ChevronDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
-import { LIBRARY_STATUSES, type LibraryEntry, type LibraryStatus } from "@/lib/store";
+import { LIBRARY_STATUSES, libraryStatusLabel, type LibraryEntry, type LibraryStatus } from "@/lib/store";
+import type { MediaKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function LibraryControl({
@@ -11,21 +12,25 @@ export function LibraryControl({
   onRemove,
   compact = false,
   disabled = false,
+  kind = "anime",
 }: {
   entry: LibraryEntry | null;
   onSetStatus: (status: LibraryStatus) => void;
   onRemove: () => void;
   compact?: boolean;
   disabled?: boolean;
+  /** Labels follow the kind of work: 追番 / 追漫. */
+  kind?: MediaKind;
 }) {
   const language = useDisplayLanguage();
+  const manga = kind === "manga";
   const size = compact ? "sm" : "lg";
   if (!entry) {
     return (
       <Button variant="secondary" size={size} className="rounded-full" disabled={disabled}
         onClick={() => onSetStatus("following")}>
         <Bookmark size={16} />
-        {language === "zh" ? "追番" : "Follow"}
+        {language === "zh" ? (manga ? "追漫" : "追番") : "Follow"}
       </Button>
     );
   }
@@ -35,9 +40,9 @@ export function LibraryControl({
       <DropdownMenu.Trigger asChild>
         <Button variant="secondary" size={size} disabled={disabled}
           className={cn("rounded-full", !compact && "text-primary-readable")}
-          aria-label={language === "zh" ? "修改追番状态" : "Change library status"}>
+          aria-label={language === "zh" ? (manga ? "修改追漫状态" : "修改追番状态") : "Change library status"}>
           {!compact && <Check size={16} />}
-          {LIBRARY_STATUSES.find((item) => item.id === entry.status)![language]}
+          {libraryStatusLabel(entry.status, kind, language)}
           <ChevronDown className="size-3.5 text-muted-foreground" />
         </Button>
       </DropdownMenu.Trigger>
@@ -51,7 +56,7 @@ export function LibraryControl({
               <DropdownMenu.RadioItem key={status.id} value={status.id}
                 className="flex min-h-10 cursor-default select-none items-center gap-2.5 rounded-lg px-3 text-sm outline-none data-[highlighted]:bg-accent data-[state=checked]:text-primary-readable">
                 {status.id === "completed" ? <Check size={16} /> : <Bookmark size={16} />}
-                {status[language]}
+                {libraryStatusLabel(status.id, kind, language)}
                 <DropdownMenu.ItemIndicator className="ml-auto"><Check size={14} /></DropdownMenu.ItemIndicator>
               </DropdownMenu.RadioItem>
             ))}

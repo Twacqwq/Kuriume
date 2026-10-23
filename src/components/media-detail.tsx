@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { isCatalogEntry } from "@/lib/store";
 import { coverTone } from "@/lib/cover-tone";
 import { LibraryControl } from "@/components/library-control";
+import { mangaLength, relationLabel, sortRelations } from "@/lib/media-relations";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
 import {
   displayAnimeDescription,
@@ -13,16 +14,20 @@ import type {
   LibraryStatus,
   WatchHistoryEntry,
 } from "@/lib/store";
-import type {
-  AnimeCharacters,
-  AnimeEpisodes,
-  AnimeInfo,
+import {
+  mediaKind,
+  type AnimeCharacters,
+  type AnimeEpisodes,
+  type AnimeInfo,
+  type MediaKind,
+  type RelatedMedia,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { SHARED_POSTER_NAME } from "@/lib/view-transition";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
+  BookOpen,
   Clock3,
   LayoutGrid,
   List,
@@ -42,6 +47,8 @@ interface MediaDetailProps {
   pendingDetails?: boolean;
   episodes: AnimeEpisodes[];
   characters: AnimeCharacters[];
+  /** Source manga, adaptations, sequels... */
+  relations?: RelatedMedia[];
   libraryEntry: LibraryEntry | null;
   libraryPending: boolean;
   libraryError: string | null;
@@ -56,6 +63,7 @@ export function MediaDetail({
   pendingDetails = false,
   episodes,
   characters,
+  relations = [],
   libraryEntry,
   libraryPending,
   libraryError,
@@ -65,6 +73,9 @@ export function MediaDetail({
   onRemoveFromLibrary,
 }: MediaDetailProps) {
   const language = useDisplayLanguage();
+  const kind = mediaKind(media);
+  const manga = kind === "manga";
+  const zh = language === "zh";
   const title = displayAnimeTitle(media, language);
   const description = displayAnimeDescription(media, language);
   const latest = history
@@ -144,10 +155,16 @@ export function MediaDetail({
             <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-foreground/75">
               {media.format && <MetaPill>{formatMediaFormat(media.format, language)}</MetaPill>}
               {media.year && <span>{media.year}</span>}
-              {media.total_episodes > 0 && (
+              {!manga && media.total_episodes > 0 && (
                 <>
                   <span className="text-foreground/25">·</span>
                   <span>{language === "zh" ? `${media.total_episodes} 话` : `${media.total_episodes} episodes`}</span>
+                </>
+              )}
+              {manga && mangaLength(media, language) && (
+                <>
+                  <span className="text-foreground/25">·</span>
+                  <span>{mangaLength(media, language)}</span>
                 </>
               )}
               {media.score && (
@@ -163,26 +180,39 @@ export function MediaDetail({
             <h1 className="text-balance text-2xl font-bold leading-tight tracking-[-0.025em] text-foreground [overflow-wrap:anywhere] md:text-4xl xl:text-5xl">
               {title}
             </h1>
+            {manga && media.authors && media.authors.length > 0 && (
+              <p className="mt-2 truncate text-sm text-foreground/70">{media.authors.join(" / ")}</p>
+            )}
           </div>
           <div ref={actions} className="col-span-2 lg:col-span-1 lg:col-start-2">
             <div className="flex flex-wrap items-center gap-3 [&>button]:min-h-12 [&>button]:rounded-xl">
-              <Button asChild size="lg" className="min-h-12 flex-1 gap-2 rounded-xl px-5 sm:flex-none">
-                <Link
-                  to="/anime/$id/episode/$ep"
-                  params={{ id: media.id, ep: String(playEpisode) }}
-                  search={{ t: resumeTime }}
-                >
-                  <Play size={17} fill="currentColor" />
-                  {playLabel}
-                </Link>
-              </Button>
+              {manga ? (
+                <ReadButton describedBy="manga-reading-source" />
+              ) : (
+                <Button asChild size="lg" className="min-h-12 flex-1 gap-2 rounded-xl px-5 sm:flex-none">
+                  <Link
+                    to="/anime/$id/episode/$ep"
+                    params={{ id: media.id, ep: String(playEpisode) }}
+                    search={{ t: resumeTime }}
+                  >
+                    <Play size={17} fill="currentColor" />
+                    {playLabel}
+                  </Link>
+                </Button>
+              )}
               <LibraryControl
+                kind={kind}
                 entry={libraryEntry}
                 disabled={libraryPending}
                 onSetStatus={onSetLibraryStatus}
                 onRemove={onRemoveFromLibrary}
               />
             </div>
+            {manga && (
+              <p id="manga-reading-source" className="mt-3 text-sm text-muted-foreground">
+                {zh ? "阅读功能即将上线，敬请期待。" : "Reading is coming soon."}
+              </p>
+            )}
             {libraryError && <p role="alert" className="mt-3 text-sm text-destructive-readable">{libraryError}</p>}
           </div>
         </div>
@@ -213,7 +243,7 @@ export function MediaDetail({
             ) : <p className="text-sm leading-7 text-muted-foreground">{description}</p>}
           </section>
         )}
-        <section>
+        {!manga && <section>
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-bold tracking-tight">{language === "zh" ? "剧集" : "Episodes"}</h2>
             <div className="flex items-center gap-1">
@@ -300,25 +330,33 @@ export function MediaDetail({
               })}
             </div>
           )}
-        </section>
+        </section>}
 
-        {(media.genres.length > 0 || media.studios.length > 0) && (
+        {relations.length > 0 && <RelatedWorks kind={kind} relations={relations} />}
+
+        {(media.genres.length > 0 || media.studios.length > 0 || (manga && (media.authors?.length || media.status || media.air_date))) && (
           <section className="grid gap-8 lg:grid-cols-[1fr_1.6fr]">
             <div>
               <SectionHeading title={language === "zh" ? "作品信息" : "Information"} />
               <dl className="mt-5 space-y-3 text-sm">
-                {media.studios.length > 0 && (
+                {!manga && media.studios.length > 0 && (
                   <InfoRow label={language === "zh" ? "动画制作" : "Studio"} value={media.studios.join(", ")} />
                 )}
+                {manga && media.authors && media.authors.length > 0 && (
+                  <InfoRow label={zh ? "作者" : "Authors"} value={media.authors.join(" / ")} />
+                )}
                 {media.status && (
-                  <InfoRow label={language === "zh" ? "状态" : "Status"} value={formatMediaStatus(media.status, language)} />
+                  <InfoRow label={language === "zh" ? "状态" : "Status"} value={formatMediaStatus(media.status, language, kind)} />
                 )}
                 {media.air_date && (
-                  <InfoRow label={language === "zh" ? "首播" : "Premiered"} value={media.air_date} />
+                  <InfoRow label={manga ? (zh ? "开始连载" : "Started") : (zh ? "首播" : "Premiered")} value={media.air_date} />
+                )}
+                {manga && mangaLength(media, language) && (
+                  <InfoRow label={zh ? "篇幅" : "Length"} value={mangaLength(media, language)!} />
                 )}
               </dl>
             </div>
-            <div>
+            {media.genres.length > 0 && <div>
               <SectionHeading title={language === "zh" ? "类型" : "Genres"} />
               <div className="mt-5 flex flex-wrap gap-2">
                 {media.genres.map((genre) => (
@@ -330,7 +368,7 @@ export function MediaDetail({
                   </span>
                 ))}
               </div>
-            </div>
+            </div>}
           </section>
         )}
 
@@ -374,16 +412,67 @@ export function MediaDetail({
         className={cn("detail-sticky-cta fixed inset-x-0 bottom-0 z-30 border-t border-overlay/6 bg-background/92 px-4 pt-3 backdrop-blur-md transition-transform duration-200 motion-reduce:transition-none md:hidden",
           actionsVisible ? "translate-y-full" : "translate-y-0")}>
         <div className="flex items-center gap-3">
-          <Button asChild size="lg" className="min-h-12 flex-1 gap-2 rounded-xl px-5">
-            <Link to="/anime/$id/episode/$ep" params={{ id: media.id, ep: String(playEpisode) }} search={{ t: resumeTime }}>
-              <Play size={17} fill="currentColor" />
-              {playLabel}
-            </Link>
-          </Button>
-          <LibraryControl compact entry={libraryEntry} disabled={libraryPending} onSetStatus={onSetLibraryStatus} onRemove={onRemoveFromLibrary} />
+          {manga ? <ReadButton describedBy="manga-reading-source" /> : (
+            <Button asChild size="lg" className="min-h-12 flex-1 gap-2 rounded-xl px-5">
+              <Link to="/anime/$id/episode/$ep" params={{ id: media.id, ep: String(playEpisode) }} search={{ t: resumeTime }}>
+                <Play size={17} fill="currentColor" />
+                {playLabel}
+              </Link>
+            </Button>
+          )}
+          <LibraryControl compact kind={kind} entry={libraryEntry} disabled={libraryPending} onSetStatus={onSetLibraryStatus} onRemove={onRemoveFromLibrary} />
         </div>
       </div>
     </div>
+  );
+}
+
+/** Reading opens here once a reading source exists; until then it says so. */
+function ReadButton({ describedBy }: { describedBy: string }) {
+  const language = useDisplayLanguage();
+  return (
+    <Button size="lg" disabled aria-describedby={describedBy} className="min-h-12 flex-1 gap-2 rounded-xl px-5 sm:flex-none">
+      <BookOpen size={17} />
+      {language === "zh" ? "开始阅读" : "Read"}
+    </Button>
+  );
+}
+
+function RelatedWorks({ kind, relations }: { kind: MediaKind; relations: RelatedMedia[] }) {
+  const language = useDisplayLanguage();
+  const items = sortRelations(relations, kind);
+  return (
+    <section aria-labelledby="related-works">
+      <h2 id="related-works" className="text-lg font-bold tracking-tight">{language === "zh" ? "相关作品" : "Related"}</h2>
+      <div className="hide-scrollbar -mx-4 mt-4 grid auto-cols-[30%] grid-flow-col snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 min-[480px]:auto-cols-[22%] sm:auto-cols-[17%] md:mx-0 md:scroll-px-0 md:px-0 lg:auto-cols-[8.5rem]">
+        {items.map((item) => {
+          const related = item.media;
+          const relatedKind = mediaKind(related);
+          const card = (
+            <>
+              <div className="relative aspect-2/3 overflow-hidden rounded-xl bg-card">
+                {related.cover && <img src={related.cover} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />}
+                <span className="absolute left-1.5 top-1.5 rounded-md bg-black/72 px-1.5 py-0.5 text-[11px] font-medium text-white">
+                  {relationLabel(item, language)}
+                </span>
+              </div>
+              <p className="mt-2 line-clamp-2 text-sm font-medium leading-5 text-foreground/90 transition-colors group-hover:text-primary-readable motion-reduce:transition-none">
+                {displayAnimeTitle(related, language)}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {[relatedKind === "manga" ? (language === "zh" ? "漫画" : "Manga") : (language === "zh" ? "动画" : "Anime"), related.year].filter(Boolean).join(" · ")}
+              </p>
+            </>
+          );
+          const className = "press group min-w-0 snap-start rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-primary-readable";
+          return relatedKind === "manga" ? (
+            <Link key={related.id} to="/manga/$id" params={{ id: related.id }} className={className}>{card}</Link>
+          ) : (
+            <Link key={related.id} to="/anime/$id" params={{ id: related.id }} className={className}>{card}</Link>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -447,23 +536,27 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatMediaStatus(status: string, language: "en" | "zh") {
-  if (language === "en") return ({ RELEASING: "Airing", FINISHED: "Finished", NOT_YET_RELEASED: "Upcoming", CANCELLED: "Cancelled", HIATUS: "On hiatus" }[status] ?? status);
+function formatMediaStatus(status: string, language: "en" | "zh", kind: MediaKind = "anime") {
+  const manga = kind === "manga";
+  if (language === "en") return ({ RELEASING: manga ? "Publishing" : "Airing", FINISHED: "Finished", NOT_YET_RELEASED: "Upcoming", CANCELLED: "Cancelled", HIATUS: "On hiatus" }[status] ?? status);
   return (
     {
       RELEASING: "连载中",
       FINISHED: "已完结",
-      NOT_YET_RELEASED: "未播出",
+      NOT_YET_RELEASED: manga ? "未开始" : "未播出",
       CANCELLED: "已取消",
-      HIATUS: "暂停",
+      HIATUS: manga ? "休刊中" : "暂停",
     }[status] ?? status
   );
 }
 
 function formatMediaFormat(format: string, language: "en" | "zh") {
-  if (language === "en") return ({ TV: "TV", TV_SHORT: "Short", MOVIE: "Movie", ONA: "Web anime", SPECIAL: "Special", MUSIC: "Music" }[format] ?? format);
+  if (language === "en") return ({ TV: "TV", TV_SHORT: "Short", MOVIE: "Movie", ONA: "Web anime", SPECIAL: "Special", MUSIC: "Music", MANGA: "Manga", ONE_SHOT: "One-shot", NOVEL: "Novel" }[format] ?? format);
   return (
     {
+      MANGA: "漫画",
+      ONE_SHOT: "短篇漫画",
+      NOVEL: "小说",
       TV: "TV 动画",
       TV_SHORT: "短篇动画",
       MOVIE: "动画电影",

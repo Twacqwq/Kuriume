@@ -210,23 +210,31 @@ impl AniList {
                 offset,
             });
         }
+        let kind = query.kind;
         let variants = script_variants(keyword);
-        let local_ids = matching_alias_ids(keyword);
+        // The bundled alias index names anime only.
+        let local_ids = match kind {
+            MediaKind::Anime => matching_alias_ids(keyword),
+            MediaKind::Manga => Vec::new(),
+        };
         if variants.len() == 1 && local_ids.is_empty() && offset.is_multiple_of(limit) {
             // Retain a single request for ordinary English/Japanese searches.
-            return self
-                .page(
-                    offset / limit + 1,
-                    limit,
-                    None,
-                    Some(keyword),
-                    "SEARCH_MATCH",
-                )
-                .await;
+            let filter = PageFilter {
+                kind,
+                year: None,
+                search: Some(keyword),
+                sort: "SEARCH_MATCH",
+                started: false,
+            };
+            return self.page(offset / limit + 1, limit, filter).await;
         }
+        let media_filter = match kind {
+            MediaKind::Anime => "type:ANIME,isAdult:false",
+            MediaKind::Manga => "type:MANGA,isAdult:false,format_not:NOVEL",
+        };
 
         let target = u64::from(offset) + u64::from(limit) + 1;
-        let walk_key = keyword.to_owned();
+        let walk_key = format!("{}:{keyword}", kind.as_str());
         let mut walk = self
             .search_walks
             .lock()
@@ -261,12 +269,12 @@ impl AniList {
             if !batch.is_empty() {
                 declarations.push("$ids:[Int!]!".into());
                 variables["ids"] = json!(batch);
-                fields.push("local:Page(perPage:50){pageInfo{total hasNextPage} media(type:ANIME,isAdult:false,id_in:$ids){id}}".to_owned());
+                fields.push(format!("local:Page(perPage:50){{pageInfo{{total hasNextPage}} media({media_filter},id_in:$ids){{id}}}}"));
             }
             for (index, variant) in variants.iter().enumerate().filter(|(i, _)| active[*i]) {
                 declarations.push(format!("$s{index}:String!"));
                 variables[format!("s{index}")] = json!(variant);
-                fields.push(format!("r{index}:Page(page:$page,perPage:50){{pageInfo{{total hasNextPage}} media(type:ANIME,isAdult:false,search:$s{index},sort:SEARCH_MATCH){{id}}}}"));
+                fields.push(format!("r{index}:Page(page:$page,perPage:50){{pageInfo{{total hasNextPage}} media({media_filter},search:$s{index},sort:SEARCH_MATCH){{id}}}}"));
             }
             // GraphQL rejects unused variables once only local aliases remain.
             if !active.iter().any(|value| *value) {
@@ -330,7 +338,8 @@ impl AniList {
             cached.into_iter().map(AnimeInfo::from).collect()
         } else {
             let response: PageResponse = self.graphql(format!(
-                "query($ids:[Int!]!) {{ Page(perPage:50) {{ pageInfo {{ total hasNextPage }} media(type:ANIME,isAdult:false,id_in:$ids) {{ {MEDIA_FIELDS} }} }} }}"
+                "query($ids:[Int!]!) {{ Page(perPage:50) {{ pageInfo {{ total hasNextPage }} media({media_filter},id_in:$ids) {{ {fields} }} }} }}",
+                fields = list_fields(kind),
             ), json!({"ids": selected})).await?;
             let mut by_id: HashMap<_, _> = response
                 .page

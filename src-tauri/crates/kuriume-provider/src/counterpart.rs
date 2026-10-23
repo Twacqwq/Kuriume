@@ -5,18 +5,19 @@ use std::collections::HashSet;
 
 use crate::anilist::title_key;
 use crate::error::Result;
-use crate::models::{AnimeInfo, SearchQuery};
+use crate::models::{AnimeInfo, MediaKind, SearchQuery};
 use crate::provider::AnimeProvider;
 
 /// Searches cost catalog requests; a few distinct titles are plenty.
 const MAX_SEARCHES: usize = 3;
 const RESULTS_PER_SEARCH: u32 = 20;
 
-/// The `catalog` entry whose titles equal one of `titles` (after
+/// The `catalog` entry of `kind` whose titles equal one of `titles` (after
 /// normalisation), or `None`. Only exact title matches count: a wrong match
 /// would merge two works' history, so no match is the safer answer.
 pub async fn find_counterpart(
     catalog: &dyn AnimeProvider,
+    kind: MediaKind,
     titles: &[String],
     total_episodes: u32,
 ) -> Result<Option<AnimeInfo>> {
@@ -38,9 +39,15 @@ pub async fn find_counterpart(
             keyword: keyword.to_owned(),
             offset: 0,
             limit: RESULTS_PER_SEARCH,
+            kind,
         };
         let page = catalog.search(query, None).await?;
-        if let Some(found) = best_match(page.data, &wanted, total_episodes) {
+        let candidates = page
+            .data
+            .into_iter()
+            .filter(|info| info.kind == kind)
+            .collect();
+        if let Some(found) = best_match(candidates, &wanted, total_episodes) {
             return Ok(Some(found));
         }
     }

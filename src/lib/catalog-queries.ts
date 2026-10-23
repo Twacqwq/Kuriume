@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { queryClient } from "@/lib/query-client";
-import { CATALOG_PROVIDERS, catalogApi, catalogSourceOf, DEFAULT_CATALOG_SOURCE, DEFAULT_DISPLAY_LANGUAGE, libraryApi, settingsQueryOptions, type CatalogSource, type DisplayLanguage } from "@/lib/store";
-import type { AnimeInfo, CalendarEntry, PagedResult } from "@/lib/types";
+import { CATALOG_PROVIDERS, catalogApi, catalogProviderFor, catalogSourceOf, MANGA_CATALOG_SOURCE, DEFAULT_CATALOG_SOURCE, DEFAULT_DISPLAY_LANGUAGE, libraryApi, settingsQueryOptions, type CatalogSource, type DisplayLanguage } from "@/lib/store";
+import type { AnimeInfo, CalendarEntry, PagedResult, RelatedMedia } from "@/lib/types";
 
 export const CURRENT_YEAR = new Date().getFullYear();
 export const SEASON_PAGE_SIZE = 30;
@@ -46,6 +46,37 @@ export async function fetchSeason(
   });
 }
 
+export const MANGA_PAGE_SIZE = 30;
+/** The manga page's orders: what is popular now, and the newest series. */
+export type MangaSort = "popular" | "new";
+
+export async function fetchMangaList(
+  offset: number,
+  sort: MangaSort,
+  language: DisplayLanguage,
+): Promise<PagedResult<AnimeInfo>> {
+  return invoke<PagedResult<AnimeInfo>>("get_list", {
+    provider: CATALOG_PROVIDERS[MANGA_CATALOG_SOURCE],
+    language,
+    query: {
+      limit: MANGA_PAGE_SIZE,
+      offset,
+      soft: sort === "new" ? "Date" : "Rank",
+      kind: "manga",
+    },
+  });
+}
+
+export const mangaListKey = (sort: MangaSort, language: DisplayLanguage) =>
+  ["manga-list", MANGA_CATALOG_SOURCE, sort, language] as const;
+
+/** Anime and manga linked to a work: its original, adaptations, sequels. */
+export const relationsQueryOptions = (id: string) => ({
+  queryKey: ["catalog-relations", id],
+  staleTime: 60 * 60 * 1000,
+  queryFn: () => invoke<RelatedMedia[]>("get_relations", { provider: catalogProviderFor(id), id }),
+});
+
 export const spotlightQuery = (language: DisplayLanguage, source: CatalogSource = DEFAULT_CATALOG_SOURCE) => ({
   queryKey: ["home-season-page", CURRENT_YEAR, language, source],
   // IPC cannot abort. Let an in-flight load populate the cache after tab changes.
@@ -72,6 +103,7 @@ export async function prefetchBrowseData() {
 const CATALOG_KEYS = new Set([
   "anime-list", "home-season-page", "search", "calendar", "anime-detail",
   "stored-media", "stored-title", "library-list", "history-list", "catalog-counterpart",
+  "manga-list", "catalog-relations", "manga-counterpart",
 ]);
 
 /** After a language or data-source change: drop catalog caches, reload home and schedule. */
@@ -109,6 +141,24 @@ export const counterpartQueryOptions = (id: string, source: CatalogSource) => ({
   },
 });
 
+/**
+ * Where a manga ID opens: manga are Bangumi entries only. A saved manga uses
+ * its remembered Bangumi entry; any other (an AniList anime's original manga)
+ * is matched by title. Null keeps the ID, so a failed lookup still opens it.
+ */
+export const bangumiMangaQueryOptions = (id: string) => ({
+  queryKey: ["manga-counterpart", id],
+  staleTime: Infinity,
+  queryFn: async () => {
+    if (catalogSourceOf(id) === MANGA_CATALOG_SOURCE) return null;
+    try {
+      return (await catalogApi.counterpart(id)) ?? (await catalogApi.findMangaCounterpart(id));
+    } catch {
+      return null;
+    }
+  },
+});
+
 /** Bounds the catalog searches one pass may make. */
 const LINK_BATCH = 30;
 let linking: Promise<void> | undefined;
@@ -122,7 +172,10 @@ export function linkFollowedToCatalog(): Promise<void> {
   linking ??= (async () => {
     const source = await currentCatalogSource();
     const library = await libraryApi.list("following").catch(() => []);
-    const pending = library.filter((entry) => entry.provider !== source).slice(0, LINK_BATCH);
+    // Manga stay in their own catalog whatever the anime source is.
+    const pending = library
+      .filter((entry) => entry.kind !== "manga" && entry.provider !== source)
+      .slice(0, LINK_BATCH);
     let linked = false;
     for (const entry of pending) {
       const id = `${entry.provider}:${entry.external_id}`;
@@ -137,7 +190,7 @@ export function linkFollowedToCatalog(): Promise<void> {
   return linking;
 }
 
-const LISTING_KEYS = new Set(["anime-list", "home-season-page", "search", "search-suggest", "calendar"]);
+const LISTING_KEYS = new Set(["anime-list", "home-season-page", "search", "search-suggest", "calendar", "manga-list", "catalog-relations"]);
 
 /**
  * The entry for `id` from a list already on screen (home, search, schedule):
@@ -156,7 +209,7 @@ export function listedAnime(id: string): AnimeInfo | undefined {
     }
     const record = value as Record<string, unknown>;
     if (record.id === id && typeof record.title === "string") return value as AnimeInfo;
-    for (const key of ["data", "pages", "items"]) {
+    for (const key of ["data", "pages", "items", "media"]) {
       const found = scan(record[key], depth + 1);
       if (found) return found;
     }

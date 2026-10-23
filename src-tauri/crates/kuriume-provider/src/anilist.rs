@@ -10,7 +10,7 @@ use tokio::sync::{Mutex, Semaphore};
 use crate::error::{ProviderError, Result};
 use crate::models::{
     AiringSlot, AnimeInfo, CalendarEntry, CharacterInfo, EpisodesInfo, GetEpisodesQuery,
-    GetListQuery, PagedResult, SearchQuery, SortBy, Weekday,
+    GetListQuery, MediaKind, PagedResult, RelatedMedia, SearchQuery, SortBy, Weekday,
 };
 use crate::provider::AnimeProvider;
 use crate::user_agent::USER_AGENT;
@@ -31,6 +31,9 @@ const CHINESE_CACHE_LIMIT: usize = 512;
 const MEDIA_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const MEDIA_CACHE_LIMIT: usize = 600;
 
+/// Anime fields for lists, search and the schedule. Kept as they were before
+/// manga existed: AniList bounds each query's complexity, and list pages ask
+/// for these fields 30–50 times over.
 const MEDIA_FIELDS: &str = r#"
   id
   idMal
@@ -50,6 +53,143 @@ const MEDIA_FIELDS: &str = r#"
   nextAiringEpisode { episode airingAt }
   studios(isMain: true) { nodes { name } }
 "#;
+
+/// Manga fields for lists and search: no broadcasts or studios.
+const MANGA_FIELDS: &str = r#"
+  id
+  idMal
+  type
+  chapters
+  volumes
+  title { romaji english native }
+  synonyms
+  coverImage { extraLarge large color }
+  bannerImage
+  averageScore
+  startDate { year month day }
+  genres
+  description(asHtml: false)
+  status
+  format
+"#;
+
+/// A details lookup takes any ID, so it also asks what the work is.
+const KIND_FIELDS: &str = "type chapters volumes";
+
+fn list_fields(kind: MediaKind) -> &'static str {
+    match kind {
+        MediaKind::Anime => MEDIA_FIELDS,
+        MediaKind::Manga => MANGA_FIELDS,
+    }
+}
+
+/// Credits, asked for on detail pages only: manga show their authors.
+const STAFF_FIELDS: &str = r#"
+  staff(perPage: 8, sort: [RELEVANCE, ID]) { edges { role node { name { full native } } } }
+"#;
+
+/// Enough of a related work for a cover card.
+const RELATION_FIELDS: &str = r#"
+  id
+  idMal
+  type
+  isAdult
+  title { romaji english native }
+  synonyms
+  coverImage { extraLarge large color }
+  averageScore
+  seasonYear
+  startDate { year month day }
+  episodes
+  chapters
+  volumes
+  status
+  format
+"#;
+
+/// Fewest list entries a manga needs to appear among the newest works:
+/// AniList's newest manga are otherwise mostly unknown one-shots.
+const NEW_MANGA_MIN_POPULARITY: u32 = 150;
+
+/// One page of a catalog listing or search.
+struct PageFilter<'a> {
+    kind: MediaKind,
+    year: Option<u32>,
+    search: Option<&'a str>,
+    sort: &'a str,
+    /// Only works that have started (newest manga lists).
+    started: bool,
+}
+
+/// One listing or search page. Only the filters in use are declared and sent:
+/// an explicit `null` is not the same as leaving an argument out.
+fn page_query(page: u32, per_page: u32, filter: &PageFilter<'_>) -> (String, Value) {
+    let manga = filter.kind == MediaKind::Manga;
+    let mut declarations = vec!["$page: Int!", "$perPage: Int!", "$sort: [MediaSort!]!"];
+    let mut arguments = vec![
+        format!("type: {}", media_type(filter.kind)),
+        "isAdult: false".to_owned(),
+        "sort: $sort".to_owned(),
+    ];
+    let mut variables = json!({ "page": page, "perPage": per_page, "sort": [filter.sort] });
+    if let Some(year) = filter.year.filter(|_| !manga) {
+        declarations.push("$year: Int");
+        arguments.push("seasonYear: $year".into());
+        variables["year"] = json!(year);
+    }
+    if let Some(search) = filter.search {
+        declarations.push("$search: String");
+        arguments.push("search: $search".into());
+        variables["search"] = json!(search);
+    }
+    if manga {
+        // The manga catalog leaves light novels to their relations.
+        arguments.push("format_not: NOVEL".into());
+    }
+    if filter.started {
+        declarations.push("$startedBefore: FuzzyDateInt");
+        arguments.push("startDate_lesser: $startedBefore".into());
+        variables["startedBefore"] = json!(today_fuzzy_date());
+        if manga {
+            arguments.push(format!("popularity_greater: {NEW_MANGA_MIN_POPULARITY}"));
+        }
+    }
+    let query = format!(
+        "query ({}) {{ Page(page: $page, perPage: $perPage) {{ pageInfo {{ total currentPage perPage hasNextPage }} media({}) {{ {} }} }} }}",
+        declarations.join(", "),
+        arguments.join(", "),
+        list_fields(filter.kind),
+    );
+    (query, variables)
+}
+
+/// AniList's `MediaType` for a kind.
+fn media_type(kind: MediaKind) -> &'static str {
+    match kind {
+        MediaKind::Anime => "ANIME",
+        MediaKind::Manga => "MANGA",
+    }
+}
+
+/// `FuzzyDateInt` (yyyymmdd) for today in UTC.
+fn today_fuzzy_date() -> u32 {
+    let days = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        / 86_400;
+    // Howard Hinnant's days-to-civil conversion.
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    (year * 10_000 + month * 100 + day) as u32
+}
 
 #[derive(Clone)]
 pub struct AniList {
@@ -150,9 +290,17 @@ impl AniList {
         }
 
         if !response.status().is_success() {
+            let status = response.status();
+            // A rejected query (HTTP 400) explains itself in the body.
+            let reason = response
+                .json::<GraphQlResponse<Value>>()
+                .await
+                .ok()
+                .and_then(|payload| payload.errors.into_iter().next())
+                .map(|error| format!(": {}", error.message))
+                .unwrap_or_default();
             return Err(ProviderError::Source(format!(
-                "AniList returned HTTP {}",
-                response.status()
+                "AniList returned HTTP {status}{reason}"
             )));
         }
 
@@ -179,40 +327,10 @@ impl AniList {
         &self,
         page: u32,
         per_page: u32,
-        year: Option<u32>,
-        search: Option<&str>,
-        sort: &str,
+        filter: PageFilter<'_>,
     ) -> Result<PagedResult<AnimeInfo>> {
-        let query = format!(
-            r#"
-            query ($page: Int!, $perPage: Int!, $year: Int, $search: String, $sort: [MediaSort!]!) {{
-              Page(page: $page, perPage: $perPage) {{
-                pageInfo {{ total currentPage perPage hasNextPage }}
-                media(
-                  type: ANIME
-                  isAdult: false
-                  seasonYear: $year
-                  search: $search
-                  sort: $sort
-                ) {{
-                  {MEDIA_FIELDS}
-                }}
-              }}
-            }}
-            "#
-        );
-        let data: PageResponse = self
-            .graphql(
-                query,
-                json!({
-                    "page": page,
-                    "perPage": per_page,
-                    "year": year,
-                    "search": search,
-                    "sort": [sort],
-                }),
-            )
-            .await?;
+        let (query, variables) = page_query(page, per_page, &filter);
+        let data: PageResponse = self.graphql(query, variables).await?;
 
         let offset = page.saturating_sub(1) * per_page;
         // AniList's search total can be an estimate (e.g. 5000). The last-page
@@ -253,8 +371,10 @@ impl AniList {
         let query = format!(
             r#"
             query ($id: Int!) {{
-              Media(id: $id, type: ANIME, isAdult: false) {{
+              Media(id: $id, isAdult: false) {{
+                {KIND_FIELDS}
                 {MEDIA_FIELDS}
+                {STAFF_FIELDS}
               }}
             }}
             "#
@@ -311,7 +431,12 @@ impl AniList {
         }
         let _permit = self.chinese_requests.acquire().await.ok()?;
         let result = self
-            .fetch_chinese_metadata(&request.aliases, request.year, request.episode_count)
+            .fetch_chinese_metadata(
+                request.kind,
+                &request.aliases,
+                request.year,
+                request.episode_count,
+            )
             .await;
         let value = CachedChineseMetadata::from_result(result);
         let metadata = value.metadata.clone();
@@ -321,6 +446,7 @@ impl AniList {
 
     async fn fetch_chinese_metadata(
         &self,
+        kind: MediaKind,
         aliases: &[String],
         year: Option<u16>,
         episode_count: Option<u32>,
@@ -332,7 +458,7 @@ impl AniList {
         let Some(keyword) = keyword else {
             return Ok(None);
         };
-        let payload = self.bangumi_search(keyword, 10, 0).await?;
+        let payload = self.bangumi_search(kind, keyword, 10, 0).await?;
         let title_keys: BTreeSet<String> = aliases
             .iter()
             .map(|title| normalized_catalog_title(title))
@@ -347,6 +473,11 @@ impl AniList {
         let metadata = payload
             .data
             .into_iter()
+            // Books include the novel a manga shares its title with.
+            .filter(|subject| {
+                kind == MediaKind::Anime
+                    || matches!(subject.platform.as_deref(), None | Some("" | "漫画"))
+            })
             .filter_map(|subject| {
                 let score = bangumi_match_score(&subject, &title_keys, year, episode_count).max(
                     bangumi_variant_score(&subject, &alternate_keys, year, episode_count),
@@ -360,6 +491,7 @@ impl AniList {
 
     async fn bangumi_search(
         &self,
+        kind: MediaKind,
         keyword: &str,
         limit: u32,
         offset: u32,
@@ -372,7 +504,11 @@ impl AniList {
             .json(&json!({
                 "keyword": keyword,
                 "sort": "match",
-                "filter": { "type": [2], "nsfw": false },
+                // Bangumi subject types: 1 books, 2 anime.
+                "filter": {
+                    "type": [if kind == MediaKind::Manga { 1 } else { 2 }],
+                    "nsfw": false,
+                },
             }))
             .send()
             .await?
@@ -410,7 +546,12 @@ impl AnimeProvider for AniList {
 
     async fn get_detail(&self, id: &str, language: Option<&str>) -> Result<AnimeInfo> {
         let id = Self::parse_id(id)?;
-        let media = self.media(id).await?;
+        let mut media = self.media(id).await?;
+        // A manga cached from a list has no credits; its page shows authors.
+        if media.kind() == MediaKind::Manga && media.staff.is_none() {
+            media = self.fetch_media(id).await?;
+            self.remember_media([&media]);
+        }
         if language == Some("zh") {
             Ok(self.localized_anime_info(media).await)
         } else {
@@ -425,11 +566,19 @@ impl AnimeProvider for AniList {
     ) -> Result<PagedResult<AnimeInfo>> {
         let limit = query.limit.clamp(1, 50);
         let page = query.offset / limit + 1;
-        let sort = match query.soft.unwrap_or_default() {
+        let sort_by = query.soft.unwrap_or_default();
+        let sort = match sort_by {
             SortBy::Rank => "TRENDING_DESC",
             SortBy::Date => "START_DATE_DESC",
         };
-        self.page(page, limit, query.year, None, sort).await
+        let filter = PageFilter {
+            kind: query.kind,
+            year: query.year,
+            search: None,
+            sort,
+            started: query.kind == MediaKind::Manga && matches!(sort_by, SortBy::Date),
+        };
+        self.page(page, limit, filter).await
     }
 
     async fn get_episodes(&self, query: GetEpisodesQuery) -> Result<Vec<EpisodesInfo>> {
@@ -462,7 +611,7 @@ impl AnimeProvider for AniList {
         let id = Self::parse_id(id)?;
         let query = r#"
           query ($id: Int!) {
-            Media(id: $id, type: ANIME, isAdult: false) {
+            Media(id: $id, isAdult: false) {
               characters(page: 1, perPage: 24, sort: [ROLE, RELEVANCE, ID]) {
                 edges {
                   role
@@ -498,6 +647,21 @@ impl AnimeProvider for AniList {
                 ),
             })
             .collect())
+    }
+
+    async fn get_relations(&self, id: &str) -> Result<Vec<RelatedMedia>> {
+        let id = Self::parse_id(id)?;
+        let query = format!(
+            r#"
+            query ($id: Int!) {{
+              Media(id: $id) {{
+                relations {{ edges {{ relationType(version: 2) node {{ {RELATION_FIELDS} }} }} }}
+              }}
+            }}
+            "#
+        );
+        let data: RelationResponse = self.graphql(query, json!({ "id": id })).await?;
+        Ok(related_media(data.media.relations.edges))
     }
 
     async fn get_calendar(&self, _language: Option<&str>) -> Result<Vec<CalendarEntry>> {
@@ -599,6 +763,62 @@ struct GraphQlError {
     message: String,
 }
 
+/// The shared relation vocabulary for AniList's `MediaRelation`; character
+/// crossovers are not shown.
+fn relation_key(relation: &str) -> Option<&'static str> {
+    Some(match relation {
+        "SOURCE" => "SOURCE",
+        "ADAPTATION" => "ADAPTATION",
+        "SEQUEL" => "SEQUEL",
+        "PREQUEL" => "PREQUEL",
+        "SIDE_STORY" => "SIDE_STORY",
+        "SPIN_OFF" => "SPIN_OFF",
+        "ALTERNATIVE" => "ALTERNATIVE",
+        "CHARACTER" => return None,
+        _ => "OTHER",
+    })
+}
+
+/// Related anime and manga, without adult works or character crossovers.
+fn related_media(edges: Vec<RelationEdge>) -> Vec<RelatedMedia> {
+    edges
+        .into_iter()
+        .filter_map(|edge| {
+            let relation = relation_key(edge.relation_type.as_deref()?)?;
+            let media = edge.node?;
+            let listed = matches!(media.media_type.as_deref(), Some("ANIME" | "MANGA"));
+            (listed && media.is_adult != Some(true)).then(|| RelatedMedia {
+                relation: relation.to_owned(),
+                media: media.into(),
+            })
+        })
+        .collect()
+}
+
+#[derive(Deserialize)]
+struct RelationResponse {
+    #[serde(rename = "Media")]
+    media: RelationMedia,
+}
+
+#[derive(Deserialize)]
+struct RelationMedia {
+    relations: RelationConnection,
+}
+
+#[derive(Deserialize)]
+struct RelationConnection {
+    #[serde(default)]
+    edges: Vec<RelationEdge>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RelationEdge {
+    relation_type: Option<String>,
+    node: Option<Media>,
+}
+
 #[derive(Deserialize)]
 struct PageResponse {
     #[serde(rename = "Page")]
@@ -640,6 +860,14 @@ struct PageInfo {
 struct Media {
     id: u64,
     id_mal: Option<u64>,
+    /// `ANIME` or `MANGA`.
+    #[serde(rename = "type")]
+    media_type: Option<String>,
+    is_adult: Option<bool>,
+    chapters: Option<u32>,
+    volumes: Option<u32>,
+    /// Detail requests only.
+    staff: Option<StaffConnection>,
     title: MediaTitle,
     #[serde(default)]
     synonyms: Vec<String>,
@@ -690,6 +918,7 @@ impl ChineseMetadata {
 
 struct LocalizationRequest {
     id: u64,
+    kind: MediaKind,
     aliases: Vec<String>,
     year: Option<u16>,
     episode_count: Option<u32>,
@@ -700,10 +929,20 @@ impl From<&Media> for LocalizationRequest {
         Self {
             id: media.id,
             aliases: media.search_titles(),
-            year: media
-                .season_year
-                .or_else(|| media.start_date.as_ref().and_then(|date| date.year)),
-            episode_count: media.episodes,
+            // A manga's serialisation starts before Bangumi's series date (its
+            // first volume); only anime compare years.
+            year: (media.kind() == MediaKind::Anime)
+                .then(|| {
+                    media
+                        .season_year
+                        .or_else(|| media.start_date.as_ref().and_then(|date| date.year))
+                })
+                .flatten(),
+            // Chapter counts differ between catalogs; only anime compare.
+            episode_count: (media.kind() == MediaKind::Anime)
+                .then_some(media.episodes)
+                .flatten(),
+            kind: media.kind(),
         }
     }
 }
@@ -752,6 +991,7 @@ struct BangumiSearchResponse {
 #[derive(Debug, Deserialize)]
 struct BangumiSubject {
     name: String,
+    platform: Option<String>,
     name_cn: Option<String>,
     summary: Option<String>,
     date: Option<String>,
@@ -805,6 +1045,23 @@ struct NextAiringEpisode {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+struct StaffConnection {
+    #[serde(default)]
+    edges: Vec<StaffEdge>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StaffEdge {
+    role: Option<String>,
+    node: Option<StaffNode>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StaffNode {
+    name: PersonName,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct StudioConnection {
     #[serde(default)]
     nodes: Vec<Studio>,
@@ -816,6 +1073,36 @@ struct Studio {
 }
 
 impl Media {
+    fn kind(&self) -> MediaKind {
+        if self.media_type.as_deref() == Some("MANGA") {
+            MediaKind::Manga
+        } else {
+            MediaKind::Anime
+        }
+    }
+
+    /// Writers and artists, by their original-script names when known.
+    fn authors(&self) -> Vec<String> {
+        let mut authors = Vec::new();
+        for edge in self.staff.iter().flat_map(|staff| &staff.edges) {
+            let role = edge.role.as_deref().unwrap_or_default();
+            let creator = ["Story", "Art", "Original"]
+                .iter()
+                .any(|part| role.contains(part));
+            let name = edge
+                .node
+                .as_ref()
+                .and_then(|node| node.name.native.clone().or_else(|| node.name.full.clone()))
+                .map(|name| name.trim().to_owned())
+                .filter(|name| !name.is_empty());
+            if let Some(name) = name.filter(|name| creator && !authors.contains(name)) {
+                authors.push(name);
+            }
+        }
+        authors.truncate(4);
+        authors
+    }
+
     fn search_titles(&self) -> Vec<String> {
         let mut seen = BTreeSet::new();
         [
@@ -836,6 +1123,8 @@ impl Media {
 impl From<Media> for AnimeInfo {
     fn from(media: Media) -> Self {
         let search_titles = media.search_titles();
+        let kind = media.kind();
+        let authors = media.authors();
         let MediaTitle {
             romaji,
             english,
@@ -878,6 +1167,7 @@ impl From<Media> for AnimeInfo {
             localized_synopses(description.as_deref().unwrap_or_default());
         Self {
             id: format!("anilist:{}", media.id),
+            kind,
             anilist_id: media.id,
             mal_id: media.id_mal,
             title,
@@ -916,6 +1206,9 @@ impl From<Media> for AnimeInfo {
             next_airing,
             aired_episodes,
             schedule: None,
+            chapters: media.chapters.filter(|count| *count > 0),
+            volumes: media.volumes.filter(|count| *count > 0),
+            authors,
         }
     }
 }
@@ -1159,7 +1452,7 @@ struct CharacterNode {
     image: Option<CharacterImage>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct PersonName {
     full: Option<String>,
     native: Option<String>,
@@ -1206,6 +1499,162 @@ struct AiringSchedule {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn manga_media_carry_chapters_volumes_and_creators() {
+        let media: Media = serde_json::from_value(json!({
+            "id": 118586, "idMal": 126287, "type": "MANGA", "chapters": null, "volumes": 14,
+            "title": { "romaji": "Sousou no Frieren", "english": "Frieren: Beyond Journey's End", "native": "葬送のフリーレン" },
+            "status": "RELEASING", "format": "MANGA", "episodes": null,
+            "staff": { "edges": [
+                { "role": "Story", "node": { "name": { "full": "Kanehito Yamada", "native": "山田鐘人" } } },
+                { "role": "Art", "node": { "name": { "full": "Tsukasa Abe", "native": "アベツカサ" } } },
+                { "role": "Translator (English)", "node": { "name": { "full": "Misa", "native": null } } }
+            ] }
+        }))
+        .unwrap();
+        assert_eq!(media.kind(), MediaKind::Manga);
+        let request = LocalizationRequest::from(&media);
+        assert_eq!(
+            (request.kind, request.year, request.episode_count),
+            (MediaKind::Manga, None, None)
+        );
+        let info = AnimeInfo::from(media);
+        assert_eq!(info.kind, MediaKind::Manga);
+        assert_eq!(info.authors, ["山田鐘人", "アベツカサ"]);
+        assert_eq!((info.chapters, info.volumes), (None, Some(14)));
+        assert_eq!(info.total_episodes, 0);
+        assert_eq!(info.aired_episodes, None);
+    }
+
+    #[test]
+    fn relations_keep_anime_and_manga_and_skip_crossovers() {
+        let response: RelationResponse = serde_json::from_value(json!({ "Media": { "relations": { "edges": [
+            { "relationType": "SOURCE", "node": { "id": 1, "type": "MANGA", "title": { "romaji": "A" } } },
+            { "relationType": "CHARACTER", "node": { "id": 2, "type": "ANIME", "title": { "romaji": "B" } } },
+            { "relationType": "SEQUEL", "node": { "id": 3, "type": "ANIME", "isAdult": true, "title": { "romaji": "C" } } },
+            { "relationType": "COMPILATION", "node": { "id": 4, "type": "ANIME", "title": { "romaji": "D" } } }
+        ] } } }))
+        .unwrap();
+        let kept: Vec<_> = related_media(response.media.relations.edges)
+            .into_iter()
+            .map(|related| (related.relation, related.media.id, related.media.kind))
+            .collect();
+        assert_eq!(
+            kept,
+            [
+                (
+                    "SOURCE".to_owned(),
+                    "anilist:1".to_owned(),
+                    MediaKind::Manga
+                ),
+                ("OTHER".to_owned(), "anilist:4".to_owned(), MediaKind::Anime)
+            ]
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "live AniList requests"]
+    async fn live_manga_lists_search_details_and_relations() {
+        let anilist = AniList::new();
+        for soft in [SortBy::Rank, SortBy::Date] {
+            let query = GetListQuery {
+                limit: 5,
+                soft: Some(soft),
+                kind: MediaKind::Manga,
+                ..Default::default()
+            };
+            let list = anilist.get_list(query, None).await.unwrap();
+            assert!(!list.data.is_empty());
+            assert!(list.data.iter().all(|item| item.kind == MediaKind::Manga));
+        }
+        let found = anilist
+            .search(
+                SearchQuery {
+                    keyword: "Sousou no Frieren".into(),
+                    limit: 5,
+                    kind: MediaKind::Manga,
+                    ..Default::default()
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        let frieren = found.data.first().expect("Frieren manga");
+        assert_eq!(frieren.kind, MediaKind::Manga);
+        let detail = anilist.get_detail(&frieren.id, Some("zh")).await.unwrap();
+        assert!(!detail.authors.is_empty(), "{detail:?}");
+        let relations = anilist.get_relations(&frieren.id).await.unwrap();
+        assert!(relations
+            .iter()
+            .any(|item| item.relation == "ADAPTATION" && item.media.kind == MediaKind::Anime));
+    }
+
+    #[test]
+    fn list_queries_declare_only_the_filters_they_send() {
+        let filter = |kind, year, search, started| PageFilter {
+            kind,
+            year,
+            search,
+            sort: "TRENDING_DESC",
+            started,
+        };
+        // The home page's anime list: the query it sent before manga existed.
+        let (query, variables) =
+            page_query(1, 30, &filter(MediaKind::Anime, Some(2026), None, false));
+        assert!(query.contains("type: ANIME") && query.contains("seasonYear: $year"));
+        assert!(!query.contains("search") && !query.contains("format_not"));
+        assert!(!query.contains("chapters") && query.contains("studios"));
+        assert_eq!(
+            variables,
+            json!({ "page": 1, "perPage": 30, "sort": ["TRENDING_DESC"], "year": 2026 })
+        );
+        let (query, variables) =
+            page_query(2, 30, &filter(MediaKind::Manga, Some(2026), None, true));
+        assert!(query.contains("type: MANGA") && query.contains("format_not: NOVEL"));
+        assert!(query.contains("startDate_lesser: $startedBefore"));
+        assert!(query.contains(&format!("popularity_greater: {NEW_MANGA_MIN_POPULARITY}")));
+        assert!(!query.contains("seasonYear") && !query.contains("studios"));
+        assert!(query.contains("chapters volumes") || query.contains("chapters\n  volumes"));
+        assert!(variables.get("year").is_none() && variables["startedBefore"].is_u64());
+        let (query, variables) = page_query(
+            1,
+            25,
+            &filter(MediaKind::Anime, None, Some("Frieren"), false),
+        );
+        assert!(query.contains("$search: String") && !query.contains("$year"));
+        assert_eq!(variables["search"], "Frieren");
+        // Every declared variable is used and sent.
+        for (query, variables) in [
+            page_query(
+                1,
+                30,
+                &filter(MediaKind::Anime, Some(2026), Some("x"), true),
+            ),
+            page_query(1, 30, &filter(MediaKind::Manga, None, None, false)),
+        ] {
+            let declared = query.split(')').next().unwrap();
+            for name in variables.as_object().unwrap().keys() {
+                assert!(
+                    declared.contains(&format!("${name}:")),
+                    "{name} undeclared in {query}"
+                );
+                assert_eq!(
+                    query.matches(&format!("${name}")).count(),
+                    2,
+                    "{name} unused in {query}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn today_is_a_fuzzy_date_integer() {
+        let today = today_fuzzy_date();
+        assert!((20_260_101..21_000_101).contains(&today));
+        assert!((1..=12).contains(&(today / 100 % 100)));
+        assert!((1..=31).contains(&(today % 100)));
+    }
 
     #[test]
     fn parses_namespaced_and_plain_ids() {
@@ -1259,6 +1708,7 @@ mod tests {
                     keyword: "  ".into(),
                     limit: 25,
                     offset: 0,
+                    ..Default::default()
                 },
                 Some("zh"),
             )
@@ -1285,6 +1735,7 @@ mod tests {
                         keyword: keyword.into(),
                         limit: 25,
                         offset: 0,
+                        ..Default::default()
                     },
                     Some(language),
                 )
@@ -1310,6 +1761,7 @@ mod tests {
                     keyword: "芙莉莲".into(),
                     limit: 1,
                     offset: 0,
+                    ..Default::default()
                 },
                 Some("zh"),
             )
@@ -1321,6 +1773,7 @@ mod tests {
                     keyword: "芙莉莲".into(),
                     limit: 1,
                     offset: 1,
+                    ..Default::default()
                 },
                 Some("zh"),
             )
@@ -1336,6 +1789,7 @@ mod tests {
                     keyword: "Sousou no Frieren".into(),
                     limit: 25,
                     offset: 0,
+                    ..Default::default()
                 },
                 Some("en"),
             )
@@ -1349,6 +1803,7 @@ mod tests {
                     keyword: "魔法".into(),
                     limit: 25,
                     offset: 0,
+                    ..Default::default()
                 },
                 Some("zh"),
             )
@@ -1362,6 +1817,7 @@ mod tests {
                     keyword: "魔法".into(),
                     limit: 25,
                     offset: 150,
+                    ..Default::default()
                 },
                 Some("zh"),
             )
@@ -1386,6 +1842,7 @@ mod tests {
             normalized_catalog_title("葬送のフリーレン 第2期"),
         ]);
         let correct = BangumiSubject {
+            platform: None,
             name: "葬送のフリーレン 第2期".into(),
             name_cn: Some("葬送的芙莉莲 第二季".into()),
             summary: Some("芙莉莲再次踏上旅途。".into()),
@@ -1394,6 +1851,7 @@ mod tests {
             total_episodes: 10,
         };
         let unrelated = BangumiSubject {
+            platform: None,
             name: "葬送のフリーレン ～魔法～".into(),
             name_cn: Some("葬送的芙莉莲 小剧场".into()),
             summary: None,
@@ -1449,6 +1907,7 @@ mod tests {
             .map(normalized_catalog_title)
             .collect();
         let mut subject = BangumiSubject {
+            platform: None,
             name: "転生したらスライムだった件 第4期".into(),
             name_cn: None,
             summary: None,
@@ -1493,6 +1952,7 @@ mod tests {
             localization_base_title(&alias).unwrap(),
         )]);
         let subject = BangumiSubject {
+            platform: None,
             name: base.into(),
             name_cn: None,
             summary: None,

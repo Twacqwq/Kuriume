@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export const diagnosticEvents = ["app_started", "ui_error", "catalog_request", "source_search", "source_episodes", "source_resolve", "source_prepare", "media_request", "player_load", "player_playing", "player_play", "player_pause", "player_background", "player_buffering", "player_seek", "player_error", "subtitle_error", "native_control", "player_fallback"] as const;
 export const diagnosticCodes = ["start", "ok", "empty", "cancelled", "timeout", "connect", "http", "decode", "parse", "not_found", "source", "network", "unsupported", "aborted", "unknown", "type_error", "range_error", "reference_error", "syntax_error", "unhandled_rejection", "hls_manifest", "hls_fragment", "hls_buffer", "hls_key", "subtitle", "native"] as const;
-export const diagnosticActions = ["list", "search", "detail", "episodes", "calendar", "characters", "direct", "sniff", "fetch", "read", "redirect", "playlist", "prepare", "pause", "levels", "volume", "brightness", "finish", "fullscreen", "leave"] as const;
+export const diagnosticActions = ["list", "search", "detail", "episodes", "calendar", "characters", "relations", "direct", "sniff", "fetch", "read", "redirect", "playlist", "prepare", "pause", "levels", "volume", "brightness", "finish", "fullscreen", "leave"] as const;
 export type DiagnosticEvent = typeof diagnosticEvents[number];
 export type DiagnosticCode = typeof diagnosticCodes[number];
 export type DiagnosticLevel = "info" | "warn" | "error";

@@ -13,10 +13,12 @@ import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as MeRouteImport } from './routes/me'
+import { Route as MangaRouteImport } from './routes/manga'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsLogsRouteImport } from './routes/settings_.logs'
+import { Route as MangaIdRouteImport } from './routes/manga_.$id'
 import { Route as AnimeIdRouteImport } from './routes/anime/$id'
 import { Route as AnimeIdIndexRouteImport } from './routes/anime/$id/index'
 import { Route as AnimeIdEpisodeEpRouteImport } from './routes/anime/$id/episode/$ep'
@@ -41,6 +43,11 @@ const MeRoute = MeRouteImport.update({
   path: '/me',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MangaRoute = MangaRouteImport.update({
+  id: '/manga',
+  path: '/manga',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HistoryRoute = HistoryRouteImport.update({
   id: '/history',
   path: '/history',
@@ -59,6 +66,11 @@ const IndexRoute = IndexRouteImport.update({
 const SettingsLogsRoute = SettingsLogsRouteImport.update({
   id: '/settings_/logs',
   path: '/settings/logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MangaIdRoute = MangaIdRouteImport.update({
+  id: '/manga_/$id',
+  path: '/manga/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AnimeIdRoute = AnimeIdRouteImport.update({
@@ -81,11 +93,13 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/calendar': typeof CalendarRoute
   '/history': typeof HistoryRoute
+  '/manga': typeof MangaRoute
   '/me': typeof MeRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/anime/$id': typeof AnimeIdRouteWithChildren
+  '/manga/$id': typeof MangaIdRoute
   '/settings/logs': typeof SettingsLogsRoute
   '/anime/$id/': typeof AnimeIdIndexRoute
   '/anime/$id/episode/$ep': typeof AnimeIdEpisodeEpRoute
@@ -94,10 +108,12 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/calendar': typeof CalendarRoute
   '/history': typeof HistoryRoute
+  '/manga': typeof MangaRoute
   '/me': typeof MeRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
+  '/manga/$id': typeof MangaIdRoute
   '/settings/logs': typeof SettingsLogsRoute
   '/anime/$id': typeof AnimeIdIndexRoute
   '/anime/$id/episode/$ep': typeof AnimeIdEpisodeEpRoute
@@ -107,11 +123,13 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/calendar': typeof CalendarRoute
   '/history': typeof HistoryRoute
+  '/manga': typeof MangaRoute
   '/me': typeof MeRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/watchlist': typeof WatchlistRoute
   '/anime/$id': typeof AnimeIdRouteWithChildren
+  '/manga_/$id': typeof MangaIdRoute
   '/settings_/logs': typeof SettingsLogsRoute
   '/anime/$id/': typeof AnimeIdIndexRoute
   '/anime/$id/episode/$ep': typeof AnimeIdEpisodeEpRoute
@@ -122,11 +140,13 @@ export interface FileRouteTypes {
     | '/'
     | '/calendar'
     | '/history'
+    | '/manga'
     | '/me'
     | '/search'
     | '/settings'
     | '/watchlist'
     | '/anime/$id'
+    | '/manga/$id'
     | '/settings/logs'
     | '/anime/$id/'
     | '/anime/$id/episode/$ep'
@@ -135,10 +155,12 @@ export interface FileRouteTypes {
     | '/'
     | '/calendar'
     | '/history'
+    | '/manga'
     | '/me'
     | '/search'
     | '/settings'
     | '/watchlist'
+    | '/manga/$id'
     | '/settings/logs'
     | '/anime/$id'
     | '/anime/$id/episode/$ep'
@@ -147,11 +169,13 @@ export interface FileRouteTypes {
     | '/'
     | '/calendar'
     | '/history'
+    | '/manga'
     | '/me'
     | '/search'
     | '/settings'
     | '/watchlist'
     | '/anime/$id'
+    | '/manga_/$id'
     | '/settings_/logs'
     | '/anime/$id/'
     | '/anime/$id/episode/$ep'
@@ -161,11 +185,13 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CalendarRoute: typeof CalendarRoute
   HistoryRoute: typeof HistoryRoute
+  MangaRoute: typeof MangaRoute
   MeRoute: typeof MeRoute
   SearchRoute: typeof SearchRoute
   SettingsRoute: typeof SettingsRoute
   WatchlistRoute: typeof WatchlistRoute
   AnimeIdRoute: typeof AnimeIdRouteWithChildren
+  MangaIdRoute: typeof MangaIdRoute
   SettingsLogsRoute: typeof SettingsLogsRoute
 }
 
@@ -199,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/manga': {
+      id: '/manga'
+      path: '/manga'
+      fullPath: '/manga'
+      preLoaderRoute: typeof MangaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/history': {
       id: '/history'
       path: '/history'
@@ -225,6 +258,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/logs'
       fullPath: '/settings/logs'
       preLoaderRoute: typeof SettingsLogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/manga_/$id': {
+      id: '/manga_/$id'
+      path: '/manga/$id'
+      fullPath: '/manga/$id'
+      preLoaderRoute: typeof MangaIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/anime/$id': {
@@ -268,11 +308,13 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CalendarRoute: CalendarRoute,
   HistoryRoute: HistoryRoute,
+  MangaRoute: MangaRoute,
   MeRoute: MeRoute,
   SearchRoute: SearchRoute,
   SettingsRoute: SettingsRoute,
   WatchlistRoute: WatchlistRoute,
   AnimeIdRoute: AnimeIdRouteWithChildren,
+  MangaIdRoute: MangaIdRoute,
   SettingsLogsRoute: SettingsLogsRoute,
 }
 export const routeTree = rootRouteImport

@@ -163,20 +163,20 @@ export function PlayerChrome(props: PlayerChromeProps) {
   const landscapeSheet = fullscreen || !isMobileApp;
 
   return (
-    <div data-player-chrome="" className="pointer-events-none absolute inset-0 z-[70] overflow-hidden text-white">
+    <div data-player-chrome="" className="pointer-events-none absolute inset-0 z-[70] overflow-hidden text-foreground">
       {/* Top bar: fullscreen has no page header, so the title and back live here. */}
-      <div className={cn("player-chrome-top absolute inset-x-0 top-0 flex items-center gap-2 bg-linear-to-b from-black/75 to-transparent px-2 pb-6 pt-1 transition-[opacity,visibility] duration-150 motion-reduce:transition-none", showTopBar ? "pointer-events-auto visible opacity-100" : "invisible opacity-0")}>
+      <div className={cn("player-chrome-top absolute inset-x-0 top-0 flex items-center gap-2 bg-linear-to-b from-background/80 to-transparent px-2 pb-6 pt-1 transition-[opacity,visibility] duration-150 motion-reduce:transition-none", showTopBar ? "pointer-events-auto visible opacity-100" : "invisible opacity-0")}>
         <button type="button" tabIndex={showTopBar ? 0 : -1} onClick={props.onExitFullscreen} aria-label={zh ? "退出全屏" : "Exit fullscreen"}
-          className="grid size-12 shrink-0 place-items-center rounded-full outline-none active:bg-white/15 focus-visible:ring-2 focus-visible:ring-primary-readable">
+          className="grid size-12 shrink-0 place-items-center rounded-full outline-none active:bg-overlay/15 focus-visible:ring-2 focus-visible:ring-primary-readable">
           <ArrowLeft size={20} />
         </button>
         <p className="min-w-0 flex-1 truncate text-[15px] font-bold">
           {props.title}
-          {props.mediaTitle && <span className="ml-2 text-xs font-medium text-white/65">{props.mediaTitle}</span>}
+          {props.mediaTitle && <span className="ml-2 text-xs font-medium text-foreground/65">{props.mediaTitle}</span>}
         </p>
         {props.options && (
           <button type="button" tabIndex={showTopBar ? 0 : -1} onClick={() => onSheet("options")}
-            className="flex h-12 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-bold outline-none active:bg-white/15 focus-visible:ring-2 focus-visible:ring-primary-readable">
+            className="flex h-12 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-bold outline-none active:bg-overlay/15 focus-visible:ring-2 focus-visible:ring-primary-readable">
             <Waypoints size={17} />{zh ? "线路" : "Source"}
           </button>
         )}
@@ -185,7 +185,7 @@ export function PlayerChrome(props: PlayerChromeProps) {
       {canLock && (barsVisible || locked) && (locked ? lockVisible : true) && (
         <button type="button" onClick={() => props.onLocked(!locked)} aria-pressed={locked}
           aria-label={locked ? (zh ? "解锁屏幕" : "Unlock screen") : (zh ? "锁定屏幕" : "Lock screen")}
-          className="pointer-events-auto absolute left-3 top-1/2 grid size-12 -translate-y-1/2 place-items-center rounded-full bg-black/45 outline-none active:bg-black/70 focus-visible:ring-2 focus-visible:ring-primary-readable">
+          className="pointer-events-auto absolute left-3 top-1/2 grid size-12 -translate-y-1/2 place-items-center rounded-full bg-background/55 outline-none active:bg-background/80 focus-visible:ring-2 focus-visible:ring-primary-readable">
           {locked ? <Lock size={19} className="text-primary-readable" /> : <LockOpen size={19} />}
         </button>
       )}
@@ -193,10 +193,10 @@ export function PlayerChrome(props: PlayerChromeProps) {
       <GestureLayer gesture={gesture} />
 
       {resume !== null && !ended && (
-        <div role="status" className="player-chrome-toast pointer-events-auto absolute left-3 flex items-center gap-1 rounded-xl bg-black/75 py-1 pl-3 pr-1 text-sm">
+        <div role="status" className="player-chrome-toast pointer-events-auto absolute left-3 flex items-center gap-1 rounded-xl bg-popover/90 py-1 pl-3 pr-1 text-sm">
           <span className="tabular-nums">{zh ? `已从 ${gestureTime(resume)} 继续播放` : `Resumed at ${gestureTime(resume)}`}</span>
           <button type="button" onClick={() => { if (art) art.currentTime = 0; setResume(null); }}
-            className="flex h-10 items-center gap-1 rounded-lg px-2.5 font-bold text-primary-readable outline-none active:bg-white/10 focus-visible:ring-2 focus-visible:ring-primary-readable">
+            className="flex h-10 items-center gap-1 rounded-lg px-2.5 font-bold text-primary-readable outline-none active:bg-overlay/10 focus-visible:ring-2 focus-visible:ring-primary-readable">
             <RotateCcw size={14} />{zh ? "从头播放" : "Start over"}
           </button>
         </div>
@@ -204,18 +204,18 @@ export function PlayerChrome(props: PlayerChromeProps) {
 
       {slow && !ended && (props.options || props.onOpenOptions) && (
         <button type="button" onClick={() => { setSlow(false); openOptions(); }}
-          className="pointer-events-auto absolute left-1/2 top-[calc(50%+3rem)] -translate-x-1/2 rounded-full bg-black/75 px-4 py-2.5 text-sm font-medium outline-none active:bg-black/90 focus-visible:ring-2 focus-visible:ring-primary-readable">
+          className="pointer-events-auto absolute left-1/2 top-[calc(50%+3rem)] -translate-x-1/2 rounded-full bg-popover/90 px-4 py-2.5 text-sm font-medium outline-none active:bg-popover focus-visible:ring-2 focus-visible:ring-primary-readable">
           {zh ? "加载较慢？换条线路" : "Slow? Try another source"}
         </button>
       )}
 
       {ended && props.next && (
-        <div role="dialog" aria-label={zh ? "下一集" : "Up next"} className="player-chrome-next pointer-events-auto absolute right-3 w-[min(18rem,calc(100%-1.5rem))] rounded-2xl border border-white/10 bg-[#151516]/95 p-3 shadow-xl">
-          <p className="text-xs text-white/60">{zh ? "下一集" : "Up next"}{countdown !== null && <span className="ml-1 tabular-nums">· {countdown}s</span>}</p>
+        <div role="dialog" aria-label={zh ? "下一集" : "Up next"} className="player-chrome-next pointer-events-auto absolute right-3 w-[min(18rem,calc(100%-1.5rem))] rounded-2xl border border-overlay/10 bg-popover/95 p-3 shadow-xl">
+          <p className="text-xs text-foreground/60">{zh ? "下一集" : "Up next"}{countdown !== null && <span className="ml-1 tabular-nums">· {countdown}s</span>}</p>
           <p className="mt-0.5 truncate text-sm font-bold">{props.next.label}</p>
           <div className="mt-3 flex gap-2">
             <button type="button" onClick={() => { setEnded(false); setCountdown(null); }}
-              className="h-10 flex-1 rounded-xl bg-white/10 text-sm font-bold outline-none active:bg-white/20 focus-visible:ring-2 focus-visible:ring-primary-readable">{zh ? "取消" : "Cancel"}</button>
+              className="h-10 flex-1 rounded-xl bg-overlay/10 text-sm font-bold outline-none active:bg-overlay/20 focus-visible:ring-2 focus-visible:ring-primary-readable">{zh ? "取消" : "Cancel"}</button>
             <button type="button" onClick={() => props.next?.onPlay()}
               className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary text-sm font-bold text-primary-foreground outline-none active:opacity-85 focus-visible:ring-2 focus-visible:ring-primary-readable">
               <Play size={14} fill="currentColor" />{zh ? "播放" : "Play"}
@@ -261,13 +261,13 @@ function Sheet({ title, side, viewport, onClose, closeLabel, children }: { title
   // The inline phone player is too short for a sheet: use the whole screen.
   return (
     <div className={cn("pointer-events-auto inset-0 text-foreground", viewport ? "fixed z-[60]" : "absolute z-10")}>
-      <button type="button" aria-label={closeLabel} tabIndex={-1} onClick={onClose} className="absolute inset-0 bg-black/45" />
+      <button type="button" aria-label={closeLabel} tabIndex={-1} onClick={onClose} className="absolute inset-0 bg-scrim/45" />
       <div ref={panel} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}
-        className={cn("player-sheet absolute flex flex-col bg-[#151516]/96 outline-none backdrop-blur-sm",
-          side === "right" ? "inset-y-0 right-0 w-[min(24rem,48%)] border-l border-white/8" : "inset-x-0 bottom-0 max-h-[78%] rounded-t-2xl border-t border-white/8")}>
+        className={cn("player-sheet absolute flex flex-col bg-popover/96 outline-none backdrop-blur-sm",
+          side === "right" ? "inset-y-0 right-0 w-[min(24rem,48%)] border-l border-overlay/8" : "inset-x-0 bottom-0 max-h-[78%] rounded-t-2xl border-t border-overlay/8")}>
         <div className="flex min-h-14 shrink-0 items-center justify-between pl-4 pr-1">
           <h2 className="text-base font-bold">{title}</h2>
-          <button type="button" onClick={onClose} aria-label={closeLabel} className="grid size-12 place-items-center rounded-full text-muted-foreground outline-none active:bg-white/10 focus-visible:ring-2 focus-visible:ring-primary-readable"><X size={18} /></button>
+          <button type="button" onClick={onClose} aria-label={closeLabel} className="grid size-12 place-items-center rounded-full text-muted-foreground outline-none active:bg-overlay/10 focus-visible:ring-2 focus-visible:ring-primary-readable"><X size={18} /></button>
         </div>
         <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">{children}</div>
       </div>
@@ -283,7 +283,7 @@ function ChoiceGrid({ label, items, value, onChange }: { label: string; items: {
         {items.map((item) => (
           <button key={item.value} type="button" role="radio" aria-checked={item.value === value} onClick={() => onChange(item.value)}
             className={cn("min-h-12 rounded-xl text-sm font-bold tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-readable motion-reduce:transition-none",
-              item.value === value ? "bg-primary text-primary-foreground" : "bg-white/8 text-foreground/85 active:bg-white/15")}>
+              item.value === value ? "bg-primary text-primary-foreground" : "bg-overlay/8 text-foreground/85 active:bg-overlay/15")}>
             {item.label}
           </button>
         ))}
@@ -314,7 +314,7 @@ export function EpisodeButton({ episode, current, onSelect, className }: { episo
         current ? "bg-primary font-bold text-primary-foreground" : watched ? "bg-secondary/50 text-foreground/45 active:bg-accent" : "bg-secondary/80 text-foreground/85 hover:bg-accent active:bg-accent", className)}>
       {episode.number}
       {!current && episode.progress !== undefined && episode.progress > 0.02 && !watched && (
-        <span aria-hidden="true" className="absolute inset-x-2 bottom-1.5 h-0.5 overflow-hidden rounded-full bg-white/12">
+        <span aria-hidden="true" className="absolute inset-x-2 bottom-1.5 h-0.5 overflow-hidden rounded-full bg-overlay/12">
           <span className="block h-full bg-primary-readable" style={{ width: `${Math.round(episode.progress * 100)}%` }} />
         </span>
       )}
@@ -335,11 +335,11 @@ function Shortcuts({ zh }: { zh: boolean }) {
     ["?", zh ? "显示快捷键" : "Show shortcuts"],
   ];
   return (
-    <dl className="divide-y divide-white/8 text-sm">
+    <dl className="divide-y divide-overlay/8 text-sm">
       {rows.map(([key, label]) => (
         <div key={key} className="flex items-center justify-between gap-4 py-3">
           <dt className="text-muted-foreground">{label}</dt>
-          <dd><kbd className="rounded-md border border-white/12 bg-white/5 px-2 py-1 text-xs font-bold">{key}</kbd></dd>
+          <dd><kbd className="rounded-md border border-overlay/12 bg-overlay/5 px-2 py-1 text-xs font-bold">{key}</kbd></dd>
         </div>
       ))}
     </dl>
@@ -351,7 +351,7 @@ function GestureLayer({ gesture }: { gesture: GestureFeedback | null }) {
   if (gesture.kind === "speed") {
     return (
       <div role="status" aria-live="polite" className="absolute inset-x-0 top-4 flex justify-center">
-        <div className="flex items-center gap-2 rounded-full bg-black/70 px-4 py-2 text-sm font-bold tabular-nums"><Gauge size={16} />{gesture.text}</div>
+        <div className="flex items-center gap-2 rounded-full bg-popover/85 px-4 py-2 text-sm font-bold tabular-nums"><Gauge size={16} />{gesture.text}</div>
       </div>
     );
   }

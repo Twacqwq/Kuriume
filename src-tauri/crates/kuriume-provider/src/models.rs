@@ -1,10 +1,33 @@
 use serde::{Deserialize, Serialize};
 
-/// Anime information.
+/// What a catalog entry is. AniList and Bangumi number anime and manga in
+/// one ID space, so an ID alone opens either; this says which page it needs.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MediaKind {
+    #[default]
+    Anime,
+    /// Comics and other books (a light-novel original reached by a relation).
+    Manga,
+}
+
+impl MediaKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Anime => "anime",
+            Self::Manga => "manga",
+        }
+    }
+}
+
+/// Catalog entry: an anime, or a manga (`kind`). Episode and broadcast
+/// fields stay empty for manga; chapter, volume and author fields for anime.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnimeInfo {
     /// Stable Kuriume catalog ID. V1 uses the `anilist:{id}` namespace.
     pub id: String,
+    #[serde(default)]
+    pub kind: MediaKind,
     /// AniList media ID.
     pub anilist_id: u64,
     /// MyAnimeList ID exposed by AniList when available.
@@ -59,6 +82,26 @@ pub struct AnimeInfo {
     /// Calendar entries only: the broadcast this entry stands for.
     #[serde(default)]
     pub schedule: Option<AiringSlot>,
+    /// Manga: published chapters, when the catalog knows them.
+    #[serde(default)]
+    pub chapters: Option<u32>,
+    /// Manga: published volumes, when the catalog knows them.
+    #[serde(default)]
+    pub volumes: Option<u32>,
+    /// Manga: writers and artists (anime credit studios instead).
+    #[serde(default)]
+    pub authors: Vec<String>,
+}
+
+/// Another work linked to a catalog entry: its source manga, an anime
+/// adaptation, a sequel...
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelatedMedia {
+    /// `SOURCE`, `ADAPTATION`, `SEQUEL`, `PREQUEL`, `SIDE_STORY`, `SPIN_OFF`,
+    /// `ALTERNATIVE` or `OTHER`, from the related work's point of view
+    /// relative to this one (`SOURCE`: it is this work's original).
+    pub relation: String,
+    pub media: AnimeInfo,
 }
 
 /// One broadcast: an episode number and its Unix airing time in seconds.
@@ -77,6 +120,9 @@ pub struct SearchQuery {
     pub offset: u32,
     /// Number of items per page.
     pub limit: u32,
+    /// Anime (default) or manga.
+    #[serde(default)]
+    pub kind: MediaKind,
 }
 
 /// GetList request parameters.
@@ -93,8 +139,11 @@ pub struct GetListQuery {
     // soft
     pub soft: Option<SortBy>,
     // type
-    #[serde(rename = "type")]
+    #[serde(rename = "type", default)]
     pub typ: u32,
+    /// Anime (default) or manga.
+    #[serde(default)]
+    pub kind: MediaKind,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]

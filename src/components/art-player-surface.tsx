@@ -17,6 +17,7 @@ import { PLAYBACK_RATES, PlayerChrome, type PlayerEpisode, type PlayerNext, type
 import "@/components/art-player-skin.css";
 import { diagnose, diagnosticMessage, type DiagnosticCode } from "@/lib/diagnostics";
 import { themePrimary } from "@/lib/theme";
+import { isProxiedMedia } from "@/lib/media-url";
 
 // Fullscreen belongs to the desktop page, including the double-click shortcut.
 Artplayer.DBCLICK_FULLSCREEN = false;
@@ -231,7 +232,11 @@ export function ArtPlayerSurface({
       fastForward: false,
       lock: false,
       moreVideoAttr: {
-        crossOrigin: "anonymous",
+        // CORS mode only for media served by Kuriume's proxy, which sends the
+        // headers (Anime4K needs them to read frames). A third-party CDN
+        // rarely does, and in CORS mode the WebView then refuses the file
+        // outright ("Media error 4") instead of just playing it.
+        ...(isProxiedMedia(asset.url) ? { crossOrigin: "anonymous" as const } : {}),
         preload: "auto",
       },
       customType: {
@@ -542,8 +547,8 @@ export function ArtPlayerSurface({
   useEffect(() => { if (!isFullscreen) setSheet((current) => (current === "episodes" || current === "options" ? null : current)); }, [isFullscreen]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-black" data-player-locked={locked ? "" : undefined}>
-      <div ref={containerRef} className="artplayer-app h-full w-full overflow-hidden bg-black" data-mobile={isMobileApp} data-fullscreen={fullscreen.mode !== "normal"} data-locked={locked} data-testid="art-player-surface" />
+    <div className="relative h-full w-full overflow-hidden bg-background" data-player-locked={locked ? "" : undefined}>
+      <div ref={containerRef} className="artplayer-app h-full w-full overflow-hidden bg-background" data-mobile={isMobileApp} data-fullscreen={fullscreen.mode !== "normal"} data-locked={locked} data-testid="art-player-surface" />
       <PlayerChrome
         art={gesturePlayer}
         language={language}

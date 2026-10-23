@@ -1,7 +1,7 @@
 import { useCatalogSource, useDisplayLanguage } from "@/hooks/use-display-language";
-import { CATALOG_PROVIDERS } from "@/lib/store";
+import { CATALOG_PROVIDERS, catalogSourceForKind } from "@/lib/store";
 import { displayAnimeTitle } from "@/lib/display-language";
-import type { AnimeInfo, PagedResult } from "@/lib/types";
+import { mediaKind, type AnimeInfo, type MediaKind, type PagedResult } from "@/lib/types";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { invoke } from "@tauri-apps/api/core";
@@ -36,9 +36,9 @@ export function rememberSearch(query: string) {
  * Below the search field: recent searches while it is empty, and the first
  * few catalog matches while typing. Enter still opens the full result page.
  */
-export function SearchSuggestions({ query, composing = false, onSearch, onNavigate }: { query: string; composing?: boolean; onSearch: (query: string) => void; onNavigate: () => void }) {
+export function SearchSuggestions({ query, kind = "anime", composing = false, onSearch, onNavigate }: { query: string; kind?: MediaKind; composing?: boolean; onSearch: (query: string) => void; onNavigate: () => void }) {
   const language = useDisplayLanguage();
-  const source = useCatalogSource();
+  const source = catalogSourceForKind(kind, useCatalogSource());
   const zh = language === "zh";
   const [recent, setRecent] = useState(readRecent);
   const [debounced, setDebounced] = useState(query.trim());
@@ -52,8 +52,8 @@ export function SearchSuggestions({ query, composing = false, onSearch, onNaviga
   // One CJK character is already a meaningful title query; Latin needs two.
   const ready = debounced.length >= 2 || /[぀-ヿ㐀-鿿]/.test(debounced);
   const suggestions = useQuery({
-    queryKey: ["search-suggest", debounced, language, source],
-    queryFn: () => invoke<PagedResult<AnimeInfo>>("search", { provider: CATALOG_PROVIDERS[source], language, query: { keyword: debounced, limit: 6, offset: 0 } }),
+    queryKey: ["search-suggest", debounced, language, source, kind],
+    queryFn: () => invoke<PagedResult<AnimeInfo>>("search", { provider: CATALOG_PROVIDERS[source], language, query: { keyword: debounced, limit: 6, offset: 0, kind } }),
     enabled: ready,
     staleTime: 5 * 60 * 1000,
     retry: false,
@@ -100,14 +100,16 @@ export function SearchSuggestions({ query, composing = false, onSearch, onNaviga
         <ul>
           {items.map((media) => (
             <li key={media.id}>
-              <Link to="/anime/$id" params={{ id: media.id }} onClick={() => { rememberSearch(query); onNavigate(); }}
+              <Link to={mediaKind(media) === "manga" ? "/manga/$id" : "/anime/$id"} params={{ id: media.id }} onClick={() => { rememberSearch(query); onNavigate(); }}
                 className="press flex min-h-14 items-center gap-3 rounded-xl px-2 py-1.5 outline-none hover:bg-accent active:bg-accent focus-visible:ring-2 focus-visible:ring-primary-readable">
                 <span className="h-14 w-10 shrink-0 overflow-hidden rounded-md bg-card">
                   {media.cover && <img src={media.cover} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{displayAnimeTitle(media, language)}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{[media.year, media.format, media.total_episodes ? (zh ? `${media.total_episodes} 话` : `${media.total_episodes} eps`) : null].filter(Boolean).join(" · ")}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{(mediaKind(media) === "manga"
+                    ? [media.year, ...(media.authors ?? []).slice(0, 1), media.volumes ? (zh ? `${media.volumes} 卷` : `${media.volumes} vols`) : null]
+                    : [media.year, media.format, media.total_episodes ? (zh ? `${media.total_episodes} 话` : `${media.total_episodes} eps`) : null]).filter(Boolean).join(" · ")}</span>
                 </span>
                 <ArrowUpRight size={15} className="shrink-0 text-muted-foreground" />
               </Link>

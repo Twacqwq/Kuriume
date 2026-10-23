@@ -1,4 +1,4 @@
-import type { AnimeInfo } from "@/lib/types";
+import { mediaKind, type AnimeInfo, type MediaKind } from "@/lib/types";
 import { invoke } from "@tauri-apps/api/core";
 
 export type DisplayLanguage = "en" | "zh";
@@ -14,6 +14,17 @@ export const DEFAULT_CATALOG_SOURCE: CatalogSource = "anilist";
 /** Provider names the Rust catalog commands take. */
 export const CATALOG_PROVIDERS = { anilist: "AniList", bangumi: "Bangumi" } as const;
 export type CatalogProviderName = (typeof CATALOG_PROVIDERS)[CatalogSource];
+
+/**
+ * Manga always come from Bangumi for now: its book catalog is Chinese-first
+ * and lists series. The 数据源 setting chooses the anime catalog only.
+ */
+export const MANGA_CATALOG_SOURCE: CatalogSource = "bangumi";
+
+/** The catalog a kind of work is browsed and searched in. */
+export function catalogSourceForKind(kind: MediaKind, animeSource: CatalogSource): CatalogSource {
+  return kind === "manga" ? MANGA_CATALOG_SOURCE : animeSource;
+}
 
 export function catalogSourceOf(id: string): CatalogSource {
   return id.startsWith("bangumi:") ? "bangumi" : "anilist";
@@ -57,6 +68,8 @@ export const catalogApi = {
    * by title once and then remembered; null when there is no confident match.
    */
   counterpart: (id: string) => invoke<string | null>("catalog_counterpart", { id }),
+  /** Bangumi's entry for an unsaved AniList manga, matched by title; null if none. */
+  findMangaCounterpart: (id: string) => invoke<string | null>("find_manga_counterpart", { id }),
 };
 
 // One small, process-local entry. Settings change only through our save actions.
@@ -75,6 +88,7 @@ export interface StoredMedia {
   cover: string | null;
   banner: string | null;
   total_episodes: number;
+  kind: MediaKind;
 }
 
 export const mediaApi = {
@@ -90,6 +104,7 @@ export const mediaApi = {
         cover: media.cover,
         banner: media.banner,
         total_episodes: media.total_episodes,
+        kind: mediaKind(media),
       },
     }),
 };
@@ -128,6 +143,16 @@ export const LIBRARY_STATUSES = [
 
 export type LibraryStatus = (typeof LIBRARY_STATUSES)[number]["id"];
 
+/** A library status in the words for one kind of work (or for both). */
+export function libraryStatusLabel(status: LibraryStatus, kind: MediaKind | "all", language: DisplayLanguage): string {
+  const labels = {
+    anime: { following: ["追番中", "Following"], completed: ["已看完", "Completed"] },
+    manga: { following: ["追漫中", "Reading"], completed: ["已读完", "Completed"] },
+    all: { following: ["在追", "Following"], completed: ["已完成", "Completed"] },
+  } as const;
+  return labels[kind][status][language === "zh" ? 0 : 1];
+}
+
 export interface LibraryEntry {
   media_id: string;
   provider: string;
@@ -139,6 +164,8 @@ export interface LibraryEntry {
   status: LibraryStatus;
   added_at: string;
   updated_at: string;
+  /** Absent from responses of builds before manga existed. */
+  kind?: MediaKind;
 }
 
 export const libraryApi = {

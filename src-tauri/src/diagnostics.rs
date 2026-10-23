@@ -116,6 +116,7 @@ pub enum Action {
     Episodes,
     Calendar,
     Characters,
+    Relations,
     Direct,
     Sniff,
     Fetch,
