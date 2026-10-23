@@ -41,6 +41,9 @@ impl ProviderState {
     }
 }
 
+/// The catalog manga are browsed in, whatever the anime catalog is.
+const MANGA_CATALOG: &str = "bangumi";
+
 /// Provider name for a catalog source / ID prefix (`anilist`, `bangumi`).
 fn provider_name(source: &str) -> Option<&'static str> {
     match source {
@@ -181,7 +184,8 @@ pub(crate) async fn get_relations(
 }
 
 /// The chosen catalog's ID for a saved entry from the other catalog
-/// (`anilist:21` → `bangumi:975` while Bangumi is the source), or `None` when
+/// (`anilist:21` → `bangumi:975` while Bangumi is the source; Bangumi for
+/// every manga), or `None` when
 /// `id` already belongs to the chosen catalog, was never saved, or has no
 /// confident match. A match found by title is remembered on the saved media,
 /// so history, library and playback bindings carry over.
@@ -196,24 +200,30 @@ pub(crate) async fn catalog_counterpart(
         return Ok(None);
     };
     let saved = store.with_store(&app, |store| {
-        let target = store
+        let anime_catalog = store
             .get_settings()
             .map_err(|error| error.to_string())?
             .catalog_source;
-        if target == source {
-            return Ok(None);
-        }
         let Some(media_id) = store
             .media_for_identity(source, external_id)
             .map_err(|error| error.to_string())?
         else {
             return Ok(None);
         };
-        let identities = store
-            .external_identity_list(&media_id)
-            .map_err(|error| error.to_string())?;
         let media = store
             .get_media(&media_id)
+            .map_err(|error| error.to_string())?;
+        // The 数据源 setting picks the anime catalog; manga always use Bangumi.
+        let target = if media.as_ref().is_some_and(|media| media.kind == "manga") {
+            MANGA_CATALOG.to_owned()
+        } else {
+            anime_catalog
+        };
+        if target == source {
+            return Ok(None);
+        }
+        let identities = store
+            .external_identity_list(&media_id)
             .map_err(|error| error.to_string())?;
         Ok(Some((target, media_id, identities, media)))
     })?;

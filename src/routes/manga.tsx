@@ -1,6 +1,6 @@
 import { AnimeGrid } from "@/components/anime-grid";
 import { PullToRefresh } from "@/components/pull-to-refresh";
-import { useCatalogSource, useDisplayLanguage } from "@/hooks/use-display-language";
+import { useDisplayLanguage } from "@/hooks/use-display-language";
 import {
   ensureCatalogSettings,
   fetchMangaList,
@@ -27,10 +27,9 @@ export const Route = createFileRoute("/manga")({
 
 function MangaPage() {
   const language = useDisplayLanguage();
-  const source = useCatalogSource();
   const sort: MangaSort = Route.useSearch().sort ?? "popular";
   const router = useRouter();
-  const queryKey = [...mangaListKey(sort, language, source)];
+  const queryKey = [...mangaListKey(sort, language)];
 
   return (
     <div className="min-h-full pb-8 md:pb-16">
@@ -56,10 +55,10 @@ function MangaPage() {
         </nav>
       </div>
       <AnimeGrid
-        key={`${sort}:${language}:${source}`}
+        key={`${sort}:${language}`}
         kind="manga"
         queryKey={queryKey}
-        queryFn={(offset: number) => fetchMangaList(offset, sort, language, source)}
+        queryFn={(offset: number) => fetchMangaList(offset, sort, language)}
         initialPageParam={0}
         getNextPageParam={(lastPage) => {
           const next = lastPage.offset + lastPage.limit;

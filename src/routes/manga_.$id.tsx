@@ -3,7 +3,7 @@ import { useDisplayLanguage } from "@/hooks/use-display-language";
 import { useDetailLibrary } from "@/hooks/use-detail-library";
 import { counterpartQueryOptions, listedAnime, relationsQueryOptions } from "@/lib/catalog-queries";
 import { queryClient } from "@/lib/query-client";
-import { catalogSourceOf, DEFAULT_CATALOG_SOURCE, DEFAULT_DISPLAY_LANGUAGE, settingsQueryOptions } from "@/lib/store";
+import { catalogSourceOf, DEFAULT_DISPLAY_LANGUAGE, MANGA_CATALOG_SOURCE, settingsQueryOptions } from "@/lib/store";
 import type { AnimeInfo } from "@/lib/types";
 import { charactersQueryOptions, detailQueryOptions, sameView, useCatalogRedirect } from "@/routes/anime/$id";
 import { useQuery } from "@tanstack/react-query";
@@ -15,7 +15,8 @@ export const Route = createFileRoute("/manga_/$id")({
     if (preload) return;
     const settings = await queryClient.ensureQueryData(settingsQueryOptions);
     const language = settings.display_language ?? DEFAULT_DISPLAY_LANGUAGE;
-    const source = settings.catalog_source ?? DEFAULT_CATALOG_SOURCE;
+    // A saved manga from another catalog opens as its Bangumi entry.
+    const source = MANGA_CATALOG_SOURCE;
     if (catalogSourceOf(params.id) !== source) {
       const target = await queryClient.fetchQuery(counterpartQueryOptions(params.id, source));
       if (target) throw redirect({ ...sameView(location.pathname, target), replace: true });
@@ -34,7 +35,7 @@ function MangaDetailPage() {
   const { id } = Route.useParams();
   const router = useRouter();
   const language = useDisplayLanguage();
-  const redirecting = useCatalogRedirect(id);
+  const redirecting = useCatalogRedirect(id, MANGA_CATALOG_SOURCE);
   const { data: media, error: detailError, isPlaceholderData } = useQuery({ ...detailQueryOptions(id, language), enabled: !redirecting });
   if (detailError) throw detailError;
   const isAnime = media?.kind === "anime";

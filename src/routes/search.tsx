@@ -1,7 +1,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { AnimeGrid } from "@/components/anime-grid";
 import { useCatalogSource, useDisplayLanguage } from "@/hooks/use-display-language";
-import { CATALOG_PROVIDERS, type CatalogSource, type DisplayLanguage } from "@/lib/store";
+import { CATALOG_PROVIDERS, catalogSourceForKind, type CatalogSource, type DisplayLanguage } from "@/lib/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { AnimeInfo, MediaKind, PagedResult } from "@/lib/types";
 
@@ -50,7 +50,7 @@ function SearchPage() {
   const { q, kind: kindParam } = Route.useSearch();
   const kind: MediaKind = kindParam ?? "anime";
   const language = useDisplayLanguage();
-  const source = useCatalogSource();
+  const source = catalogSourceForKind(kind, useCatalogSource());
 
   if (!q) return null;
 

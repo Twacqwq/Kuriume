@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { counterpartQueryOptions, listedAnime } from "@/lib/catalog-queries";
 import { queryClient } from "@/lib/query-client";
 import { useCatalogSource } from "@/hooks/use-display-language";
-import { catalogProviderFor, catalogSourceOf, DEFAULT_CATALOG_SOURCE, DEFAULT_DISPLAY_LANGUAGE, settingsQueryOptions, type DisplayLanguage } from "@/lib/store";
+import { catalogProviderFor, catalogSourceOf, DEFAULT_CATALOG_SOURCE, DEFAULT_DISPLAY_LANGUAGE, settingsQueryOptions, type CatalogSource, type DisplayLanguage } from "@/lib/store";
 import type { AnimeInfo, AnimeEpisodes, AnimeCharacters } from "@/lib/types";
 
 export const detailQueryOptions = (
@@ -60,8 +60,9 @@ export function sameView(pathname: string, id: string) {
  * True while that lookup runs or the redirect is pending, so pages hold their
  * catalog requests (the original catalog may be unreachable).
  */
-export function useCatalogRedirect(id: string): boolean {
-  const source = useCatalogSource();
+export function useCatalogRedirect(id: string, catalog?: CatalogSource): boolean {
+  const animeSource = useCatalogSource();
+  const source = catalog ?? animeSource;
   const foreign = catalogSourceOf(id) !== source;
   const { data: target, isPending } = useQuery({ ...counterpartQueryOptions(id, source), enabled: foreign });
   const navigate = useNavigate();

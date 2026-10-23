@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { queryClient } from "@/lib/query-client";
-import { CATALOG_PROVIDERS, catalogApi, catalogProviderFor, catalogSourceOf, DEFAULT_CATALOG_SOURCE, DEFAULT_DISPLAY_LANGUAGE, libraryApi, settingsQueryOptions, type CatalogSource, type DisplayLanguage } from "@/lib/store";
+import { CATALOG_PROVIDERS, catalogApi, catalogProviderFor, catalogSourceOf, MANGA_CATALOG_SOURCE, DEFAULT_CATALOG_SOURCE, DEFAULT_DISPLAY_LANGUAGE, libraryApi, settingsQueryOptions, type CatalogSource, type DisplayLanguage } from "@/lib/store";
 import type { AnimeInfo, CalendarEntry, PagedResult, RelatedMedia } from "@/lib/types";
 
 export const CURRENT_YEAR = new Date().getFullYear();
@@ -54,10 +54,9 @@ export async function fetchMangaList(
   offset: number,
   sort: MangaSort,
   language: DisplayLanguage,
-  source: CatalogSource = DEFAULT_CATALOG_SOURCE,
 ): Promise<PagedResult<AnimeInfo>> {
   return invoke<PagedResult<AnimeInfo>>("get_list", {
-    provider: CATALOG_PROVIDERS[source],
+    provider: CATALOG_PROVIDERS[MANGA_CATALOG_SOURCE],
     language,
     query: {
       limit: MANGA_PAGE_SIZE,
@@ -68,8 +67,8 @@ export async function fetchMangaList(
   });
 }
 
-export const mangaListKey = (sort: MangaSort, language: DisplayLanguage, source: CatalogSource) =>
-  ["manga-list", source, sort, language] as const;
+export const mangaListKey = (sort: MangaSort, language: DisplayLanguage) =>
+  ["manga-list", MANGA_CATALOG_SOURCE, sort, language] as const;
 
 /** Anime and manga linked to a work: its original, adaptations, sequels. */
 export const relationsQueryOptions = (id: string) => ({
@@ -155,7 +154,10 @@ export function linkFollowedToCatalog(): Promise<void> {
   linking ??= (async () => {
     const source = await currentCatalogSource();
     const library = await libraryApi.list("following").catch(() => []);
-    const pending = library.filter((entry) => entry.provider !== source).slice(0, LINK_BATCH);
+    // Manga stay in their own catalog whatever the anime source is.
+    const pending = library
+      .filter((entry) => entry.kind !== "manga" && entry.provider !== source)
+      .slice(0, LINK_BATCH);
     let linked = false;
     for (const entry of pending) {
       const id = `${entry.provider}:${entry.external_id}`;

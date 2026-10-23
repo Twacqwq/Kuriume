@@ -15,6 +15,17 @@ export const DEFAULT_CATALOG_SOURCE: CatalogSource = "anilist";
 export const CATALOG_PROVIDERS = { anilist: "AniList", bangumi: "Bangumi" } as const;
 export type CatalogProviderName = (typeof CATALOG_PROVIDERS)[CatalogSource];
 
+/**
+ * Manga always come from Bangumi for now: its book catalog is Chinese-first
+ * and lists series. The 数据源 setting chooses the anime catalog only.
+ */
+export const MANGA_CATALOG_SOURCE: CatalogSource = "bangumi";
+
+/** The catalog a kind of work is browsed and searched in. */
+export function catalogSourceForKind(kind: MediaKind, animeSource: CatalogSource): CatalogSource {
+  return kind === "manga" ? MANGA_CATALOG_SOURCE : animeSource;
+}
+
 export function catalogSourceOf(id: string): CatalogSource {
   return id.startsWith("bangumi:") ? "bangumi" : "anilist";
 }

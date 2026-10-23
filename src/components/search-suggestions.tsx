@@ -1,5 +1,5 @@
 import { useCatalogSource, useDisplayLanguage } from "@/hooks/use-display-language";
-import { CATALOG_PROVIDERS } from "@/lib/store";
+import { CATALOG_PROVIDERS, catalogSourceForKind } from "@/lib/store";
 import { displayAnimeTitle } from "@/lib/display-language";
 import { mediaKind, type AnimeInfo, type MediaKind, type PagedResult } from "@/lib/types";
 import { useQuery } from "@tanstack/react-query";
@@ -38,7 +38,7 @@ export function rememberSearch(query: string) {
  */
 export function SearchSuggestions({ query, kind = "anime", composing = false, onSearch, onNavigate }: { query: string; kind?: MediaKind; composing?: boolean; onSearch: (query: string) => void; onNavigate: () => void }) {
   const language = useDisplayLanguage();
-  const source = useCatalogSource();
+  const source = catalogSourceForKind(kind, useCatalogSource());
   const zh = language === "zh";
   const [recent, setRecent] = useState(readRecent);
   const [debounced, setDebounced] = useState(query.trim());

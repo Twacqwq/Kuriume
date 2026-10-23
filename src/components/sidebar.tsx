@@ -16,9 +16,10 @@ import {
 
 const NAVIGATION = [
   { icon: Home, label: "首页", english: "Home", to: "/" },
-  { icon: BookOpen, label: "漫画", english: "Manga", to: "/manga" },
   { icon: CalendarDays, label: "日历", english: "Calendar", to: "/calendar" },
   { icon: Library, label: "追番", english: "Following", to: "/watchlist" },
+  // Listing only until reading arrives: last of the browsing sections.
+  { icon: BookOpen, label: "漫画", english: "Manga", to: "/manga" },
 ] as const;
 
 interface SidebarProps {

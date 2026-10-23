@@ -10,9 +10,10 @@ export function MobileNavigation({ onSearch }: { onSearch: () => void }) {
   const updateAvailable = useUpdateAvailable();
   const items = [
     { to: "/", icon: Home, label: language === "zh" ? "首页" : "Home" },
-    { to: "/manga", icon: BookOpen, label: language === "zh" ? "漫画" : "Manga" },
     { to: "/calendar", icon: CalendarDays, label: language === "zh" ? "日历" : "Calendar" },
     { to: "/watchlist", icon: Library, label: language === "zh" ? "追番" : "Following", title: language === "zh" ? "追番/追漫" : "Following" },
+    // Listing only until reading arrives: after the anime sections.
+    { to: "/manga", icon: BookOpen, label: language === "zh" ? "漫画" : "Manga" },
     { to: "/settings", icon: CircleUserRound, label: language === "zh" ? "我的" : "Me" },
   ] as const;
   // Detail has its own back navigation; keep browsing chrome on root screens.

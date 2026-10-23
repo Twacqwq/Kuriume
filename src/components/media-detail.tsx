@@ -210,7 +210,7 @@ export function MediaDetail({
             </div>
             {manga && (
               <p id="manga-reading-source" className="mt-3 text-sm text-muted-foreground">
-                {zh ? "尚未添加阅读源。之后可以连接 Komga、OPDS 书库或导入本地漫画，在这里阅读。" : "No reading source yet. Komga, OPDS libraries and local files will be readable here."}
+                {zh ? "阅读功能即将上线，敬请期待。" : "Reading is coming soon."}
               </p>
             )}
             {libraryError && <p role="alert" className="mt-3 text-sm text-destructive-readable">{libraryError}</p>}

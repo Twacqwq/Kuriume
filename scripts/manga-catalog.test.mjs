@@ -24,17 +24,38 @@ const relations = await import(await transpile("lib/media-relations.ts", { "@/li
 const store = await import(storeUrl);
 test.after(() => { delete globalThis.__mangaClient; delete globalThis.__mangaInvoke; });
 
-test("manga lists ask the chosen catalog for manga, popular or newest", async () => {
+test("manga lists always come from Bangumi, popular or newest", async () => {
   const calls = [];
   globalThis.__mangaInvoke = async (command, args) => { calls.push([command, args]); return { data: [], total: 0, limit: 30, offset: 0 }; };
-  await catalog.fetchMangaList(30, "new", "zh", "bangumi");
+  await catalog.fetchMangaList(30, "new", "zh");
   await catalog.fetchMangaList(0, "popular", "en");
   assert.deepEqual(calls.map(([command]) => command), ["get_list", "get_list"]);
-  assert.equal(calls[0][1].provider, "Bangumi");
+  assert.deepEqual(calls.map(([, args]) => args.provider), ["Bangumi", "Bangumi"]);
   assert.deepEqual(calls[0][1].query, { limit: 30, offset: 30, soft: "Date", kind: "manga" });
-  assert.equal(calls[1][1].provider, "AniList");
   assert.equal(calls[1][1].query.soft, "Rank");
-  assert.notDeepEqual(catalog.mangaListKey("new", "zh", "anilist"), catalog.mangaListKey("popular", "zh", "anilist"));
+  assert.notDeepEqual(catalog.mangaListKey("new", "zh"), catalog.mangaListKey("popular", "zh"));
+});
+
+test("the 数据源 setting chooses the anime catalog only", () => {
+  assert.equal(store.catalogSourceForKind("manga", "anilist"), "bangumi");
+  assert.equal(store.catalogSourceForKind("manga", "bangumi"), "bangumi");
+  assert.equal(store.catalogSourceForKind("anime", "anilist"), "anilist");
+});
+
+test("followed manga are not re-linked when the anime catalog changes", async () => {
+  const calls = [];
+  globalThis.__mangaInvoke = async (command, args) => {
+    calls.push([command, args]);
+    if (command === "get_settings") return { display_language: "zh", catalog_source: "anilist" };
+    if (command === "library_list") return [
+      { provider: "bangumi", external_id: "1", kind: "manga" },
+      { provider: "bangumi", external_id: "2", kind: "anime" },
+    ];
+    if (command === "catalog_counterpart") return null;
+    return null;
+  };
+  await catalog.linkFollowedToCatalog();
+  assert.deepEqual(calls.filter(([command]) => command === "catalog_counterpart").map(([, args]) => args.id), ["bangumi:2"]);
 });
 
 test("relations come from the catalog that owns the ID", async () => {

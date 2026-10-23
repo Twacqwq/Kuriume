@@ -76,7 +76,7 @@ test("search is a results-only route: empty legacy URLs return home without addi
     "@tanstack/react-router": import.meta.resolve("@tanstack/react-router"),
     "@/components/anime-grid": moduleUrl("export const AnimeGrid = () => null"),
     "@/hooks/use-display-language": moduleUrl("export const useDisplayLanguage = () => 'zh'; export const useCatalogSource = () => 'anilist'"),
-    "@/lib/store": moduleUrl("export const CATALOG_PROVIDERS = { anilist: 'AniList', bangumi: 'Bangumi' }"),
+    "@/lib/store": moduleUrl("export const CATALOG_PROVIDERS = { anilist: 'AniList', bangumi: 'Bangumi' }; export const catalogSourceForKind = (kind, source) => kind === 'manga' ? 'bangumi' : source"),
   "@/components/search-suggestions": moduleUrl("export const SearchSuggestions = () => null; export const rememberSearch = () => {};"),
     "@tauri-apps/api/core": moduleUrl("export const invoke = () => { throw new Error('Unexpected search request'); }"),
     "react/jsx-runtime": import.meta.resolve("react/jsx-runtime"),
