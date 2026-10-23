@@ -68,6 +68,8 @@ export const catalogApi = {
    * by title once and then remembered; null when there is no confident match.
    */
   counterpart: (id: string) => invoke<string | null>("catalog_counterpart", { id }),
+  /** Bangumi's entry for an unsaved AniList manga, matched by title; null if none. */
+  findMangaCounterpart: (id: string) => invoke<string | null>("find_manga_counterpart", { id }),
 };
 
 // One small, process-local entry. Settings change only through our save actions.

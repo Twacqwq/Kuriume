@@ -183,6 +183,46 @@ pub(crate) async fn get_relations(
     .map_err(|error| error.to_string())
 }
 
+/// The Bangumi entry for an AniList manga that was never saved (reached
+/// through an anime's related works), found by its titles; `None` when
+/// there is no confident match. Manga are browsed in Bangumi only.
+#[command]
+pub(crate) async fn find_manga_counterpart(
+    state: State<'_, ProviderState>,
+    id: &str,
+) -> Result<Option<String>, String> {
+    let Some(("anilist", _)) = id.split_once(':') else {
+        return Ok(None);
+    };
+    let info = observe(
+        Event::CatalogRequest,
+        "AniList",
+        operation(),
+        Some(Action::Detail),
+        state.get("AniList")?.get_detail(id, None),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    if info.kind != MediaKind::Manga {
+        return Ok(None);
+    }
+    // Bangumi names books by their original title: search that first.
+    let mut titles: Vec<String> = info.title_native.iter().cloned().collect();
+    titles.extend([info.title.clone(), info.title_en.clone()]);
+    titles.extend(info.title_cn.iter().cloned());
+    titles.extend(info.search_titles.iter().cloned());
+    let found = observe(
+        Event::CatalogRequest,
+        "Bangumi",
+        operation(),
+        Some(Action::Search),
+        find_counterpart(state.get("Bangumi")?.as_ref(), MediaKind::Manga, &titles, 0),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    Ok(found.map(|info| info.id))
+}
+
 /// The chosen catalog's ID for a saved entry from the other catalog
 /// (`anilist:21` → `bangumi:975` while Bangumi is the source; Bangumi for
 /// every manga), or `None` when

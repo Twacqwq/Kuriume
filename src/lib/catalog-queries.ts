@@ -103,7 +103,7 @@ export async function prefetchBrowseData() {
 const CATALOG_KEYS = new Set([
   "anime-list", "home-season-page", "search", "calendar", "anime-detail",
   "stored-media", "stored-title", "library-list", "history-list", "catalog-counterpart",
-  "manga-list", "catalog-relations",
+  "manga-list", "catalog-relations", "manga-counterpart",
 ]);
 
 /** After a language or data-source change: drop catalog caches, reload home and schedule. */
@@ -135,6 +135,24 @@ export const counterpartQueryOptions = (id: string, source: CatalogSource) => ({
     if (catalogSourceOf(id) === source) return null;
     try {
       return await catalogApi.counterpart(id);
+    } catch {
+      return null;
+    }
+  },
+});
+
+/**
+ * Where a manga ID opens: manga are Bangumi entries only. A saved manga uses
+ * its remembered Bangumi entry; any other (an AniList anime's original manga)
+ * is matched by title. Null keeps the ID, so a failed lookup still opens it.
+ */
+export const bangumiMangaQueryOptions = (id: string) => ({
+  queryKey: ["manga-counterpart", id],
+  staleTime: Infinity,
+  queryFn: async () => {
+    if (catalogSourceOf(id) === MANGA_CATALOG_SOURCE) return null;
+    try {
+      return (await catalogApi.counterpart(id)) ?? (await catalogApi.findMangaCounterpart(id));
     } catch {
       return null;
     }

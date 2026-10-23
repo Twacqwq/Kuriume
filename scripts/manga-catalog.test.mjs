@@ -105,3 +105,25 @@ test("manga length shows the volumes and chapters the catalog knows", () => {
   assert.equal(relations.mangaLength({ volumes: 14, chapters: null }, "en"), "14 volumes");
   assert.equal(relations.mangaLength({}, "zh"), null);
 });
+
+test("manga open as Bangumi entries: remembered first, else matched by title", async () => {
+  const calls = [];
+  const answers = { "anilist:1": ["bangumi:10", null], "anilist:2": [null, "bangumi:20"], "anilist:3": [null, null] };
+  globalThis.__mangaInvoke = async (command, args) => {
+    calls.push([command, args.id]);
+    const [saved, found] = answers[args.id];
+    return command === "catalog_counterpart" ? saved : found;
+  };
+  const target = (id) => globalThis.__mangaClient.fetchQuery(catalog.bangumiMangaQueryOptions(id));
+  assert.equal(await target("anilist:1"), "bangumi:10");
+  assert.equal(await target("anilist:2"), "bangumi:20");
+  assert.equal(await target("anilist:3"), null);
+  assert.equal(await target("bangumi:30"), null, "already a Bangumi entry");
+  assert.deepEqual(calls, [
+    ["catalog_counterpart", "anilist:1"],
+    ["catalog_counterpart", "anilist:2"], ["find_manga_counterpart", "anilist:2"],
+    ["catalog_counterpart", "anilist:3"], ["find_manga_counterpart", "anilist:3"],
+  ]);
+  globalThis.__mangaInvoke = async () => { throw new Error("offline"); };
+  assert.equal(await target("anilist:4"), null, "a failed lookup keeps the ID");
+});

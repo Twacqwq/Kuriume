@@ -122,6 +122,7 @@ pub fn run() {
             crate::commands::get_characters,
             crate::commands::get_relations,
             crate::commands::catalog_counterpart,
+            crate::commands::find_manga_counterpart,
             crate::online_commands::playback_source_list,
             crate::online_commands::playback_source_list_rules,
             crate::online_commands::playback_source_add_rule,

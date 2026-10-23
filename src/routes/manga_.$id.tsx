@@ -1,25 +1,39 @@
 import { MediaDetail } from "@/components/media-detail";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
 import { useDetailLibrary } from "@/hooks/use-detail-library";
-import { counterpartQueryOptions, listedAnime, relationsQueryOptions } from "@/lib/catalog-queries";
+import { bangumiMangaQueryOptions, listedAnime, relationsQueryOptions } from "@/lib/catalog-queries";
 import { queryClient } from "@/lib/query-client";
 import { catalogSourceOf, DEFAULT_DISPLAY_LANGUAGE, MANGA_CATALOG_SOURCE, settingsQueryOptions } from "@/lib/store";
+import { useEffect } from "react";
 import type { AnimeInfo } from "@/lib/types";
-import { charactersQueryOptions, detailQueryOptions, sameView, useCatalogRedirect } from "@/routes/anime/$id";
+import { charactersQueryOptions, detailQueryOptions } from "@/routes/anime/$id";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Navigate, redirect, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Navigate, redirect, useNavigate, useRouter } from "@tanstack/react-router";
+
+/**
+ * The manga tab shows Bangumi entries only: an ID from AniList opens as its
+ * Bangumi entry. True while that lookup runs or the redirect is pending.
+ */
+function useBangumiRedirect(id: string): boolean {
+  const foreign = catalogSourceOf(id) !== MANGA_CATALOG_SOURCE;
+  const { data: target, isPending } = useQuery({ ...bangumiMangaQueryOptions(id), enabled: foreign });
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (target) void navigate({ to: "/manga/$id", params: { id: target }, replace: true });
+  }, [target]);
+  return foreign && (isPending || !!target);
+}
 
 export const Route = createFileRoute("/manga_/$id")({
-  loader: async ({ params, preload, location }) => {
+  loader: async ({ params, preload }) => {
     // Preloads only use the cache (catalog rate limits; see the anime route).
     if (preload) return;
     const settings = await queryClient.ensureQueryData(settingsQueryOptions);
     const language = settings.display_language ?? DEFAULT_DISPLAY_LANGUAGE;
-    // A saved manga from another catalog opens as its Bangumi entry.
-    const source = MANGA_CATALOG_SOURCE;
-    if (catalogSourceOf(params.id) !== source) {
-      const target = await queryClient.fetchQuery(counterpartQueryOptions(params.id, source));
-      if (target) throw redirect({ ...sameView(location.pathname, target), replace: true });
+    // Manga open as their Bangumi entry, whatever catalog the link came from.
+    if (catalogSourceOf(params.id) !== MANGA_CATALOG_SOURCE) {
+      const target = await queryClient.fetchQuery(bangumiMangaQueryOptions(params.id));
+      if (target) throw redirect({ to: "/manga/$id", params: { id: target }, replace: true });
     }
     const cached = queryClient.getQueryData<AnimeInfo>(["anime-detail", params.id, language]);
     const listed = cached ? undefined : listedAnime(params.id);
@@ -35,7 +49,7 @@ function MangaDetailPage() {
   const { id } = Route.useParams();
   const router = useRouter();
   const language = useDisplayLanguage();
-  const redirecting = useCatalogRedirect(id, MANGA_CATALOG_SOURCE);
+  const redirecting = useBangumiRedirect(id);
   const { data: media, error: detailError, isPlaceholderData } = useQuery({ ...detailQueryOptions(id, language), enabled: !redirecting });
   if (detailError) throw detailError;
   const isAnime = media?.kind === "anime";
