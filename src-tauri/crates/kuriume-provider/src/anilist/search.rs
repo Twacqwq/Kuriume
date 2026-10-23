@@ -338,7 +338,8 @@ impl AniList {
             cached.into_iter().map(AnimeInfo::from).collect()
         } else {
             let response: PageResponse = self.graphql(format!(
-                "query($ids:[Int!]!) {{ Page(perPage:50) {{ pageInfo {{ total hasNextPage }} media({media_filter},id_in:$ids) {{ {MEDIA_FIELDS} }} }} }}"
+                "query($ids:[Int!]!) {{ Page(perPage:50) {{ pageInfo {{ total hasNextPage }} media({media_filter},id_in:$ids) {{ {fields} }} }} }}",
+                fields = list_fields(kind),
             ), json!({"ids": selected})).await?;
             let mut by_id: HashMap<_, _> = response
                 .page

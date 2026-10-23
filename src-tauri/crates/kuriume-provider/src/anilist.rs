@@ -31,12 +31,12 @@ const CHINESE_CACHE_LIMIT: usize = 512;
 const MEDIA_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const MEDIA_CACHE_LIMIT: usize = 600;
 
+/// Anime fields for lists, search and the schedule. Kept as they were before
+/// manga existed: AniList bounds each query's complexity, and list pages ask
+/// for these fields 30–50 times over.
 const MEDIA_FIELDS: &str = r#"
   id
   idMal
-  type
-  chapters
-  volumes
   title { romaji english native }
   synonyms
   coverImage { extraLarge large color }
@@ -53,6 +53,35 @@ const MEDIA_FIELDS: &str = r#"
   nextAiringEpisode { episode airingAt }
   studios(isMain: true) { nodes { name } }
 "#;
+
+/// Manga fields for lists and search: no broadcasts or studios.
+const MANGA_FIELDS: &str = r#"
+  id
+  idMal
+  type
+  chapters
+  volumes
+  title { romaji english native }
+  synonyms
+  coverImage { extraLarge large color }
+  bannerImage
+  averageScore
+  startDate { year month day }
+  genres
+  description(asHtml: false)
+  status
+  format
+"#;
+
+/// A details lookup takes any ID, so it also asks what the work is.
+const KIND_FIELDS: &str = "type chapters volumes";
+
+fn list_fields(kind: MediaKind) -> &'static str {
+    match kind {
+        MediaKind::Anime => MEDIA_FIELDS,
+        MediaKind::Manga => MANGA_FIELDS,
+    }
+}
 
 /// Credits, asked for on detail pages only: manga show their authors.
 const STAFF_FIELDS: &str = r#"
@@ -90,6 +119,48 @@ struct PageFilter<'a> {
     sort: &'a str,
     /// Only works that have started (newest manga lists).
     started: bool,
+}
+
+/// One listing or search page. Only the filters in use are declared and sent:
+/// an explicit `null` is not the same as leaving an argument out.
+fn page_query(page: u32, per_page: u32, filter: &PageFilter<'_>) -> (String, Value) {
+    let manga = filter.kind == MediaKind::Manga;
+    let mut declarations = vec!["$page: Int!", "$perPage: Int!", "$sort: [MediaSort!]!"];
+    let mut arguments = vec![
+        format!("type: {}", media_type(filter.kind)),
+        "isAdult: false".to_owned(),
+        "sort: $sort".to_owned(),
+    ];
+    let mut variables = json!({ "page": page, "perPage": per_page, "sort": [filter.sort] });
+    if let Some(year) = filter.year.filter(|_| !manga) {
+        declarations.push("$year: Int");
+        arguments.push("seasonYear: $year".into());
+        variables["year"] = json!(year);
+    }
+    if let Some(search) = filter.search {
+        declarations.push("$search: String");
+        arguments.push("search: $search".into());
+        variables["search"] = json!(search);
+    }
+    if manga {
+        // The manga catalog leaves light novels to their relations.
+        arguments.push("format_not: NOVEL".into());
+    }
+    if filter.started {
+        declarations.push("$startedBefore: FuzzyDateInt");
+        arguments.push("startDate_lesser: $startedBefore".into());
+        variables["startedBefore"] = json!(today_fuzzy_date());
+        if manga {
+            arguments.push(format!("popularity_greater: {NEW_MANGA_MIN_POPULARITY}"));
+        }
+    }
+    let query = format!(
+        "query ({}) {{ Page(page: $page, perPage: $perPage) {{ pageInfo {{ total currentPage perPage hasNextPage }} media({}) {{ {} }} }} }}",
+        declarations.join(", "),
+        arguments.join(", "),
+        list_fields(filter.kind),
+    );
+    (query, variables)
 }
 
 /// AniList's `MediaType` for a kind.
@@ -219,9 +290,17 @@ impl AniList {
         }
 
         if !response.status().is_success() {
+            let status = response.status();
+            // A rejected query (HTTP 400) explains itself in the body.
+            let reason = response
+                .json::<GraphQlResponse<Value>>()
+                .await
+                .ok()
+                .and_then(|payload| payload.errors.into_iter().next())
+                .map(|error| format!(": {}", error.message))
+                .unwrap_or_default();
             return Err(ProviderError::Source(format!(
-                "AniList returned HTTP {}",
-                response.status()
+                "AniList returned HTTP {status}{reason}"
             )));
         }
 
@@ -250,45 +329,8 @@ impl AniList {
         per_page: u32,
         filter: PageFilter<'_>,
     ) -> Result<PagedResult<AnimeInfo>> {
-        let query = format!(
-            r#"
-            query ($page: Int!, $perPage: Int!, $type: MediaType!, $year: Int, $search: String, $sort: [MediaSort!]!, $formatNot: MediaFormat, $startedBefore: FuzzyDateInt, $popularity: Int) {{
-              Page(page: $page, perPage: $perPage) {{
-                pageInfo {{ total currentPage perPage hasNextPage }}
-                media(
-                  type: $type
-                  isAdult: false
-                  seasonYear: $year
-                  search: $search
-                  sort: $sort
-                  format_not: $formatNot
-                  startDate_lesser: $startedBefore
-                  popularity_greater: $popularity
-                ) {{
-                  {MEDIA_FIELDS}
-                }}
-              }}
-            }}
-            "#
-        );
-        let manga = filter.kind == MediaKind::Manga;
-        let data: PageResponse = self
-            .graphql(
-                query,
-                json!({
-                    "page": page,
-                    "perPage": per_page,
-                    "type": media_type(filter.kind),
-                    "year": if manga { None } else { filter.year },
-                    "search": filter.search,
-                    "sort": [filter.sort],
-                    // The manga catalog leaves light novels to their relations.
-                    "formatNot": manga.then_some("NOVEL"),
-                    "startedBefore": filter.started.then(today_fuzzy_date),
-                    "popularity": (manga && filter.started).then_some(NEW_MANGA_MIN_POPULARITY),
-                }),
-            )
-            .await?;
+        let (query, variables) = page_query(page, per_page, &filter);
+        let data: PageResponse = self.graphql(query, variables).await?;
 
         let offset = page.saturating_sub(1) * per_page;
         // AniList's search total can be an estimate (e.g. 5000). The last-page
@@ -330,6 +372,7 @@ impl AniList {
             r#"
             query ($id: Int!) {{
               Media(id: $id, isAdult: false) {{
+                {KIND_FIELDS}
                 {MEDIA_FIELDS}
                 {STAFF_FIELDS}
               }}
@@ -1545,6 +1588,64 @@ mod tests {
         assert!(relations
             .iter()
             .any(|item| item.relation == "ADAPTATION" && item.media.kind == MediaKind::Anime));
+    }
+
+    #[test]
+    fn list_queries_declare_only_the_filters_they_send() {
+        let filter = |kind, year, search, started| PageFilter {
+            kind,
+            year,
+            search,
+            sort: "TRENDING_DESC",
+            started,
+        };
+        // The home page's anime list: the query it sent before manga existed.
+        let (query, variables) =
+            page_query(1, 30, &filter(MediaKind::Anime, Some(2026), None, false));
+        assert!(query.contains("type: ANIME") && query.contains("seasonYear: $year"));
+        assert!(!query.contains("search") && !query.contains("format_not"));
+        assert!(!query.contains("chapters") && query.contains("studios"));
+        assert_eq!(
+            variables,
+            json!({ "page": 1, "perPage": 30, "sort": ["TRENDING_DESC"], "year": 2026 })
+        );
+        let (query, variables) =
+            page_query(2, 30, &filter(MediaKind::Manga, Some(2026), None, true));
+        assert!(query.contains("type: MANGA") && query.contains("format_not: NOVEL"));
+        assert!(query.contains("startDate_lesser: $startedBefore"));
+        assert!(query.contains(&format!("popularity_greater: {NEW_MANGA_MIN_POPULARITY}")));
+        assert!(!query.contains("seasonYear") && !query.contains("studios"));
+        assert!(query.contains("chapters volumes") || query.contains("chapters\n  volumes"));
+        assert!(variables.get("year").is_none() && variables["startedBefore"].is_u64());
+        let (query, variables) = page_query(
+            1,
+            25,
+            &filter(MediaKind::Anime, None, Some("Frieren"), false),
+        );
+        assert!(query.contains("$search: String") && !query.contains("$year"));
+        assert_eq!(variables["search"], "Frieren");
+        // Every declared variable is used and sent.
+        for (query, variables) in [
+            page_query(
+                1,
+                30,
+                &filter(MediaKind::Anime, Some(2026), Some("x"), true),
+            ),
+            page_query(1, 30, &filter(MediaKind::Manga, None, None, false)),
+        ] {
+            let declared = query.split(')').next().unwrap();
+            for name in variables.as_object().unwrap().keys() {
+                assert!(
+                    declared.contains(&format!("${name}:")),
+                    "{name} undeclared in {query}"
+                );
+                assert_eq!(
+                    query.matches(&format!("${name}")).count(),
+                    2,
+                    "{name} unused in {query}"
+                );
+            }
+        }
     }
 
     #[test]
