@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
+// Windows checkouts use CRLF line endings.
+const read = async (path) => (await readFile(new URL(`../${path}`, import.meta.url), "utf8")).replace(/\r\n/g, "\n");
 
 // wry 0.54 on Android serves every custom-scheme request behind one lock and
 // aborts the app when a response takes over 10 s, so media must not use it.
