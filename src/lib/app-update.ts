@@ -2,8 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 /** The project's home. Rust only opens this page and paths below it. */
 export const PROJECT_URL = "https://github.com/Twacqwq/Kuriume";
-const RELEASES_API = "https://api.github.com/repos/Twacqwq/Kuriume/releases";
-const LATEST_RELEASE_API = `${RELEASES_API}/latest`;
+const LATEST_RELEASE_API = "https://api.github.com/repos/Twacqwq/Kuriume/releases/latest";
 
 export type UpdateDownload = { name: string; url: string; size: number };
 export type UpdateCheck =
@@ -118,24 +117,6 @@ export async function checkForUpdate(
 
 function releasePage(release: Pick<GithubRelease, "html_url">): string {
   return release.html_url.startsWith(`${PROJECT_URL}/`) ? release.html_url : `${PROJECT_URL}/releases`;
-}
-
-export type ReleaseNotes = { version: string; notes: string; pageUrl: string };
-
-/** The published notes of one version (`v0.2.0`), or null when it has none. */
-export async function fetchReleaseNotes(version: string, fetchImpl: typeof fetch = fetch): Promise<ReleaseNotes | null> {
-  const response = await fetchImpl(`${RELEASES_API}/tags/v${encodeURIComponent(version)}`, {
-    headers: { Accept: "application/vnd.github+json" },
-  });
-  if (!response.ok) return null;
-  const release = (await response.json()) as GithubRelease;
-  if (release.draft) return null;
-  return { version, notes: release.body?.trim() ?? "", pageUrl: releasePage(release) };
-}
-
-/** True when this launch runs a newer version than the last one seen. */
-export function isUpgrade(current: string, previous: string | null | undefined): boolean {
-  return Boolean(previous) && compareVersions(current, previous!) > 0;
 }
 
 /**

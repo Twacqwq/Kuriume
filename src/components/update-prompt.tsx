@@ -2,17 +2,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useAppUpdate } from "@/hooks/use-app-update";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
-import { fetchReleaseNotes, isUpgrade, openExternal, plainReleaseNotes, PROJECT_URL } from "@/lib/app-update";
-import {
-  choosePrompt,
-  LAST_VERSION_KEY,
-  previousVersion,
-  readKey,
-  SKIPPED_VERSION_KEY,
-  writeKey,
-} from "@/lib/update-prompt";
-import { useQuery } from "@tanstack/react-query";
-import { Download, Sparkles } from "lucide-react";
+import { openExternal, plainReleaseNotes } from "@/lib/app-update";
+import { readKey, shouldPromptUpdate, SKIPPED_VERSION_KEY, writeKey } from "@/lib/update-prompt";
+import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const NOTE_LINES = 12;
@@ -42,88 +34,28 @@ function useSplashGone(): boolean {
 }
 
 /**
- * On the home page: what's new after an upgrade, or a newer release with its
- * notes. "稍后" waits for the next launch; "跳过此版本" until a newer one.
+ * On the home page: a newer release with its notes, once per launch.
+ * "稍后" waits for the next launch; "跳过此版本" until a newer release.
  */
 export function UpdatePrompt() {
   const zh = useDisplayLanguage() === "zh";
-  const { version, update } = useAppUpdate();
+  const { update } = useAppUpdate();
   const splashGone = useSplashGone();
-  // Read before this launch records its own version.
-  const [previous] = useState(() => previousVersion(storage()));
   const [closed, setClosed] = useState(promptedThisLaunch);
   const [openError, setOpenError] = useState<string | null>(null);
-  const upgraded = Boolean(version) && isUpgrade(version!, previous);
-  const notes = useQuery({
-    queryKey: ["release-notes", version],
-    queryFn: () => fetchReleaseNotes(version!).catch(() => null),
-    enabled: Boolean(version) && upgraded && !closed,
-    staleTime: Infinity,
-    retry: false,
-  });
-
-  useEffect(() => {
-    if (!version) return;
-    const store = storage();
-    // A first install (or a downgrade) records itself silently; an upgrade
-    // keeps the old version until its notes have been seen.
-    if (!isUpgrade(version, previous)) {
-      writeKey(store, LAST_VERSION_KEY, version);
-    } else if (previous && !readKey(store, LAST_VERSION_KEY)) {
-      writeKey(store, LAST_VERSION_KEY, previous);
-    }
-  }, [version, previous]);
-
-  const kind = closed || !splashGone
-    ? null
-    : choosePrompt({
-        version,
-        previous,
-        update: update.data,
-        skipped: readKey(storage(), SKIPPED_VERSION_KEY),
-        notesPending: notes.isPending,
-      });
 
   const close = () => {
     promptedThisLaunch = true;
     setClosed(true);
-    if (kind === "whats-new" && version) writeKey(storage(), LAST_VERSION_KEY, version);
   };
   const open = (url: string) => {
     setOpenError(null);
     openExternal(url).then(close, () => setOpenError(zh ? "无法打开链接，请稍后再试" : "Could not open the link"));
   };
 
-  if (!kind) return null;
-
-  if (kind === "whats-new") {
-    const lines = plainReleaseNotes(notes.data?.notes ?? "", NOTE_LINES);
-    return (
-      <Dialog open onOpenChange={(value) => { if (!value) close(); }}>
-        <DialogContent showCloseButton={false} className="gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-md">
-          <div className="px-6 pb-5 pt-6">
-            <PromptHeading icon={<Sparkles className="size-5" aria-hidden="true" />}
-              title={zh ? `已更新到 v${version}` : `Updated to v${version}`}
-              description={previous ? `v${previous} → v${version}` : `v${version}`} />
-            {lines.length > 0
-              ? <NoteList lines={lines} />
-              : <p className="mt-4 text-sm leading-6 text-muted-foreground">{zh ? "这次更新的内容可以在发布页查看。" : "See the release page for what changed."}</p>}
-          </div>
-          <div className="flex flex-col gap-2 border-t border-overlay/6 px-6 py-4 sm:flex-row-reverse">
-            <Button type="button" className="h-12 px-5 sm:min-w-28" onClick={close}>{zh ? "知道了" : "Got it"}</Button>
-            <Button type="button" variant="ghost" className="h-12 px-4 text-muted-foreground"
-              onClick={() => open(notes.data?.pageUrl ?? `${PROJECT_URL}/releases`)}>
-              {zh ? "完整更新说明" : "Full release notes"}
-            </Button>
-          </div>
-          {openError && <p role="alert" className="px-6 pb-4 text-xs text-destructive-readable">{openError}</p>}
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
   const result = update.data;
-  if (result?.status !== "available") return null;
+  if (closed || !splashGone || result?.status !== "available"
+    || !shouldPromptUpdate(result, readKey(storage(), SKIPPED_VERSION_KEY))) return null;
   const lines = plainReleaseNotes(result.notes, NOTE_LINES);
   return (
     <Dialog open onOpenChange={(value) => { if (!value) close(); }}>
