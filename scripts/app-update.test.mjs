@@ -27,6 +27,10 @@ test("each platform gets its own package; iOS gets the release page", () => {
   assert.equal(pickDownload(release, "macos")?.name, "Kuriume-0.2.0-12-macos-arm64.dmg");
   assert.equal(pickDownload(release, "windows")?.name, "Kuriume-0.2.0-12-windows-x64.exe");
   assert.equal(pickDownload(release, "ios"), null);
+  // Releases name packages without the build number; both forms match.
+  const current = { assets: ["Kuriume-0.3.0-android-arm64.apk", "Kuriume-0.3.0-windows-x64.exe", "Kuriume-0.3.0-windows-x64.msi"].map(asset) };
+  assert.equal(pickDownload(current, "android")?.name, "Kuriume-0.3.0-android-arm64.apk");
+  assert.equal(pickDownload(current, "windows")?.name, "Kuriume-0.3.0-windows-x64.exe");
   assert.equal(pickDownload({ assets: [{ ...asset("Kuriume-0.2.0-1-android-arm64.apk"), browser_download_url: "https://evil.example/x.apk" }] }, "android"), null);
 });
 
@@ -43,4 +47,8 @@ test("update checks compare with the latest published release", async () => {
 
 test("release notes become short plain lines", () => {
   assert.deepEqual(plainReleaseNotes(release.body), ["What's Changed", "• Faster search by @a in #3"]);
+  const changelog = "## [0.2.0](https://github.com/Twacqwq/Kuriume/compare/v0.1.0...v0.2.0) (2026-10-25)\n\n### Features\n\n* manga catalog from Bangumi ([#12](https://x/12)) ([1bc9330](https://x/1bc9330))\n* **player:** double tap pauses ([abc1234](https://x/abc))\n\n### Bug Fixes\n\n* Android playback no longer stalls ([354c3d8](https://x/354c3d8))";
+  assert.deepEqual(plainReleaseNotes(changelog, 12), [
+    "Features", "• manga catalog from Bangumi", "• player: double tap pauses", "Bug Fixes", "• Android playback no longer stalls",
+  ]);
 });

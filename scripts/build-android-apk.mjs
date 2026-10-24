@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkVersion } from "./check-version.mjs";
 import { mobileVersion } from "./mobile-version.mjs";
+import { packageFilename } from "./package-artifacts.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const version = mobileVersion(checkVersion(root).version, process.env.KURIUME_BUILD_NUMBER);
@@ -31,6 +32,6 @@ assert(info.includes(`versionCode='${version.buildNumber}'`) && info.includes(`v
 assert.match(info, /native-code: 'arm64-v8a'/);
 assert(!info.includes("application-debuggable"), "Refusing to distribute a debuggable APK");
 mkdirSync(join(root, "artifacts"), { recursive: true });
-const output = join(root, "artifacts", `Kuriume-${version.version}-${version.buildNumber}-android-arm64.apk`);
+const output = join(root, "artifacts", packageFilename(version.version, "android-arm64", ".apk"));
 copyFileSync(apk, output);
 console.log(`Verified signed APK: ${output}`);

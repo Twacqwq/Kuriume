@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkVersion } from "./check-version.mjs";
 import { mobileVersion } from "./mobile-version.mjs";
+import { packageFilename } from "./package-artifacts.mjs";
 
 assert.equal(process.platform, "darwin", "IPA builds require macOS and Xcode");
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -46,7 +47,7 @@ assert.match(read("xcrun", ["vtool", "-show-build", executable]), /platform IOS\
 const payload = join(staging, "Payload");
 mkdirSync(payload);
 cpSync(app, join(payload, "Kuriume.app"), { recursive: true });
-const output = join(root, "artifacts", `Kuriume-${version.version}-${version.buildNumber}-ios-unsigned.ipa`);
+const output = join(root, "artifacts", packageFilename(version.version, "ios-unsigned", ".ipa"));
 mkdirSync(join(root, "artifacts"), { recursive: true });
 run("ditto", ["-c", "-k", "--keepParent", "--norsrc", payload, output]);
 run("unzip", ["-tq", output]);

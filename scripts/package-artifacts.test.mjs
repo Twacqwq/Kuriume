@@ -4,7 +4,7 @@ import { cp, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { assembleRelease, platforms, stagePackages } from "./package-artifacts.mjs";
+import { assembleRelease, packageFilename, platforms, stagePackages } from "./package-artifacts.mjs";
 
 const identity = { version: "0.2.0-beta.1", sourceSha: "a".repeat(40), buildNumber: 3567001 };
 
@@ -16,7 +16,11 @@ async function fixture(t) {
   for (const [platform, config] of Object.entries(platforms)) {
     const paths = [];
     for (const extension of config.extensions) {
-      const name = `Kuriume-${identity.version}-${identity.buildNumber}-${platform}${extension}`;
+      // Desktop bundles come with Tauri's own names; staging renames them.
+      // The mobile build scripts already write the published name.
+      const name = platform === "android-arm64" || platform === "ios-unsigned"
+        ? packageFilename(identity.version, platform, extension)
+        : `Kuriume_${identity.version}_${platform}${extension}`;
       const path = join(root, "artifacts", name);
       await writeFile(path, `test package for ${platform}${extension}`);
       // Match tauri-action v1's pre-archive output on macOS.
@@ -36,7 +40,18 @@ test("all platforms share exact identity, normalized names and checksums", async
   assert.equal((await readdir(args.output)).length, 8); // Six packages and two metadata files.
   const sums = await readFile(join(args.output, "SHA256SUMS"), "utf8");
   assert.equal(sums.trim().split("\n").length, 6);
-  assert.match(sums, /^[a-f0-9]{64}  Kuriume-0\.2\.0-beta\.1-3567001-macos-arm64\.dmg/m);
+  assert.match(sums, /^[a-f0-9]{64}  Kuriume-0\.2\.0-beta\.1-macos-arm64\.dmg$/m);
+  assert.deepEqual((await readdir(args.output)).filter((name) => name.startsWith("Kuriume-")).sort(), [
+    "Kuriume-0.2.0-beta.1-android-arm64.apk",
+    "Kuriume-0.2.0-beta.1-ios-unsigned.ipa",
+    "Kuriume-0.2.0-beta.1-macos-arm64.app.tar.gz",
+    "Kuriume-0.2.0-beta.1-macos-arm64.dmg",
+    "Kuriume-0.2.0-beta.1-windows-x64.exe",
+    "Kuriume-0.2.0-beta.1-windows-x64.msi",
+  ]);
+  assert.equal(packageFilename("0.3.0", "android-arm64", ".apk"), "Kuriume-0.3.0-android-arm64.apk");
+  const manifest = JSON.parse(await readFile(join(args.output, "build-manifest.json"), "utf8"));
+  assert.equal(manifest.buildNumber, identity.buildNumber, "the build number stays in the manifest");
   assert(!sums.includes("jks"));
   await assert.rejects(assembleRelease(args), /overwrite/);
   await assert.rejects(assembleRelease({ ...args, sourceSha: "b".repeat(40) }), /mismatched sourceSha/);

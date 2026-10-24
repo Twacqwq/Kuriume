@@ -54,7 +54,8 @@ block2 = "0.6"
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSNotification", "NSOperation", "NSString", "block2"] }
 
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+# Loopback media transport (media_proxy/loopback.rs).
+[target.'cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))'.dependencies]
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"

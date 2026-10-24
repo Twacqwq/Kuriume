@@ -109,17 +109,27 @@ export async function checkForUpdate(
     current,
     latest,
     notes: release.body?.trim() ?? "",
-    pageUrl: release.html_url.startsWith(`${PROJECT_URL}/`) ? release.html_url : `${PROJECT_URL}/releases`,
+    pageUrl: releasePage(release),
     publishedAt: release.published_at,
     download: pickDownload(release, platform),
   };
 }
 
-/** Release notes are GitHub Markdown; show them as short plain text. */
+function releasePage(release: Pick<GithubRelease, "html_url">): string {
+  return release.html_url.startsWith(`${PROJECT_URL}/`) ? release.html_url : `${PROJECT_URL}/releases`;
+}
+
+/**
+ * Release notes are GitHub Markdown (release-please changelogs); show them as
+ * short plain text without the version heading or commit/PR references.
+ */
 export function plainReleaseNotes(markdown: string, maxLines = 8): string[] {
   return markdown
     .split(/\r?\n/)
+    .filter((line) => !/^#{1,6}\s+\[?v?\d+\.\d+\.\d+/.test(line))
     .map((line) => line
+      // "([#12](…))", "([abc1234](…))": references, not content.
+      .replace(/\s*\(\[[^\]]*\]\([^)]*\)\)/g, "")
       .replace(/^#{1,6}\s+/, "")
       .replace(/^\s*[-*+]\s+/, "• ")
       .replace(/!\[[^\]]*\]\([^)]*\)/g, "")

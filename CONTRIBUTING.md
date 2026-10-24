@@ -301,7 +301,8 @@ Merging an ordinary feature PR produces test artifacts, not a public Release.
 
 `.github/actions/package-artifact` is the one upload/staging entry point. It
 accepts only the expected installer files, normalizes names to
-`Kuriume-<version>-<build-number>-<platform>.<extension>`, records commit/version/
+`Kuriume-<version>-<platform>.<extension>` (for example
+`Kuriume-0.2.0-android-arm64.apk`), records commit/version/
 build number/signing status and SHA-256 checksums, and avoids recompressing
 already compressed packages. It never uploads the full target tree, credentials
 or native intermediates. The release job verifies all six packages against the
@@ -313,7 +314,9 @@ minute number since 2020-01-01, computed once per workflow: Android uses it as
 `versionCode`, iOS encodes it as 4/2/2-digit `CFBundleVersion` components. Builds
 in different minutes increase; rebuilds within one minute retain their number.
 This is independent of individual workflow run counters and keeps the full
-prerelease product version in artifact filenames/Android `versionName`. Set
+prerelease product version in artifact filenames/Android `versionName`; the
+build number is in the packages, the step summary and `build-manifest.json`,
+not in filenames. Set
 `KURIUME_BUILD_NUMBER` to the same validated number for reproducible local builds.
 Source code rolled back for testing must still use a new build number, not an
 older APK whose installation would be a downgrade. Output is in `artifacts/`.

@@ -19,8 +19,17 @@ function identity(version, sourceSha, buildNumber) {
   return { version, sourceSha, buildNumber: mobileVersion(version, buildNumber).buildNumber };
 }
 
+/**
+ * Published package name: product, version, platform and architecture, as
+ * people see it on the release page (`Kuriume-0.2.0-android-arm64.apk`). The
+ * build number stays inside the packages and the manifests.
+ */
+export function packageFilename(version, platform, extension) {
+  return `Kuriume-${version}-${platform}${extension}`;
+}
+
 function filename(meta, platform, extension) {
-  return `Kuriume-${meta.version}-${meta.buildNumber}-${platform}${extension}`;
+  return packageFilename(meta.version, platform, extension);
 }
 
 async function checksum(path) {
