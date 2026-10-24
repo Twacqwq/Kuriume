@@ -3,6 +3,7 @@ import { HeroBanner } from "@/components/hero-banner";
 import { HomePageLoading } from "@/components/page-loading";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { TodayUpdates } from "@/components/today-updates";
+import { UpdatePrompt } from "@/components/update-prompt";
 import { latestPerWork, minutesLeft } from "@/lib/tracking";
 import { StoredMediaTitle } from "@/components/stored-media-title";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ function HomePage() {
 
   return (
     <div className="min-h-full pb-8 md:pb-16">
+      <UpdatePrompt />
       <PullToRefresh onRefresh={() => Promise.all([refetch(), refetchHistory()])} />
       <div className="mx-auto max-w-7xl px-4 pt-3 md:px-6 md:pt-10 lg:px-10">
         {history.length > 0 && (

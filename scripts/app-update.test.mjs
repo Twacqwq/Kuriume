@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkForUpdate, compareVersions, detectPlatform, pickDownload, plainReleaseNotes } from "../src/lib/app-update.ts";
+import { checkForUpdate, compareVersions, detectPlatform, fetchReleaseNotes, isUpgrade, pickDownload, plainReleaseNotes } from "../src/lib/app-update.ts";
 
 test("versions follow semver order, prereleases below their release", () => {
   assert.equal(compareVersions("0.2.0", "0.1.9"), 1);
@@ -47,4 +47,22 @@ test("update checks compare with the latest published release", async () => {
 
 test("release notes become short plain lines", () => {
   assert.deepEqual(plainReleaseNotes(release.body), ["What's Changed", "• Faster search by @a in #3"]);
+  const changelog = "## [0.2.0](https://github.com/Twacqwq/Kuriume/compare/v0.1.0...v0.2.0) (2026-10-25)\n\n### Features\n\n* manga catalog from Bangumi ([#12](https://x/12)) ([1bc9330](https://x/1bc9330))\n* **player:** double tap pauses ([abc1234](https://x/abc))\n\n### Bug Fixes\n\n* Android playback no longer stalls ([354c3d8](https://x/354c3d8))";
+  assert.deepEqual(plainReleaseNotes(changelog, 12), [
+    "Features", "• manga catalog from Bangumi", "• player: double tap pauses", "Bug Fixes", "• Android playback no longer stalls",
+  ]);
+});
+
+test("what's new appears once after an upgrade, never on a first install", async () => {
+  assert.equal(isUpgrade("0.2.0", "0.1.0"), true);
+  assert.equal(isUpgrade("0.2.0", "0.2.0"), false);
+  assert.equal(isUpgrade("0.2.0", null), false, "first install: nothing to compare");
+  assert.equal(isUpgrade("0.1.0", "0.2.0"), false, "a downgrade is not news");
+  const requested = [];
+  const fetchTag = (status, body) => async (url) => { requested.push(url); return { status, ok: status === 200, json: async () => body }; };
+  assert.deepEqual(await fetchReleaseNotes("0.2.0", fetchTag(200, { ...release, body: " notes " })), { version: "0.2.0", notes: "notes", pageUrl: release.html_url });
+  assert.equal(requested[0], "https://api.github.com/repos/Twacqwq/Kuriume/releases/tags/v0.2.0");
+  assert.equal(await fetchReleaseNotes("0.2.0", fetchTag(404)), null);
+  assert.equal(await fetchReleaseNotes("0.2.0", fetchTag(200, { ...release, draft: true })), null);
+  assert.equal((await fetchReleaseNotes("0.2.0", fetchTag(200, { ...release, html_url: "https://evil.example" }))).pageUrl, "https://github.com/Twacqwq/Kuriume/releases");
 });
