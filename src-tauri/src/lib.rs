@@ -79,7 +79,10 @@ pub fn run() {
         .manage(OnlineSourceState::new())
         .manage(media_proxy)
         .setup(|app| {
-            #[cfg(all(debug_assertions, any(target_os = "macos", target_os = "ios")))]
+            #[cfg(all(
+                debug_assertions,
+                any(target_os = "macos", target_os = "ios", target_os = "android")
+            ))]
             app.state::<MediaProxyState>()
                 .set_dev_origin(app.config().build.dev_url.as_ref());
             #[cfg(target_os = "macos")]

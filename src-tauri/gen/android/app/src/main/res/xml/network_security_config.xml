@@ -6,5 +6,7 @@
         <domain includeSubdomains="false">tauri.localhost</domain>
         <domain includeSubdomains="false">ipc.localhost</domain>
         <domain includeSubdomains="false">kuriume-media.localhost</domain>
+        <!-- The in-app media transport (src/media_proxy/loopback.rs). -->
+        <domain includeSubdomains="false">127.0.0.1</domain>
     </domain-config>
 </network-security-config>

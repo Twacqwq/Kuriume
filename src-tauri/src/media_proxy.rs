@@ -18,12 +18,21 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::http::{Request, Response, StatusCode};
 use tauri::UriSchemeResponder;
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
 mod loopback;
 
 const SESSION_LIMIT: usize = 64;
 const SESSION_TTL_MS: u64 = 12 * 60 * 60 * 1_000;
+/// Each media response is read whole before it is sent; smaller chunks on
+/// Android keep a slow host from stalling playback for long.
+#[cfg(not(target_os = "android"))]
 const MAX_RANGE_BYTES: u64 = 4 * 1024 * 1024;
+#[cfg(target_os = "android")]
+const MAX_RANGE_BYTES: u64 = 2 * 1024 * 1024;
+/// Android's WebView aborts the whole app when a custom-scheme response takes
+/// more than 10 s (wry 0.54 `recv_timeout(..).unwrap()`); answer before that.
+#[cfg(target_os = "android")]
+const CUSTOM_SCHEME_DEADLINE: std::time::Duration = std::time::Duration::from_secs(8);
 const MAX_HLS_BYTES: usize = 32 * 1024 * 1024;
 const RESOURCE_LIMIT: usize = 8_192;
 
@@ -35,9 +44,9 @@ pub struct MediaProxyState {
 struct MediaProxyInner {
     client: reqwest::Client,
     sessions: Mutex<HashMap<String, MediaSession>>,
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
     loopback: Mutex<Option<loopback::Server>>,
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
     dev_origin: Mutex<Option<String>>,
 }
 
@@ -68,9 +77,9 @@ impl MediaProxyState {
             inner: Arc::new(MediaProxyInner {
                 client,
                 sessions: Mutex::new(HashMap::new()),
-                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
                 loopback: Mutex::new(None),
-                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
                 dev_origin: Mutex::new(None),
             }),
         }
@@ -87,9 +96,12 @@ impl MediaProxyState {
         let url = validate_remote_url(raw_url, allowed_hosts)?;
         let created_at = unix_time_ms();
         let token = random_token()?;
-        #[cfg(target_os = "ios")]
+        // Mobile WebViews load every media resource from the loopback server.
+        // On Android the custom scheme serialises all of the app's requests
+        // behind one lock and crashes the app when one takes over 10 s.
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         let local_base = format!("http://{}/{token}", self.loopback_address()?);
-        #[cfg(not(target_os = "ios"))]
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
         let local_base = local_media_url(&token);
         let session = MediaSession {
             diagnostic_id,
@@ -136,7 +148,29 @@ impl MediaProxyState {
     pub fn respond(&self, request: Request<Vec<u8>>, responder: UriSchemeResponder) {
         let proxy = self.clone();
         tauri::async_runtime::spawn(async move {
-            responder.respond(proxy.response(request).await);
+            #[cfg(target_os = "android")]
+            let response =
+                match tokio::time::timeout(CUSTOM_SCHEME_DEADLINE, proxy.response(request)).await {
+                    Ok(response) => response,
+                    Err(_) => {
+                        diagnostics::record(
+                            Event::MediaRequest,
+                            Level::Error,
+                            Details {
+                                code: Some(Code::Timeout),
+                                action: Some(Action::Fetch),
+                                message: Some(
+                                    "Media response exceeded the WebView deadline".into(),
+                                ),
+                                ..Details::default()
+                            },
+                        );
+                        error_response(StatusCode::GATEWAY_TIMEOUT, "Media host is too slow")
+                    }
+                };
+            #[cfg(not(target_os = "android"))]
+            let response = proxy.response(request).await;
+            responder.respond(response);
         });
     }
 
@@ -578,7 +612,7 @@ fn random_token() -> Result<String, String> {
     Ok(token)
 }
 
-#[cfg(any(not(target_os = "ios"), test))]
+#[cfg(any(not(any(target_os = "ios", target_os = "android")), test))]
 fn local_media_url(token: &str) -> String {
     #[cfg(any(target_os = "windows", target_os = "android"))]
     {

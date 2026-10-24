@@ -1,4 +1,6 @@
-//! Apple media transport. Only opaque registered sessions are reachable; this is
+//! Loopback media transport for macOS (MP4), iOS and Android: a plain local
+//! HTTP server, so media never waits behind the WebView's custom-scheme path.
+//! Only opaque registered sessions are reachable; this is
 //! not a URL-forwarding endpoint. All upstream scope/range/cookie checks stay in
 //! the shared media handler.
 use super::{error_response, MediaProxyState};
