@@ -27,6 +27,10 @@ test("each platform gets its own package; iOS gets the release page", () => {
   assert.equal(pickDownload(release, "macos")?.name, "Kuriume-0.2.0-12-macos-arm64.dmg");
   assert.equal(pickDownload(release, "windows")?.name, "Kuriume-0.2.0-12-windows-x64.exe");
   assert.equal(pickDownload(release, "ios"), null);
+  // Releases name packages without the build number; both forms match.
+  const current = { assets: ["Kuriume-0.3.0-android-arm64.apk", "Kuriume-0.3.0-windows-x64.exe", "Kuriume-0.3.0-windows-x64.msi"].map(asset) };
+  assert.equal(pickDownload(current, "android")?.name, "Kuriume-0.3.0-android-arm64.apk");
+  assert.equal(pickDownload(current, "windows")?.name, "Kuriume-0.3.0-windows-x64.exe");
   assert.equal(pickDownload({ assets: [{ ...asset("Kuriume-0.2.0-1-android-arm64.apk"), browser_download_url: "https://evil.example/x.apk" }] }, "android"), null);
 });
 
