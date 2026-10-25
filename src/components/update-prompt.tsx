@@ -1,8 +1,11 @@
+import { UpdateButton, UpdateStatus } from "@/components/update-action";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useAppUpdate } from "@/hooks/use-app-update";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
+import { useUpdateInstall } from "@/hooks/use-update-install";
 import { openExternal, plainReleaseNotes } from "@/lib/app-update";
+import { isInstalling } from "@/lib/update-installer";
 import { readKey, shouldPromptUpdate, SKIPPED_VERSION_KEY, writeKey } from "@/lib/update-prompt";
 import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -41,6 +44,7 @@ export function UpdatePrompt() {
   const zh = useDisplayLanguage() === "zh";
   const { update } = useAppUpdate();
   const splashGone = useSplashGone();
+  const install = useUpdateInstall();
   const [closed, setClosed] = useState(promptedThisLaunch);
   const [openError, setOpenError] = useState<string | null>(null);
 
@@ -54,8 +58,10 @@ export function UpdatePrompt() {
   };
 
   const result = update.data;
+  // An install started here keeps its dialog open until it needs nothing more.
+  const active = install.phase !== "idle" && result?.status === "available" && install.version === result.latest;
   if (closed || !splashGone || result?.status !== "available"
-    || !shouldPromptUpdate(result, readKey(storage(), SKIPPED_VERSION_KEY))) return null;
+    || (!active && !shouldPromptUpdate(result, readKey(storage(), SKIPPED_VERSION_KEY)))) return null;
   const lines = plainReleaseNotes(result.notes, NOTE_LINES);
   return (
     <Dialog open onOpenChange={(value) => { if (!value) close(); }}>
@@ -65,20 +71,20 @@ export function UpdatePrompt() {
             title={zh ? "发现新版本" : "A new version is available"}
             description={[`v${result.current} → v${result.latest}`, result.publishedAt && new Date(result.publishedAt).toLocaleDateString(zh ? "zh-CN" : "en-US")].filter(Boolean).join(" · ")} />
           {lines.length > 0 && <NoteList lines={lines} />}
-          {result.download?.name.endsWith(".apk") && (
-            <p className="mt-4 text-xs leading-5 text-muted-foreground">{zh ? "下载完成后点开安装包即可覆盖安装，追番和观看记录都会保留。" : "Open the downloaded package to install over this version; your library and history are kept."}</p>
-          )}
+          <UpdateStatus update={result} zh={zh} className="mt-4" />
         </div>
         <div className="flex flex-col gap-2 border-t border-overlay/6 px-6 py-4 sm:flex-row-reverse">
-          <Button type="button" className="h-12 px-5 sm:min-w-28" onClick={() => open(result.download?.url ?? result.pageUrl)}>
-            <Download aria-hidden="true" />
-            {result.download ? (zh ? "下载更新" : "Download") : (zh ? "前往发布页" : "Open release")}
+          <UpdateButton update={result} zh={zh} onOpen={open} className="h-12 px-5 sm:min-w-28" />
+          {/* A download in progress carries on in the background. */}
+          <Button type="button" variant="secondary" className="h-12 px-4" onClick={close}>
+            {isInstalling(install) ? (zh ? "后台下载" : "Hide") : (zh ? "稍后" : "Later")}
           </Button>
-          <Button type="button" variant="secondary" className="h-12 px-4" onClick={close}>{zh ? "稍后" : "Later"}</Button>
-          <Button type="button" variant="ghost" className="h-12 px-4 text-muted-foreground sm:mr-auto"
-            onClick={() => { writeKey(storage(), SKIPPED_VERSION_KEY, result.latest); close(); }}>
-            {zh ? "跳过此版本" : "Skip this version"}
-          </Button>
+          {!active && (
+            <Button type="button" variant="ghost" className="h-12 px-4 text-muted-foreground sm:mr-auto"
+              onClick={() => { writeKey(storage(), SKIPPED_VERSION_KEY, result.latest); close(); }}>
+              {zh ? "跳过此版本" : "Skip this version"}
+            </Button>
+          )}
         </div>
         {openError && <p role="alert" className="px-6 pb-4 text-xs text-destructive-readable">{openError}</p>}
       </DialogContent>

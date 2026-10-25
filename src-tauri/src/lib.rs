@@ -9,6 +9,7 @@ use tauri::menu::Menu;
 use tauri::Manager;
 
 mod app_commands;
+mod app_update;
 mod commands;
 mod diagnostics;
 #[cfg(target_os = "macos")]
@@ -48,7 +49,9 @@ pub fn run() {
     );
 
     #[cfg(desktop)]
-    let builder = builder.menu(Menu::new);
+    let builder = builder
+        .menu(Menu::new)
+        .plugin(tauri_plugin_updater::Builder::new().build());
 
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_mobile::init());
@@ -114,6 +117,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             crate::app_commands::open_external,
+            crate::app_update::update_install,
+            crate::app_update::update_restart,
             crate::diagnostics::diagnostics_write,
             crate::diagnostics::diagnostics_read,
             crate::diagnostics::diagnostics_clear,

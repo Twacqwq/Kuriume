@@ -24,7 +24,6 @@ import {
   ChevronRight,
   Database,
   History,
-  Download,
   ExternalLink,
   Github,
   Info,
@@ -33,6 +32,7 @@ import {
 import { useTheme } from "@/hooks/use-theme";
 import { setTheme, THEMES } from "@/lib/theme";
 import { useState } from "react";
+import { UpdateButton, UpdateStatus } from "@/components/update-action";
 import { useAppUpdate } from "@/hooks/use-app-update";
 import { openExternal, plainReleaseNotes, PROJECT_URL } from "@/lib/app-update";
 
@@ -278,20 +278,15 @@ function AboutGroup({ zh }: { zh: boolean }) {
               {notes.map((line, index) => <li key={index} className="break-words">{line}</li>)}
             </ul>
           )}
+          <UpdateStatus update={result} zh={zh} />
           <div className="flex flex-wrap gap-2">
-            <Button type="button" className="h-12 px-4" onClick={() => open(result.download?.url ?? result.pageUrl)}>
-              <Download aria-hidden="true" />
-              {result.download ? (zh ? "下载更新" : "Download") : (zh ? "前往发布页" : "Open release")}
-            </Button>
+            <UpdateButton update={result} zh={zh} onOpen={open} className="h-12 px-4" />
             {result.download && (
               <Button type="button" variant="ghost" className="h-12 px-4 text-muted-foreground" onClick={() => open(result.pageUrl)}>
                 {zh ? "更新说明" : "Release notes"}
               </Button>
             )}
           </div>
-          {result.download?.name.endsWith(".apk") && (
-            <p className="text-xs leading-5 text-muted-foreground">{zh ? "下载完成后点开安装包即可覆盖安装，观看记录会保留。" : "Open the downloaded package to install over this version; your history is kept."}</p>
-          )}
         </div>
       )}
       <button type="button" onClick={() => open(PROJECT_URL)} className="press flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium outline-none hover:bg-secondary/60 active:bg-secondary/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-readable">

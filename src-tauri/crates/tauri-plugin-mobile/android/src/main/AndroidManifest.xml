@@ -1,3 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- In-app updates hand the downloaded release APK to the system installer. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <application>
+        <provider
+            android:name="com.twac.kuriume.mobile.UpdateFileProvider"
+            android:authorities="${applicationId}.kuriume.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/kuriume_update_paths" />
+        </provider>
+    </application>
 </manifest>

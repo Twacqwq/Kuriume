@@ -135,7 +135,7 @@ jobs:
             jq -r '.assets[].name' release.json > draft-assets.txt
             while IFS= read -r asset; do
               case "$asset" in
-                Kuriume-*.dmg|Kuriume-*.app.tar.gz|Kuriume-*.exe|Kuriume-*.msi|Kuriume-*.apk|Kuriume-*.ipa|Kuriume_*.dmg|Kuriume_*.exe)
+                Kuriume-*.dmg|Kuriume-*.app.tar.gz|Kuriume-*.exe|Kuriume-*.msi|Kuriume-*.apk|Kuriume-*.ipa|Kuriume_*.dmg|Kuriume_*.exe|latest.json)
                   if [ ! -f "artifacts/release/$asset" ]; then
                     gh release delete-asset "$RELEASE_TAG" "$asset" --yes
                   fi
@@ -147,7 +147,10 @@ jobs:
               esac
             done < draft-assets.txt
           fi
-          gh release upload "$RELEASE_TAG" artifacts/release/Kuriume-* --clobber
+          # latest.json (in-app updates) exists only when CI has the updater key.
+          upload=(artifacts/release/Kuriume-*)
+          if [ -f artifacts/release/latest.json ]; then upload+=(artifacts/release/latest.json); fi
+          gh release upload "$RELEASE_TAG" "${upload[@]}" --clobber
           # Stays a draft: the notes are reviewed and the release published by
           # hand. Previews never become the latest release.
           if [ "$PRERELEASE" = true ]; then

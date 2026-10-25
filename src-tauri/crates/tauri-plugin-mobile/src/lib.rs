@@ -62,6 +62,46 @@ mod mobile {
         .map_err(|error| error.to_string())?
     }
 
+    /// The cache directory update packages are downloaded to (cleared of
+    /// earlier ones). The installer's FileProvider only shares this one.
+    #[cfg(target_os = "android")]
+    pub async fn update_dir<R: Runtime>(app: AppHandle<R>) -> Result<String, String> {
+        #[derive(Deserialize)]
+        struct Dir {
+            path: String,
+        }
+        tauri::async_runtime::spawn_blocking(move || {
+            app.state::<Mobile<R>>()
+                .0
+                .run_mobile_plugin::<Dir>("updateDir", serde_json::json!({}))
+                .map(|dir| dir.path)
+                .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
+    /// Opens the system installer for a downloaded package in `update_dir`.
+    /// Trusted Rust callers only (the app verified the download).
+    #[cfg(target_os = "android")]
+    pub async fn install_package<R: Runtime>(
+        app: AppHandle<R>,
+        path: String,
+    ) -> Result<(), String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            app.state::<Mobile<R>>()
+                .0
+                .run_mobile_plugin::<serde_json::Value>(
+                    "installPackage",
+                    serde_json::json!({ "path": path }),
+                )
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
     // Trusted Rust callers only (the app validates the URL); no frontend permission.
     pub async fn open_url<R: Runtime>(app: AppHandle<R>, url: String) -> Result<(), String> {
         app.state::<Mobile<R>>()
@@ -72,6 +112,8 @@ mod mobile {
     }
 }
 
+#[cfg(target_os = "android")]
+pub use mobile::{install_package, update_dir};
 #[cfg(mobile)]
 pub use mobile::{open_url, sniff};
 

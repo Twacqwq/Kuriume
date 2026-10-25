@@ -347,6 +347,45 @@ Verify actual installation and playback on iPhone, iPad, and Android before
 advertising mobile support as stable. Signed build artifacts alone cannot verify
 gesture feel, media playback, battery/brightness behavior, or source availability.
 
+### In-app updates
+
+Installed apps compare their version with the latest published GitHub Release
+(`src/lib/app-update.ts`) and offer the update on the home page and in
+我的 › 关于. Installing it depends on the platform:
+
+| Platform | How | Needs |
+|----------|-----|-------|
+| macOS, Windows | Tauri's updater (`src-tauri/src/app_update.rs`) downloads the bundle listed in the release's `latest.json`, checks it against the updater public key, installs it and asks for a restart. Windows installers close the app themselves (`installMode: passive`). | The updater key pair |
+| Android | The app downloads the release APK, checks GitHub's SHA-256 digest and opens the system installer (`MobilePlugin.updateDir`/`installPackage`). The first time, Android asks to allow Kuriume to install apps. Android also requires the APK to be signed with the installed app's key, so keep the release keystore. | `REQUEST_INSTALL_PACKAGES` (declared by the mobile plugin) |
+| iOS | Opens the release page: an app cannot install IPAs itself. | — |
+
+The updater key is separate from Apple and Android signing; it only proves an
+update bundle came from this project. Generate it once and keep the private key
+safe — if it is lost, installed apps can no longer verify (and so no longer
+receive) in-app updates:
+
+```bash
+npx tauri signer generate -w ~/.tauri/kuriume-updater.key
+```
+
+1. Put the public key's contents in `src-tauri/tauri.conf.json` at
+   `plugins.updater.pubkey` (not a path).
+2. Add the private key's contents as the repository secret
+   `TAURI_SIGNING_PRIVATE_KEY`, and its password (if any) as
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+
+With the secret set, the desktop builds add
+`src-tauri/tauri.updater.conf.json` (`bundle.createUpdaterArtifacts`), sign the
+`.app.tar.gz`, `.exe` and `.msi` bundles, and the release job writes
+`latest.json` (`scripts/package-artifacts.mjs`) next to the installers. Without
+it, packages build as before, no `latest.json` is published and desktop apps
+fall back to downloading the installer. Installed apps read
+`releases/latest/download/latest.json`, which only resolves to the latest
+**published, non-prerelease** release, so drafts never reach them.
+
+A version without the updater (0.2.0 and earlier) has to be updated by hand
+once; from then on updates install in the app.
+
 ## Versioning and Release Workflow
 
 `package.json` is the product version source; Tauri reads it directly. Cargo
