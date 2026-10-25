@@ -107,6 +107,12 @@ const RELATION_FIELDS: &str = r#"
   format
 "#;
 
+/// What a search or a detail page may show. AniList's `isAdult` also marks
+/// late-night TV series such as Yosuga no Sora (Bangumi lists them as
+/// ordinary anime), so looking a work up only excludes explicit Hentai.
+/// Browsing lists (trending, new, the schedule) keep `isAdult: false`.
+pub(crate) const LOOKUP_FILTER: &str = r#"genre_not_in: ["Hentai"]"#;
+
 /// Fewest list entries a manga needs to appear among the newest works:
 /// AniList's newest manga are otherwise mostly unknown one-shots.
 const NEW_MANGA_MIN_POPULARITY: u32 = 150;
@@ -128,7 +134,12 @@ fn page_query(page: u32, per_page: u32, filter: &PageFilter<'_>) -> (String, Val
     let mut declarations = vec!["$page: Int!", "$perPage: Int!", "$sort: [MediaSort!]!"];
     let mut arguments = vec![
         format!("type: {}", media_type(filter.kind)),
-        "isAdult: false".to_owned(),
+        // A search names the work it wants; listings stay non-adult.
+        if filter.search.is_some() {
+            LOOKUP_FILTER.to_owned()
+        } else {
+            "isAdult: false".to_owned()
+        },
         "sort: $sort".to_owned(),
     ];
     let mut variables = json!({ "page": page, "perPage": per_page, "sort": [filter.sort] });
@@ -371,7 +382,7 @@ impl AniList {
         let query = format!(
             r#"
             query ($id: Int!) {{
-              Media(id: $id, isAdult: false) {{
+              Media(id: $id, {LOOKUP_FILTER}) {{
                 {KIND_FIELDS}
                 {MEDIA_FIELDS}
                 {STAFF_FIELDS}
@@ -609,26 +620,28 @@ impl AnimeProvider for AniList {
 
     async fn get_characters(&self, id: &str) -> Result<Vec<CharacterInfo>> {
         let id = Self::parse_id(id)?;
-        let query = r#"
-          query ($id: Int!) {
-            Media(id: $id, isAdult: false) {
-              characters(page: 1, perPage: 24, sort: [ROLE, RELEVANCE, ID]) {
-                edges {
+        let query = format!(
+            r#"
+          query ($id: Int!) {{
+            Media(id: $id, {LOOKUP_FILTER}) {{
+              characters(page: 1, perPage: 24, sort: [ROLE, RELEVANCE, ID]) {{
+                edges {{
                   role
-                  node {
+                  node {{
                     id
-                    name { full native }
-                    image { large }
-                  }
-                  voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) {
-                    name { full }
-                  }
-                }
-              }
-            }
-          }
-        "#;
-        let data: CharacterResponse = self.graphql(query.into(), json!({ "id": id })).await?;
+                    name {{ full native }}
+                    image {{ large }}
+                  }}
+                  voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) {{
+                    name {{ full }}
+                  }}
+                }}
+              }}
+            }}
+          }}
+        "#
+        );
+        let data: CharacterResponse = self.graphql(query, json!({ "id": id })).await?;
         Ok(data
             .media
             .characters
@@ -1624,6 +1637,11 @@ mod tests {
         );
         assert!(query.contains("$search: String") && !query.contains("$year"));
         assert_eq!(variables["search"], "Frieren");
+        // Searches reach works AniList marks adult (Yosuga no Sora), never
+        // Hentai; listings stay non-adult.
+        assert!(query.contains(LOOKUP_FILTER) && !query.contains("isAdult"));
+        let (listing, _) = page_query(1, 30, &filter(MediaKind::Anime, None, None, false));
+        assert!(listing.contains("isAdult: false") && !listing.contains("genre_not_in"));
         // Every declared variable is used and sent.
         for (query, variables) in [
             page_query(
