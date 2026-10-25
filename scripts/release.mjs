@@ -64,7 +64,9 @@ export function bumpVersionFiles(root, next) {
       const lock = JSON.parse(text);
       lock.version = next;
       lock.packages[""].version = next;
-      return JSON.stringify(lock, null, 2) + "\n";
+      // Keep the checkout's line endings (CRLF on Windows).
+      const eol = text.includes("\r\n") ? "\r\n" : "\n";
+      return (JSON.stringify(lock, null, 2) + "\n").replaceAll("\n", eol);
     },
     "src-tauri/Cargo.toml": (text) => replaceExactly(text,
       new RegExp(`(\\[workspace\\.package\\]\\r?\\nversion\\s*=\\s*")${quoted}"`), (_, prefix) => `${prefix}${next}"`, 1, "src-tauri/Cargo.toml"),

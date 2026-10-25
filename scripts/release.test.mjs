@@ -4,10 +4,14 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { bumpVersionFiles, compareReleaseVersions } from "./release.mjs";
 import { parseCommit, releaseNotes } from "./release-notes.mjs";
 
-const repo = new URL("..", import.meta.url).pathname;
+// fileURLToPath, not .pathname: "/D:/a/…" is not a Windows path.
+const repo = fileURLToPath(new URL("..", import.meta.url));
+// Windows checkouts use CRLF; compare content, not line endings.
+const text = async (path) => (await readFile(path, "utf8")).replaceAll("\r\n", "\n");
 const VERSION_FILES = ["package.json", "package-lock.json", "src-tauri/Cargo.toml", "src-tauri/Cargo.lock",
   "src-tauri/crates/kuriume-provider/Cargo.toml", "src-tauri/crates/kuriume-store/Cargo.toml", "src-tauri/crates/tauri-plugin-mobile/Cargo.toml"];
 
@@ -33,26 +37,26 @@ test("versions order stable releases above their previews", () => {
 
 test("a release bump changes only the product version fields", async (t) => {
   const root = await copyVersionFiles(t);
-  const before = Object.fromEntries(await Promise.all(VERSION_FILES.map(async (file) => [file, await readFile(join(root, file), "utf8")])));
+  const before = Object.fromEntries(await Promise.all(VERSION_FILES.map(async (file) => [file, await text(join(root, file))])));
   const current = JSON.parse(before["package.json"]).version;
   const next = "9.8.7-beta.1";
   const { previous, files } = bumpVersionFiles(root, next);
   assert.equal(previous, current);
   assert.deepEqual(files, ["package.json", "package-lock.json", "src-tauri/Cargo.toml", "src-tauri/Cargo.lock"]);
-  const json = async (file) => JSON.parse(await readFile(join(root, file), "utf8"));
+  const json = async (file) => JSON.parse(await text(join(root, file)));
   assert.equal((await json("package.json")).version, next);
   const lock = await json("package-lock.json");
   assert.equal(lock.version, next);
   assert.equal(lock.packages[""].version, next);
-  assert.match(await readFile(join(root, "src-tauri/Cargo.toml"), "utf8"), new RegExp(`\\[workspace\\.package\\]\\nversion = "${next}"`));
-  const cargoLock = await readFile(join(root, "src-tauri/Cargo.lock"), "utf8");
+  assert.match(await text(join(root, "src-tauri/Cargo.toml")), new RegExp(`\\[workspace\\.package\\]\\nversion = "${next}"`));
+  const cargoLock = await text(join(root, "src-tauri/Cargo.lock"));
   for (const crate of ["kuriume", "kuriume-provider", "kuriume-store", "tauri-plugin-mobile"]) {
     assert.match(cargoLock, new RegExp(`name = "${crate}"\\nversion = "${next.replaceAll(".", "\\.")}"`));
   }
   // Nothing but version lines changed, and no dependency moved.
   for (const file of files) {
     const old = before[file].split("\n");
-    const changed = (await readFile(join(root, file), "utf8")).split("\n").filter((line, index) => line !== old[index]);
+    const changed = (await text(join(root, file))).split("\n").filter((line, index) => line !== old[index]);
     assert.ok(changed.length > 0 && changed.every((line) => line.includes(next)), `${file}: ${changed.join(" | ")}`);
   }
   assert.equal((cargoLock.match(new RegExp(next.replaceAll(".", "\\."), "g")) ?? []).length, 4);
