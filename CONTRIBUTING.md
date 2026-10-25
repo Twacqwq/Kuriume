@@ -350,52 +350,52 @@ gesture feel, media playback, battery/brightness behavior, or source availabilit
 ## Versioning and Release Workflow
 
 `package.json` is the product version source; Tauri reads it directly. Cargo
-workspace members inherit `workspace.package.version`. Release Please updates
-the workspace version, local Cargo lock entries, npm lock, manifest, and changelog
-in one release PR. `npm run check:version` rejects drift before a build. Do not
-bump individual crates or platform files independently.
-
-The Cargo lock JSONPath uses `name.value` because Release Please 17.6.0
-(bundled by the pinned action v5.0.0) wraps TOML scalar values with source-position metadata. When
-upgrading that action, verify an in-memory stable/prerelease bump changes only
-the four workspace entries, not dependency versions.
+workspace members inherit `workspace.package.version`. `npm run check:version`
+rejects drift before a build. Do not bump individual crates or platform files
+by hand; the release script changes them together.
 
 Supported tags are `vX.Y.Z` and `vX.Y.Z-alpha.N`, `-beta.N`, or `-rc.N`. The tag
 must exactly match all version files. Do not move published version tags.
 
-1. PRs targeting `main` and pushes to `main` run frontend checks and Rust
-   checks/tests on macOS and Windows. Successful pushes to `main` then build all
-   four platform groups through `build-packages.yml`.
-   Pushes to `v1` do not trigger CI. Live
-   third-party-source tests remain opt-in.
-2. Conventional commits on `main` feed Release Please. Review and merge its
-   release PR to create a version tag and **draft** release. `v1` alone does not
-   trigger automatic releases.
-3. Release Please directly calls the reusable release workflow. It resolves the
-   tag to a commit, validates the version, and runs CI and all desktop/mobile builds
-   against that same commit.
-4. After every required build succeeds, the publish job verifies the complete
-   package set, uploads installers, `SHA256SUMS` and `build-manifest.json`, then
-   publishes the draft. Prerelease tags are not marked latest.
-   A failed build leaves the draft unpublished; already public releases are not
-   overwritten. A full rerun removes superseded generated installers from that
-   unpublished draft; unrelated attachments are left alone. Never manually
-   publish a draft while its build is in progress.
+Day to day, merge into `main` freely: nothing is versioned until you decide to
+release. PRs targeting `main` and pushes to `main` run frontend checks and Rust
+checks/tests on macOS and Windows, and successful pushes to `main` build all
+four platform groups through `build-packages.yml`. Live third-party-source tests
+remain opt-in.
 
-For a failed draft build, rerun the failed workflow/jobs. Alternatively run
-**Build and Release** manually with an existing matching version tag. A branch
-name is not a release input. Protect version tags against deletion/force updates
-and configure the `github-release` environment with any required reviewers.
-Creating an environment in YAML alone does not enable approval protection.
+To release:
 
-The default `GITHUB_TOKEN` cannot trigger new workflows from its own events.
-The direct workflow call handles release builds, but Release Please's bot PR may
-still need a manual **CI** run with its branch as `ref`. Alternatively configure
-the optional, narrowly scoped `RELEASE_PLEASE_TOKEN` so its PR triggers CI normally
-([Release Please action documentation](https://github.com/googleapis/release-please-action)).
-Enable GitHub Actions' permission to create pull requests in repository settings.
-No token, environment protection, tag rule, or remote release is provisioned by
-editing these files locally.
+1. On an up-to-date, clean `main`, run `npm run release -- 0.3.0` (or
+   `0.3.0-beta.1`). It writes the version to `package.json`, `package-lock.json`,
+   the Cargo workspace and the workspace entries of `Cargo.lock`, commits
+   `chore(release): v0.3.0` and creates the annotated tag `v0.3.0`. It refuses a
+   dirty tree, an existing tag, or a version that is not newer.
+2. Push both: `git push origin main v0.3.0`. Alternatively run **Prepare
+   Release** from the Actions tab with the version; it does steps 1–2 on `main`
+   (a branch rule that blocks the bot's push to `main` requires the local script).
+3. The tag starts **Build and Release**. It resolves the tag to a commit,
+   validates the version, runs CI and every desktop/mobile build against that
+   commit, then uploads installers, `SHA256SUMS` and `build-manifest.json` to a
+   **draft** release. The draft's notes are written from the conventional
+   commits since the previous version tag (`scripts/release-notes.mjs`):
+   breaking changes, features, fixes and performance work.
+4. Edit the notes on GitHub and publish the draft yourself. Installed apps only
+   see published releases; prerelease tags are marked prerelease and never
+   become latest.
+
+A failed build leaves the draft unpublished; already public releases are not
+overwritten. Rerun the failed jobs, or run **Build and Release** manually with
+the existing tag. A full rerun removes superseded generated installers from that
+unpublished draft; unrelated attachments and your edited notes are left alone.
+Never publish a draft while its build is in progress. To abandon a version
+before publishing, delete the draft and the tag, then release a new version.
+
+Protect version tags against deletion/force updates and configure the
+`github-release` environment with any required reviewers. Creating an
+environment in YAML alone does not enable approval protection. Tags pushed with
+the default `GITHUB_TOKEN` start no workflows, so **Prepare Release** calls the
+release workflow directly. No environment protection, tag rule, or remote
+release is provisioned by editing these files locally.
 
 Node is selected from `.node-version` (26). Rust is pinned in
 `rust-toolchain.toml`; update the matching toolchain inputs in Actions together.

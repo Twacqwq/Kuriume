@@ -112,11 +112,11 @@ test("staging rejects ambiguous, empty and outside-checkout packages", async t =
 
 // The publisher runs on Ubuntu; exercise its actual shell with a fake gh
 // function. This test never authenticates or calls GitHub.
-test("publishing guards immutable tags/public releases and cleans only superseded draft installers", {
+test("the release job fills a draft, guards tags/public releases and cleans only superseded draft installers", {
   skip: process.platform === "win32" || spawnSync("jq", ["--version"]).status !== 0,
 }, async t => {
   const workflow = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
-  const marker = "      - name: Upload to draft and publish only the complete release\n        run: |\n";
+  const marker = "      - name: Upload the complete package set to the draft release\n        run: |\n";
   assert(workflow.includes(marker));
   const script = workflow.split(marker)[1].split("\n").map(line => line.slice(10)).join("\n");
   const gh = `
@@ -152,12 +152,13 @@ test("publishing guards immutable tags/public releases and cleans only supersede
       assert(!/release (upload|edit|delete-asset|create)/.test(calls));
     } else {
       assert.match(calls, /release upload v0.2.0 artifacts\/release\/Kuriume-current.apk --clobber/);
-      assert.match(calls, /release edit v0.2.0 --draft=false/);
-      if (name === "new") assert.match(calls, /release create/);
+      // Publishing is a person's decision after reviewing the notes.
+      assert(!/--draft=false/.test(calls), "the release must stay a draft");
+      if (name === "new") assert.match(calls, /release create v0.2.0 --verify-tag --draft --notes-file release-notes.md/);
       if (name === "draft") {
         assert.match(calls, /delete-asset v0.2.0 Kuriume-old-ios-unsigned.ipa --yes/);
         assert(!/delete-asset.*(?:notes.txt|Kuriume-current.apk)/.test(calls));
-        assert.match(calls, /--prerelease --latest=false/);
+        assert.match(calls, /release edit v0.2.0 --prerelease$/m);
       }
     }
   }

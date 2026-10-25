@@ -1,6 +1,12 @@
 name: Build and Release
 
+# A version tag (from `npm run release -- X.Y.Z` or the Prepare Release
+# workflow) builds every platform into a draft release. Review its notes on
+# the release page and publish it there; installed apps see it only then.
 on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
   workflow_call:
     inputs:
       tag:
@@ -17,7 +23,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ inputs.tag }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -30,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, node24
         with:
-          ref: refs/tags/${{ inputs.tag }}
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0, node24
         with:
@@ -40,7 +46,7 @@ jobs:
           toolchain: '1.93.0'
       - id: version
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: node scripts/check-version.mjs "$RELEASE_TAG"
       - id: source
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -69,7 +75,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
       RELEASE_SHA: ${{ needs.prepare.outputs.sha }}
       PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
     steps:
@@ -77,9 +83,14 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
+          # Release notes compare with the previous version tag.
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0, node24
         with:
           node-version-file: .node-version
+      - name: Draft release notes from the commits since the previous tag
+        run: node scripts/release-notes.mjs "$RELEASE_TAG" > release-notes.md
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2, node24
         with:
           pattern: release-*
@@ -90,7 +101,7 @@ jobs:
           SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
           KURIUME_BUILD_NUMBER: ${{ needs.packages.outputs.build-number }}
         run: node scripts/package-artifacts.mjs release
-      - name: Upload to draft and publish only the complete release
+      - name: Upload the complete package set to the draft release
         run: |
           set -euo pipefail
           test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$RELEASE_SHA" || {
@@ -103,7 +114,7 @@ jobs:
               exit 1
             }
           else
-            gh release create "$RELEASE_TAG" --verify-tag --draft --generate-notes --title "Kuriume $RELEASE_TAG"
+            gh release create "$RELEASE_TAG" --verify-tag --draft --notes-file release-notes.md --title "Kuriume $RELEASE_TAG"
           fi
           # A full rerun has a new build number. Remove only superseded generated
           # assets from this unpublished draft, not unrelated attachments.
@@ -120,8 +131,15 @@ jobs:
             done < draft-assets.txt
           fi
           gh release upload "$RELEASE_TAG" artifacts/release/* --clobber
+          # Stays a draft: the notes are reviewed and the release published by
+          # hand. Previews never become the latest release.
           if [ "$PRERELEASE" = true ]; then
-            gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
+            gh release edit "$RELEASE_TAG" --prerelease
           else
-            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false
+            gh release edit "$RELEASE_TAG" --prerelease=false
           fi
+          {
+            echo "### Draft release $RELEASE_TAG is ready"
+            echo
+            echo "Review the notes, then publish it: ${GITHUB_SERVER_URL:-https://github.com}/$GH_REPO/releases"
+          } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
