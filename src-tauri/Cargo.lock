@@ -1805,7 +1805,7 @@ dependencies = [
 
 [[package]]
 name = "kuriume"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "block2",
  "http-body-util",
@@ -1829,7 +1829,7 @@ dependencies = [
 
 [[package]]
 name = "kuriume-provider"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1844,7 +1844,7 @@ dependencies = [
 
 [[package]]
 name = "kuriume-store"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "rusqlite",
  "serde",
@@ -3955,7 +3955,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-mobile"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
