@@ -383,8 +383,10 @@ To release:
    `v0.3.0` and calls **Build and Release**. Tagging only after the merge keeps
    the signing builds to code already in `main`.
 4. **Build and Release** resolves the tag to a commit, validates the version,
-   runs CI and every desktop/mobile build against that commit, then uploads
-   installers, `SHA256SUMS` and `build-manifest.json` to a **draft** release.
+   runs CI and every desktop/mobile build against that commit, then uploads the
+   installers to a **draft** release. `SHA256SUMS` and `build-manifest.json`
+   stay with the workflow run as the `build-records-vX.Y.Z` artifact; GitHub
+   shows each release asset's SHA-256 itself.
    The draft's notes are written from the conventional commits since the
    previous version tag (`scripts/release-notes.mjs`): breaking changes,
    features, fixes and performance work. A version tag on `main` pushed by hand

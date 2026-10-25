@@ -102,6 +102,18 @@ jobs:
           SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
           KURIUME_BUILD_NUMBER: ${{ needs.packages.outputs.build-number }}
         run: node scripts/package-artifacts.mjs release
+      # The checksums and build manifest stay with the workflow run for
+      # tracing a build; the release itself carries only the installers
+      # (GitHub shows each asset's SHA-256 there).
+      - name: Keep the checksums and build manifest with this run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, node24
+        with:
+          name: build-records-${{ env.RELEASE_TAG }}
+          path: |
+            artifacts/release/SHA256SUMS
+            artifacts/release/build-manifest.json
+          if-no-files-found: error
+          overwrite: true
       - name: Upload the complete package set to the draft release
         run: |
           set -euo pipefail
@@ -128,10 +140,14 @@ jobs:
                     gh release delete-asset "$RELEASE_TAG" "$asset" --yes
                   fi
                   ;;
+                # Earlier drafts also carried the build records.
+                SHA256SUMS|build-manifest.json)
+                  gh release delete-asset "$RELEASE_TAG" "$asset" --yes
+                  ;;
               esac
             done < draft-assets.txt
           fi
-          gh release upload "$RELEASE_TAG" artifacts/release/* --clobber
+          gh release upload "$RELEASE_TAG" artifacts/release/Kuriume-* --clobber
           # Stays a draft: the notes are reviewed and the release published by
           # hand. Previews never become the latest release.
           if [ "$PRERELEASE" = true ]; then
