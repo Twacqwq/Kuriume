@@ -20,48 +20,44 @@ mod media_proxy;
 mod online_commands;
 mod store_commands;
 
-/// macOS sends Cmd+C/V/X/A/Z (and Cmd+Q/H/M) to the WebView only through
-/// the app menu's key equivalents, so text fields need an Edit menu there.
-/// Windows and Linux WebViews handle those keys themselves; no menu bar.
+/// macOS sends Cmd+C/V/X/A/Z (and Cmd+Q/H) to the WebView only through the
+/// app menu's key equivalents, so text fields need an Edit menu there. Kept
+/// to the app menu and 编辑, with macOS's own Chinese names. Windows and
+/// Linux WebViews handle those keys themselves; no menu bar.
 #[cfg(desktop)]
 fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
     #[cfg(target_os = "macos")]
     {
+        // macOS titles the first menu with the app name whatever it is given.
         let application = Submenu::with_items(
             app,
             "Kuriume",
             true,
             &[
-                &PredefinedMenuItem::about(app, None, None)?,
+                &PredefinedMenuItem::about(app, Some("关于 Kuriume"), None)?,
                 &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::hide(app, None)?,
-                &PredefinedMenuItem::hide_others(app, None)?,
-                &PredefinedMenuItem::show_all(app, None)?,
+                &PredefinedMenuItem::hide(app, Some("隐藏 Kuriume"))?,
+                &PredefinedMenuItem::hide_others(app, Some("隐藏其他"))?,
+                &PredefinedMenuItem::show_all(app, Some("全部显示"))?,
                 &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::quit(app, None)?,
+                &PredefinedMenuItem::quit(app, Some("退出 Kuriume"))?,
             ],
         )?;
         let edit = Submenu::with_items(
             app,
-            "Edit",
+            "编辑",
             true,
             &[
-                &PredefinedMenuItem::undo(app, None)?,
-                &PredefinedMenuItem::redo(app, None)?,
+                &PredefinedMenuItem::undo(app, Some("撤销"))?,
+                &PredefinedMenuItem::redo(app, Some("重做"))?,
                 &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::cut(app, None)?,
-                &PredefinedMenuItem::copy(app, None)?,
-                &PredefinedMenuItem::paste(app, None)?,
-                &PredefinedMenuItem::select_all(app, None)?,
+                &PredefinedMenuItem::cut(app, Some("剪切"))?,
+                &PredefinedMenuItem::copy(app, Some("拷贝"))?,
+                &PredefinedMenuItem::paste(app, Some("粘贴"))?,
+                &PredefinedMenuItem::select_all(app, Some("全选"))?,
             ],
         )?;
-        let window = Submenu::with_items(
-            app,
-            "Window",
-            true,
-            &[&PredefinedMenuItem::minimize(app, None)?],
-        )?;
-        Menu::with_items(app, &[&application, &edit, &window])
+        Menu::with_items(app, &[&application, &edit])
     }
     #[cfg(not(target_os = "macos"))]
     {
