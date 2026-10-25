@@ -126,7 +126,7 @@ test("the release job fills a draft, guards tags/public releases and cleans only
         'api '*) printf '%s\\n' "$REMOTE_SHA" ;;
         'release view')
           if [ "$DRAFT_STATE" = absent ]; then return 1; fi
-          printf '{"isDraft":%s,"assets":[{"name":"Kuriume-old-ios-unsigned.ipa"},{"name":"notes.txt"},{"name":"Kuriume-current.apk"}]}\\n' "$DRAFT_STATE" ;;
+          printf '{"isDraft":%s,"assets":[{"name":"Kuriume-old-ios-unsigned.ipa"},{"name":"SHA256SUMS"},{"name":"notes.txt"},{"name":"Kuriume-current.apk"}]}\\n' "$DRAFT_STATE" ;;
         'release create'|'release upload'|'release edit'|'release delete-asset') return 0 ;;
         *) return 99 ;;
       esac
@@ -142,6 +142,8 @@ test("the release job fills a draft, guards tags/public releases and cleans only
     t.after(() => rm(root, { recursive: true, force: true }));
     await mkdir(join(root, "artifacts/release"), { recursive: true });
     await writeFile(join(root, "artifacts/release/Kuriume-current.apk"), "verified package");
+    await writeFile(join(root, "artifacts/release/SHA256SUMS"), "checksums");
+    await writeFile(join(root, "artifacts/release/build-manifest.json"), "{}");
     const result = spawnSync("bash", ["-c", gh + script], {
       cwd: root, encoding: "utf8", env: { ...process.env, GH_REPO: "example/repo", RELEASE_TAG: "v0.2.0",
         RELEASE_SHA: identity.sourceSha, REMOTE_SHA: sha, DRAFT_STATE: state, PRERELEASE: prerelease },
@@ -151,12 +153,14 @@ test("the release job fills a draft, guards tags/public releases and cleans only
     if (!success) {
       assert(!/release (upload|edit|delete-asset|create)/.test(calls));
     } else {
-      assert.match(calls, /release upload v0.2.0 artifacts\/release\/Kuriume-current.apk --clobber/);
+      // Only installers go to the release; the records stay with the run.
+      assert.match(calls, /^release upload v0.2.0 artifacts\/release\/Kuriume-current.apk --clobber$/m);
       // Publishing is a person's decision after reviewing the notes.
       assert(!/--draft=false/.test(calls), "the release must stay a draft");
       if (name === "new") assert.match(calls, /release create v0.2.0 --verify-tag --draft --notes-file release-notes.md/);
       if (name === "draft") {
         assert.match(calls, /delete-asset v0.2.0 Kuriume-old-ios-unsigned.ipa --yes/);
+        assert.match(calls, /delete-asset v0.2.0 SHA256SUMS --yes/);
         assert(!/delete-asset.*(?:notes.txt|Kuriume-current.apk)/.test(calls));
         assert.match(calls, /release edit v0.2.0 --prerelease$/m);
       }
