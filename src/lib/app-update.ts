@@ -120,7 +120,7 @@ function releasePage(release: Pick<GithubRelease, "html_url">): string {
 }
 
 /**
- * Release notes are GitHub Markdown (release-please changelogs); show them as
+ * Release notes are GitHub Markdown (scripts/release-notes.mjs); show them as
  * short plain text without the version heading or commit/PR references.
  */
 export function plainReleaseNotes(markdown: string, maxLines = 8): string[] {

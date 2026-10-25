@@ -98,7 +98,7 @@ function PromptHeading({ icon, title, description }: { icon: React.ReactNode; ti
   );
 }
 
-/** release-please section headings, in the interface language. */
+/** Release-note section headings (scripts/release-notes.mjs), in the interface language. */
 const SECTION_ZH: Record<string, string> = {
   "Features": "新功能",
   "Bug Fixes": "问题修复",

@@ -6,6 +6,7 @@
   "scripts": {
     "test": "node --test scripts/*.test.mjs",
     "check:version": "node scripts/check-version.mjs",
+    "release": "node scripts/release.mjs",
     "icons:generate": "tauri icon public/icon.png",
     "dev": "vite",
     "build": "tsc && vite build",

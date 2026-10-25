@@ -22,7 +22,6 @@ export function checkVersion(root, tag) {
   const lock = json("package-lock.json");
   assert.equal(lock.version, version, "package-lock.json version is stale");
   assert.equal(lock.packages[""].version, version, "package-lock.json root package is stale");
-  assert.equal(json(".release-please-manifest.json")["."], version, "Release manifest version is stale");
   assert.equal(json("src-tauri/tauri.conf.json").version, "../package.json", "Tauri must read the product version");
 
   const metadata = JSON.parse(execFileSync("cargo", [

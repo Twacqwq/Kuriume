@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit or branch to check
+        type: string
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ inputs.ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, windows-2022]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, node24
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0, node24
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: '1.93.0'
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: src-tauri -> target
+          save-if: ${{ github.event_name != 'pull_request' }}
+      - run: npm ci
+      - name: Verify generated app icons
+        shell: bash
+        run: |
+          npm run icons:generate
+          # ICNS stores its image entries in nondeterministic order; check PNG/ICO and mobile assets.
+          git diff --exit-code -- src-tauri/icons src-tauri/gen/android/app/src/main/res src-tauri/gen/apple/Assets.xcassets ':(exclude)src-tauri/icons/icon.icns'
+          test -z "$(git ls-files --others --exclude-standard -- src-tauri/icons src-tauri/gen/android/app/src/main/res src-tauri/gen/apple/Assets.xcassets)"
+      - run: npm run check:version
+      - run: npm test
+      - run: npm run build
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
+
+  packages:
+    needs: checks
+    # Called release checks inherit the caller's push event; their ref input
+    # keeps them from recursively building another set of main packages.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && inputs.ref == ''
+    uses: ./.github/workflows/build-packages.yml
+    with:
+      ref: ${{ github.sha }}
+    secrets: inherit
