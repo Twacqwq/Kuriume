@@ -6,6 +6,8 @@ use kuriume_provider::{AniList, Bangumi};
 use std::sync::Arc;
 #[cfg(desktop)]
 use tauri::menu::Menu;
+#[cfg(target_os = "macos")]
+use tauri::menu::{PredefinedMenuItem, Submenu};
 use tauri::Manager;
 
 mod app_commands;
@@ -17,6 +19,51 @@ mod fullscreen_macos;
 mod media_proxy;
 mod online_commands;
 mod store_commands;
+
+/// macOS sends Cmd+C/V/X/A/Z (and Cmd+Q/H) to the WebView only through the
+/// app menu's key equivalents, so text fields need an Edit menu there. Kept
+/// to the app menu and 编辑, with macOS's own Chinese names. Windows and
+/// Linux WebViews handle those keys themselves; no menu bar.
+#[cfg(desktop)]
+fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
+    #[cfg(target_os = "macos")]
+    {
+        // macOS titles the first menu with the app name whatever it is given.
+        let application = Submenu::with_items(
+            app,
+            "Kuriume",
+            true,
+            &[
+                &PredefinedMenuItem::about(app, Some("关于 Kuriume"), None)?,
+                &PredefinedMenuItem::separator(app)?,
+                &PredefinedMenuItem::hide(app, Some("隐藏 Kuriume"))?,
+                &PredefinedMenuItem::hide_others(app, Some("隐藏其他"))?,
+                &PredefinedMenuItem::show_all(app, Some("全部显示"))?,
+                &PredefinedMenuItem::separator(app)?,
+                &PredefinedMenuItem::quit(app, Some("退出 Kuriume"))?,
+            ],
+        )?;
+        let edit = Submenu::with_items(
+            app,
+            "编辑",
+            true,
+            &[
+                &PredefinedMenuItem::undo(app, Some("撤销"))?,
+                &PredefinedMenuItem::redo(app, Some("重做"))?,
+                &PredefinedMenuItem::separator(app)?,
+                &PredefinedMenuItem::cut(app, Some("剪切"))?,
+                &PredefinedMenuItem::copy(app, Some("拷贝"))?,
+                &PredefinedMenuItem::paste(app, Some("粘贴"))?,
+                &PredefinedMenuItem::select_all(app, Some("全选"))?,
+            ],
+        )?;
+        Menu::with_items(app, &[&application, &edit])
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Menu::new(app)
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -50,7 +97,7 @@ pub fn run() {
 
     #[cfg(desktop)]
     let builder = builder
-        .menu(Menu::new)
+        .menu(app_menu)
         .plugin(tauri_plugin_updater::Builder::new().build());
 
     #[cfg(mobile)]

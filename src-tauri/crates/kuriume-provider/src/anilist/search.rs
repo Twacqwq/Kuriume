@@ -228,9 +228,10 @@ impl AniList {
             };
             return self.page(offset / limit + 1, limit, filter).await;
         }
+        // Searches may find works AniList marks adult, but not explicit Hentai.
         let media_filter = match kind {
-            MediaKind::Anime => "type:ANIME,isAdult:false",
-            MediaKind::Manga => "type:MANGA,isAdult:false,format_not:NOVEL",
+            MediaKind::Anime => format!("type:ANIME,{LOOKUP_FILTER}"),
+            MediaKind::Manga => format!("type:MANGA,{LOOKUP_FILTER},format_not:NOVEL"),
         };
 
         let target = u64::from(offset) + u64::from(limit) + 1;
