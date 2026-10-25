@@ -1,8 +1,11 @@
 name: Prepare Release
 
-# Starts a release from the GitHub website: bumps every version file on main,
-# commits "chore(release): vX.Y.Z", tags it and builds the draft release.
-# The same as `npm run release -- X.Y.Z` followed by pushing main and the tag.
+# Starts a release from the GitHub website: bumps every version file on a new
+# branch release/vX.Y.Z, commits "chore(release): vX.Y.Z" and opens the pull
+# request into main. Merging it tags and builds the draft release
+# (release-tag.yml). The same as `npm run release -- X.Y.Z` followed by
+# pushing the branch. Needs "Allow GitHub Actions to create and approve pull
+# requests" in the repository's Actions settings.
 on:
   workflow_dispatch:
     inputs:
@@ -13,19 +16,18 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: prepare-release
   cancel-in-progress: false
 
 jobs:
-  tag:
+  branch:
     # Releases are cut from main only.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    outputs:
-      tag: ${{ steps.release.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, node24
         with:
@@ -38,24 +40,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
         with:
           toolchain: '1.93.0'
-      - id: release
-        name: Bump the version, commit and tag
+      - name: Bump the version on a release branch and open the pull request
         env:
           VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           node scripts/release.mjs "$VERSION"
           tag="v${VERSION#v}"
-          # A branch rule that blocks this push needs the local script instead.
-          git push origin HEAD:main "$tag"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          branch="release/$tag"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" --title "chore(release): $tag" --body "$(cat <<BODY
+          Sets every version file to ${tag#v}. Merging this tags the merged commit $tag and builds the draft release.
 
-  # Tags pushed with GITHUB_TOKEN start no workflows, so build directly.
-  release:
-    needs: tag
-    uses: ./.github/workflows/release.yml
-    with:
-      tag: ${{ needs.tag.outputs.tag }}
-    secrets: inherit
+          Pull requests opened by GitHub Actions start no checks: close and reopen this one if main requires them.
+          BODY
+          )"

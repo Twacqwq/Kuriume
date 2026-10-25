@@ -366,20 +366,30 @@ remain opt-in.
 To release:
 
 1. On an up-to-date, clean `main`, run `npm run release -- 0.3.0` (or
-   `0.3.0-beta.1`). It writes the version to `package.json`, `package-lock.json`,
-   the Cargo workspace and the workspace entries of `Cargo.lock`, commits
-   `chore(release): v0.3.0` and creates the annotated tag `v0.3.0`. It refuses a
-   dirty tree, an existing tag, or a version that is not newer.
-2. Push both: `git push origin main v0.3.0`. Alternatively run **Prepare
-   Release** from the Actions tab with the version; it does steps 1–2 on `main`
-   (a branch rule that blocks the bot's push to `main` requires the local script).
-3. The tag starts **Build and Release**. It resolves the tag to a commit,
-   validates the version, runs CI and every desktop/mobile build against that
-   commit, then uploads installers, `SHA256SUMS` and `build-manifest.json` to a
-   **draft** release. The draft's notes are written from the conventional
-   commits since the previous version tag (`scripts/release-notes.mjs`):
-   breaking changes, features, fixes and performance work.
-4. Edit the notes on GitHub and publish the draft yourself. Installed apps only
+   `0.3.0-beta.1`). It creates the branch `release/v0.3.0`, writes the version
+   to `package.json`, `package-lock.json`, the Cargo workspace and the workspace
+   entries of `Cargo.lock`, and commits `chore(release): v0.3.0`. It refuses a
+   dirty tree, an existing tag or branch, or a version that is not newer.
+2. `git push origin release/v0.3.0`, open a pull request into `main` and merge
+   it with any merge method. Then
+   `git switch main && git pull && git branch -D release/v0.3.0`.
+   Alternatively run **Prepare Release** from the Actions tab with the version:
+   it pushes the branch and opens the pull request for you. That needs "Allow
+   GitHub Actions to create and approve pull requests" in the repository's
+   Actions settings, and its pull request starts no checks; close and reopen it
+   if `main` requires them.
+3. Merging starts **Tag Release** (`release-tag.yml`). It checks that the
+   merged version files match the branch name, tags the merged commit on `main`
+   `v0.3.0` and calls **Build and Release**. Tagging only after the merge keeps
+   the signing builds to code already in `main`.
+4. **Build and Release** resolves the tag to a commit, validates the version,
+   runs CI and every desktop/mobile build against that commit, then uploads
+   installers, `SHA256SUMS` and `build-manifest.json` to a **draft** release.
+   The draft's notes are written from the conventional commits since the
+   previous version tag (`scripts/release-notes.mjs`): breaking changes,
+   features, fixes and performance work. A version tag on `main` pushed by hand
+   starts the same build.
+5. Edit the notes on GitHub and publish the draft yourself. Installed apps only
    see published releases; prerelease tags are marked prerelease and never
    become latest.
 
@@ -393,7 +403,7 @@ before publishing, delete the draft and the tag, then release a new version.
 Protect version tags against deletion/force updates and configure the
 `github-release` environment with any required reviewers. Creating an
 environment in YAML alone does not enable approval protection. Tags pushed with
-the default `GITHUB_TOKEN` start no workflows, so **Prepare Release** calls the
+the default `GITHUB_TOKEN` start no workflows, so **Tag Release** calls the
 release workflow directly. No environment protection, tag rule, or remote
 release is provisioned by editing these files locally.
 

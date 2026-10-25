@@ -1,8 +1,9 @@
 name: Build and Release
 
-# A version tag (from `npm run release -- X.Y.Z` or the Prepare Release
-# workflow) builds every platform into a draft release. Review its notes on
-# the release page and publish it there; installed apps see it only then.
+# A version tag builds every platform into a draft release. Merging a
+# release/vX.Y.Z pull request tags and calls this (release-tag.yml); a tag on
+# main pushed by hand starts it too. Review the draft's notes on the release
+# page and publish it there; installed apps see it only then.
 on:
   push:
     tags:
