@@ -4,7 +4,13 @@ import { invoke } from "@tauri-apps/api/core";
 export const PROJECT_URL = "https://github.com/Twacqwq/Kuriume";
 const LATEST_RELEASE_API = "https://api.github.com/repos/Twacqwq/Kuriume/releases/latest";
 
-export type UpdateDownload = { name: string; url: string; size: number };
+export type UpdateDownload = {
+  name: string;
+  url: string;
+  size: number;
+  /** GitHub's asset digest (`sha256:…`); the Android installer checks it. */
+  sha256: string | null;
+};
 export type UpdateCheck =
   | { status: "latest"; current: string; latest: string | null }
   | {
@@ -25,7 +31,7 @@ type GithubRelease = {
   published_at: string | null;
   draft: boolean;
   prerelease: boolean;
-  assets: { name: string; browser_download_url: string; size: number }[];
+  assets: { name: string; browser_download_url: string; size: number; digest?: string | null }[];
 };
 
 type Version = { core: [number, number, number]; pre: (string | number)[] };
@@ -82,7 +88,8 @@ export function pickDownload(release: Pick<GithubRelease, "assets">, platform: U
   const suffix = PACKAGE_SUFFIX[platform];
   const asset = suffix ? release.assets.find((item) => item.name.startsWith("Kuriume-") && item.name.endsWith(suffix)) : undefined;
   if (!asset || !asset.browser_download_url.startsWith(`${PROJECT_URL}/releases/download/`)) return null;
-  return { name: asset.name, url: asset.browser_download_url, size: asset.size };
+  const sha256 = typeof asset.digest === "string" && /^sha256:[a-f0-9]{64}$/i.test(asset.digest) ? asset.digest : null;
+  return { name: asset.name, url: asset.browser_download_url, size: asset.size, sha256 };
 }
 
 /**

@@ -4,11 +4,14 @@ import { cp, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { assembleRelease, packageFilename, platforms, stagePackages } from "./package-artifacts.mjs";
+import { assembleRelease, packageFilename, platforms, stagePackages, updaterBundles } from "./package-artifacts.mjs";
 
 const identity = { version: "0.2.0-beta.1", sourceSha: "a".repeat(40), buildNumber: 3567001 };
 
-async function fixture(t) {
+// What `tauri signer sign` writes: base64 of a minisign signature.
+const signatureFor = (name) => Buffer.from(`untrusted comment: signature from tauri secret key\n${name.padEnd(88, "=")}\n`).toString("base64");
+
+async function fixture(t, { sign = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), "kuriume-packages-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "artifacts"));
@@ -23,6 +26,7 @@ async function fixture(t) {
         : `Kuriume_${identity.version}_${platform}${extension}`;
       const path = join(root, "artifacts", name);
       await writeFile(path, `test package for ${platform}${extension}`);
+      if (sign && updaterBundles[platform]?.[extension]) await writeFile(`${path}.sig`, signatureFor(name));
       // Match tauri-action v1's pre-archive output on macOS.
       paths.push(extension === ".app.tar.gz" ? path.slice(0, -7) : path);
     }
@@ -58,6 +62,47 @@ test("all platforms share exact identity, normalized names and checksums", async
   await assert.rejects(assembleRelease({ ...args, version: "0.2.0" }), /mismatched version/);
   await assert.rejects(assembleRelease({ ...args, buildNumber: identity.buildNumber + 1 }), /mismatched buildNumber/);
   await assert.rejects(assembleRelease({ ...args, buildNumber: undefined }), /shared build number/);
+});
+
+test("without the updater key there is no latest.json", async t => {
+  const args = await fixture(t);
+  await assembleRelease(args);
+  assert(!(await readdir(args.output)).includes("latest.json"));
+});
+
+test("signed updater bundles produce latest.json for the published release", async t => {
+  const args = await fixture(t, { sign: true });
+  await assembleRelease({ ...args, repository: "o/r" });
+  const latest = JSON.parse(await readFile(join(args.output, "latest.json"), "utf8"));
+  const base = "https://github.com/o/r/releases/download/v0.2.0-beta.1";
+  assert.equal(latest.version, "0.2.0-beta.1");
+  assert.deepEqual(Object.keys(latest.platforms).sort(), ["darwin-aarch64", "windows-x86_64", "windows-x86_64-msi", "windows-x86_64-nsis"]);
+  assert.equal(latest.platforms["darwin-aarch64"].url, `${base}/Kuriume-0.2.0-beta.1-macos-arm64.app.tar.gz`);
+  assert.equal(latest.platforms["darwin-aarch64"].signature, signatureFor("Kuriume_0.2.0-beta.1_macos-arm64.app.tar.gz"));
+  assert.equal(latest.platforms["windows-x86_64-nsis"].url, `${base}/Kuriume-0.2.0-beta.1-windows-x64.exe`);
+  assert.deepEqual(latest.platforms["windows-x86_64"], latest.platforms["windows-x86_64-nsis"]);
+  assert.equal(latest.platforms["windows-x86_64-msi"].url, `${base}/Kuriume-0.2.0-beta.1-windows-x64.msi`);
+  // Signatures never leave the manifest as loose files.
+  assert(!(await readdir(args.output)).some(name => name.endsWith(".sig")));
+});
+
+test("updater signatures are all-or-nothing", async t => {
+  const args = await fixture(t, { sign: true });
+  const path = join(args.input, "windows-x64.json");
+  const manifest = JSON.parse(await readFile(path, "utf8"));
+  await writeFile(path, JSON.stringify({ ...manifest, files: manifest.files.map(({ signature, ...file }) => file) }));
+  await assert.rejects(assembleRelease(args), /Updater signatures are incomplete/);
+  // A platform build that signed only one of its installers fails at staging.
+  const root = await mkdtemp(join(tmpdir(), "kuriume-half-signed-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const extension of [".exe", ".msi"]) await writeFile(join(root, `Kuriume${extension}`), "installer");
+  await writeFile(join(root, "Kuriume.exe.sig"), signatureFor("exe"));
+  await assert.rejects(stagePackages({ root, ...identity, platform: "windows-x64", signing: "unsigned",
+    paths: [join(root, "Kuriume.exe"), join(root, "Kuriume.msi")] }), /some updater bundles are signed/);
+  await rm(join(root, "artifacts"), { recursive: true, force: true });
+  await writeFile(join(root, "Kuriume.msi.sig"), "not a signature");
+  await assert.rejects(stagePackages({ root, ...identity, platform: "windows-x64", signing: "unsigned",
+    paths: [join(root, "Kuriume.exe"), join(root, "Kuriume.msi")] }), /Not an updater signature/);
 });
 
 test("release refuses corrupted, missing, duplicate and path-traversal packages", async t => {
@@ -126,7 +171,7 @@ test("the release job fills a draft, guards tags/public releases and cleans only
         'api '*) printf '%s\\n' "$REMOTE_SHA" ;;
         'release view')
           if [ "$DRAFT_STATE" = absent ]; then return 1; fi
-          printf '{"isDraft":%s,"assets":[{"name":"Kuriume-old-ios-unsigned.ipa"},{"name":"SHA256SUMS"},{"name":"notes.txt"},{"name":"Kuriume-current.apk"}]}\\n' "$DRAFT_STATE" ;;
+          printf '{"isDraft":%s,"assets":[{"name":"Kuriume-old-ios-unsigned.ipa"},{"name":"SHA256SUMS"},{"name":"latest.json"},{"name":"notes.txt"},{"name":"Kuriume-current.apk"}]}\\n' "$DRAFT_STATE" ;;
         'release create'|'release upload'|'release edit'|'release delete-asset') return 0 ;;
         *) return 99 ;;
       esac
@@ -144,6 +189,8 @@ test("the release job fills a draft, guards tags/public releases and cleans only
     await writeFile(join(root, "artifacts/release/Kuriume-current.apk"), "verified package");
     await writeFile(join(root, "artifacts/release/SHA256SUMS"), "checksums");
     await writeFile(join(root, "artifacts/release/build-manifest.json"), "{}");
+    // Only a build with the updater key has latest.json.
+    if (name === "new") await writeFile(join(root, "artifacts/release/latest.json"), "{}");
     const result = spawnSync("bash", ["-c", gh + script], {
       cwd: root, encoding: "utf8", env: { ...process.env, GH_REPO: "example/repo", RELEASE_TAG: "v0.2.0",
         RELEASE_SHA: identity.sourceSha, REMOTE_SHA: sha, DRAFT_STATE: state, PRERELEASE: prerelease },
@@ -154,13 +201,16 @@ test("the release job fills a draft, guards tags/public releases and cleans only
       assert(!/release (upload|edit|delete-asset|create)/.test(calls));
     } else {
       // Only installers go to the release; the records stay with the run.
-      assert.match(calls, /^release upload v0.2.0 artifacts\/release\/Kuriume-current.apk --clobber$/m);
+      const updater = name === "new" ? " artifacts/release/latest.json" : "";
+      assert.match(calls, new RegExp(`^release upload v0.2.0 artifacts/release/Kuriume-current.apk${updater} --clobber$`, "m"));
       // Publishing is a person's decision after reviewing the notes.
       assert(!/--draft=false/.test(calls), "the release must stay a draft");
       if (name === "new") assert.match(calls, /release create v0.2.0 --verify-tag --draft --notes-file release-notes.md/);
       if (name === "draft") {
         assert.match(calls, /delete-asset v0.2.0 Kuriume-old-ios-unsigned.ipa --yes/);
         assert.match(calls, /delete-asset v0.2.0 SHA256SUMS --yes/);
+        // A rerun without the updater key leaves no stale latest.json behind.
+        assert.match(calls, /delete-asset v0.2.0 latest.json --yes/);
         assert(!/delete-asset.*(?:notes.txt|Kuriume-current.apk)/.test(calls));
         assert.match(calls, /release edit v0.2.0 --prerelease$/m);
       }

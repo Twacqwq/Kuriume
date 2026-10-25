@@ -7,9 +7,11 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import android.view.WindowManager
 import android.webkit.WebView
+import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -19,10 +21,14 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import java.io.File
 import kotlin.math.roundToInt
 
 @InvokeArg
 class OpenUrlArgs { lateinit var url: String }
+
+@InvokeArg
+class InstallPackageArgs { lateinit var path: String }
 
 @InvokeArg
 class ControlArgs { lateinit var action: String; var value: Double? = null; var session: String? = null }
@@ -121,6 +127,60 @@ class MobilePlugin(private val activity: Activity) : Plugin(activity) {
             sniffer?.cancel()
             sniffer = MediaSniffer(activity, args, invoke)
             sniffer?.start()
+        }
+    }
+
+    /** Update packages are downloaded here; UpdateFileProvider shares only this folder. */
+    private fun updateFolder() = File(activity.cacheDir, "updates")
+
+    /**
+     * Android 8+ asks once whether Kuriume may install apps. Without that,
+     * open the setting and report INSTALL_PERMISSION_REQUIRED (src-tauri/src/app_update.rs).
+     */
+    private fun ensureInstallPermission(invoke: Invoke): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || activity.packageManager.canRequestPackageInstalls()) return true
+        activity.runOnUiThread {
+            try {
+                activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}")))
+            } catch (ignored: ActivityNotFoundException) {
+                // The user can still allow it from the system settings.
+            }
+        }
+        invoke.reject("INSTALL_PERMISSION_REQUIRED")
+        return false
+    }
+
+    /** An empty folder for the next update package; asks for install permission first. */
+    @Command
+    fun updateDir(invoke: Invoke) {
+        if (!ensureInstallPermission(invoke)) return
+        val dir = updateFolder()
+        // One package at a time: earlier downloads are no longer needed.
+        dir.listFiles()?.forEach { it.delete() }
+        if (!dir.isDirectory && !dir.mkdirs()) { invoke.reject("Cannot create the update folder"); return }
+        invoke.resolve(JSObject().apply { put("path", dir.absolutePath) })
+    }
+
+    /** Opens the system installer for a verified package in [updateFolder]. */
+    @Command
+    fun installPackage(invoke: Invoke) {
+        val args = invoke.parseArgs(InstallPackageArgs::class.java)
+        val file = File(args.path)
+        if (file.parentFile?.canonicalPath != updateFolder().canonicalPath || !file.isFile || !file.name.endsWith(".apk")) {
+            invoke.reject("Not a downloaded update package"); return
+        }
+        if (!ensureInstallPermission(invoke)) return
+        activity.runOnUiThread {
+            try {
+                val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.kuriume.updates", file)
+                val intent = Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(uri, "application/vnd.android.package-archive")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                activity.startActivity(intent)
+                invoke.resolve()
+            } catch (error: Exception) {
+                invoke.reject("Cannot open the installer: ${error.message}")
+            }
         }
     }
 
