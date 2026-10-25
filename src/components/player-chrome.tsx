@@ -1,12 +1,14 @@
 import type Artplayer from "artplayer";
 import { ArrowLeft, CircleAlert, Gauge, Lock, LockOpen, MoveHorizontal, Play, RotateCcw, Sun, Volume2, Waypoints, X } from "lucide-react";
+import { DanmakuSettings } from "@/components/danmaku-settings";
+import type { DanmakuView } from "@/hooks/use-danmaku";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { GestureFeedback } from "@/hooks/use-player-gestures";
 import { gestureTime } from "@/lib/player-gestures";
 import { isMobileApp } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 
-export type PlayerSheet = "episodes" | "speed" | "options" | "shortcuts";
+export type PlayerSheet = "episodes" | "speed" | "options" | "shortcuts" | "danmaku";
 
 export interface PlayerEpisode {
   number: number;
@@ -49,6 +51,8 @@ export interface PlayerChromeProps {
   onOpenOptions?: () => void;
   resumeFrom?: number;
   onRateChosen: (rate: number) => void;
+  /** Present when this build has danmaku. */
+  danmaku?: DanmakuView;
 }
 
 /** Kuriume's own layer above ArtPlayer: top bar, sheets, prompts and touch feedback. */
@@ -240,6 +244,7 @@ export function PlayerChrome(props: PlayerChromeProps) {
           )}
           {sheet === "options" && props.options}
           {sheet === "shortcuts" && <Shortcuts zh={zh} />}
+          {sheet === "danmaku" && props.danmaku && <DanmakuSettings view={props.danmaku} zh={zh} />}
         </Sheet>
       )}
     </div>
@@ -252,6 +257,7 @@ function sheetTitle(sheet: PlayerSheet, zh: boolean) {
     speed: zh ? "倍速" : "Speed",
     options: zh ? "线路与播放源" : "Source & server",
     shortcuts: zh ? "快捷键" : "Keyboard shortcuts",
+    danmaku: zh ? "弹幕" : "Danmaku",
   })[sheet];
 }
 
@@ -331,6 +337,7 @@ function Shortcuts({ zh }: { zh: boolean }) {
     ["F", zh ? "全屏" : "Fullscreen"],
     ["N", zh ? "下一集" : "Next episode"],
     ["A", zh ? "Anime4K 画质增强" : "Anime4K upscaling"],
+    ["D", zh ? "弹幕开关" : "Danmaku on / off"],
     ["[ / ]", zh ? "减速 / 加速" : "Slower / faster"],
     ["?", zh ? "显示快捷键" : "Show shortcuts"],
   ];

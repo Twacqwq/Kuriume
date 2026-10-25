@@ -13,6 +13,7 @@ use tauri::Manager;
 mod app_commands;
 mod app_update;
 mod commands;
+mod danmaku;
 mod diagnostics;
 #[cfg(target_os = "macos")]
 mod fullscreen_macos;
@@ -127,6 +128,7 @@ pub fn run() {
         .manage(catalog)
         .manage(StoreState::new())
         .manage(OnlineSourceState::new())
+        .manage(crate::danmaku::DanmakuState::new())
         .manage(media_proxy)
         .setup(|app| {
             #[cfg(all(
@@ -164,8 +166,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             crate::app_commands::open_external,
+            crate::app_commands::player_simple_fullscreen,
             crate::app_update::update_install,
             crate::app_update::update_restart,
+            crate::danmaku::danmaku_available,
+            crate::danmaku::danmaku_match,
+            crate::danmaku::danmaku_search,
+            crate::danmaku::danmaku_comments,
             crate::diagnostics::diagnostics_write,
             crate::diagnostics::diagnostics_read,
             crate::diagnostics::diagnostics_clear,

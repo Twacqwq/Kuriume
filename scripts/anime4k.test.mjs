@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { targetSize, upscalePasses } from "../src/lib/anime4k/sizing.ts";
+import { OUTPUT_LIMITS, targetSize, upscalePasses } from "../src/lib/anime4k/sizing.ts";
 import { cueText } from "../src/lib/anime4k/paths.ts";
 
 test("Anime4K upscales only as far as the screen needs", () => {
@@ -13,9 +13,22 @@ test("Anime4K upscales only as far as the screen needs", () => {
 });
 
 test("the canvas matches the displayed video box in device pixels, capped at 4K", () => {
-  assert.deepEqual(targetSize({ width: 390, height: 219 }, { width: 1280, height: 720 }, 3), { width: 1168, height: 657 });
+  // At most 2 device pixels per CSS pixel: a 3x phone screen would triple the work.
+  assert.deepEqual(targetSize({ width: 390, height: 219 }, { width: 1280, height: 720 }, 3), { width: 779, height: 438 });
   assert.deepEqual(targetSize({ width: 1440, height: 900 }, { width: 1920, height: 1080 }, 2), { width: 2880, height: 1620 });
   assert.deepEqual(targetSize({ width: 3000, height: 2000 }, { width: 1920, height: 1080 }, 2), { width: 3840, height: 2160 });
+});
+
+test("流畅优先 draws at CSS pixels and 1080p at most, so fullscreen needs fewer passes", () => {
+  const fullscreen = { width: 1512, height: 982 };
+  const p1080 = { width: 1920, height: 1080 };
+  const quality = targetSize(fullscreen, { width: 1280, height: 720 }, 2, OUTPUT_LIMITS.quality);
+  const smooth = targetSize(fullscreen, { width: 1280, height: 720 }, 2, OUTPUT_LIMITS.smooth);
+  assert.deepEqual(quality, { width: 3024, height: 1701 });
+  assert.deepEqual(smooth, { width: 1512, height: 850 });
+  assert.equal(upscalePasses({ width: 1280, height: 720 }, quality), 1);
+  assert.equal(upscalePasses({ width: 1280, height: 720 }, smooth), 0);
+  assert.deepEqual(targetSize({ width: 3000, height: 2000 }, p1080, 2, OUTPUT_LIMITS.smooth), { width: 1919, height: 1080 });
 });
 
 test("subtitle cues drawn over Anime4K drop WebVTT markup", () => {

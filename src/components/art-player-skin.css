@@ -362,6 +362,60 @@
   .kuriume-anime4k-badge { transition: none; }
 }
 
+/* 弹 toggle: an outlined character when off, filled with the accent when on;
+   dimmed when this episode has no danmaku, pulsing while it loads. */
+.artplayer-app .kuriume-player-button.kuriume-danmaku-toggle[aria-pressed="true"] {
+  background-color: transparent;
+}
+.kuriume-danmaku-badge {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1.6px solid currentColor;
+  border-radius: 6px;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease;
+}
+.kuriume-danmaku-toggle[aria-pressed="true"] .kuriume-danmaku-badge {
+  border-color: var(--primary);
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.kuriume-danmaku-toggle:is([data-state="none"], [data-state="error"]) .kuriume-danmaku-badge { opacity: 0.45; }
+/* Settings: the toggle's badge at the same size and place, with a small gear
+   on its lower-right corner, set into a notch (a mask, so it works over any
+   picture). The gear is placed from the button's centre, so it follows the
+   badge at any button size; its rule outranks the 22 px one for icons inside
+   player buttons. */
+.kuriume-danmaku-settings { position: relative; }
+.kuriume-danmaku-settings .kuriume-danmaku-badge {
+  -webkit-mask: radial-gradient(circle 7px at calc(100% - 3px) calc(100% - 3px), transparent 96%, #000 100%);
+  mask: radial-gradient(circle 7px at calc(100% - 3px) calc(100% - 3px), transparent 96%, #000 100%);
+}
+.artplayer-app .kuriume-player-button.kuriume-danmaku-settings > svg.kuriume-danmaku-gear {
+  position: absolute;
+  left: calc(50% + 4px);
+  top: calc(50% + 4px);
+  width: 10px;
+  height: 10px;
+  color: var(--foreground);
+}
+/* Toggle and settings read as one pair, set apart from the time. */
+.artplayer-app .art-control-kuriume-danmaku { margin-left: 6px; }
+/* Inline phone player: the 弹幕 chip below the video opens the settings. */
+.artplayer-app[data-mobile="true"][data-fullscreen="false"] .art-control-kuriume-danmaku-settings { display: none !important; }
+.kuriume-danmaku-toggle:is([data-state="matching"], [data-state="loading"]) .kuriume-danmaku-badge {
+  animation: kuriume-danmaku-pulse 1.2s ease-in-out infinite;
+}
+@keyframes kuriume-danmaku-pulse { 50% { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) {
+  .kuriume-danmaku-badge { transition: none; animation: none !important; }
+}
+
 /* Anime4K output: same box as the <video>, above it, below subtitles and
    controls; hidden (video shows through) until the first frame is drawn. */
 .kuriume-anime4k-canvas {
@@ -371,6 +425,16 @@
   pointer-events: none;
 }
 .kuriume-anime4k-on .kuriume-anime4k-canvas { display: block; }
+/* Danmaku: the whole player, above the video and Anime4K, below subtitles
+   (z-index 20) and every control. */
+.kuriume-danmaku {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
 .kuriume-anime4k-captions {
   position: absolute;
   inset: auto 0 calc(var(--art-bottom-height, 48px) + 16px) 0;

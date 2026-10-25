@@ -10,7 +10,7 @@ import restoreSource from "./glsl/Anime4K_Restore_CNN_M.glsl?raw";
 import upscaleSource from "./glsl/Anime4K_Upscale_CNN_x2_M.glsl?raw";
 import { evaluateSize, fragmentSource, parseHookShader, type HookPass } from "./glsl/mpv-hook";
 import type { Anime4KEvent, Anime4KQuality, FrameSource } from "./renderer";
-import { targetSize, upscalePasses, type Size } from "./sizing";
+import { OUTPUT_LIMITS, targetSize, upscalePasses, type OutputLimits, type Size } from "./sizing";
 import { MAX_IN_FLIGHT, PaceMeter } from "./pace";
 
 const VERTEX = `#version 300 es
@@ -86,11 +86,11 @@ export class Anime4KWebGLRenderer {
     this.pace.reset();
   }
 
-  resize(box: Size, pixelRatio = window.devicePixelRatio || 1) {
+  resize(box: Size, limits: OutputLimits = OUTPUT_LIMITS.quality, pixelRatio = window.devicePixelRatio || 1) {
     const native = { width: this.video.videoWidth, height: this.video.videoHeight };
     if (!native.width || !native.height || !box.width || !box.height) return;
     // Phones: cap the backing store; the GPU budget goes to the network.
-    const target = targetSize(box, native, Math.min(pixelRatio, 2));
+    const target = targetSize(box, native, pixelRatio, limits);
     if (this.canvas.width !== target.width || this.canvas.height !== target.height) {
       this.canvas.width = target.width;
       this.canvas.height = target.height;

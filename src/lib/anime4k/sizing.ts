@@ -14,12 +14,25 @@ export function upscalePasses(native: Size, target: Size): 0 | 1 | 2 {
   return ratio > 2.4 ? 2 : 1;
 }
 
-/** Canvas backing size: the displayed box in device pixels, capped at 4K. */
-export function targetSize(box: Size, native: Size, pixelRatio: number): Size {
+/** How large Anime4K may draw: a pixel-ratio and an output-size ceiling. */
+export type OutputLimits = { pixelRatio: number; width: number; height: number };
+
+/**
+ * 画质优先 (default): up to 2x device pixels and 4K. 流畅优先: CSS pixels and
+ * 1080p at most, which also needs fewer x2 passes (the large GPU cost).
+ */
+export const OUTPUT_LIMITS = {
+  quality: { pixelRatio: 2, width: 3840, height: 2160 },
+  smooth: { pixelRatio: 1, width: 1920, height: 1080 },
+} as const satisfies Record<string, OutputLimits>;
+
+/** Canvas backing size: the displayed box in device pixels, within `limits`. */
+export function targetSize(box: Size, native: Size, pixelRatio: number, limits: OutputLimits = OUTPUT_LIMITS.quality): Size {
   const scale = Math.min(box.width / native.width, box.height / native.height);
-  let width = Math.round(native.width * scale * pixelRatio);
-  let height = Math.round(native.height * scale * pixelRatio);
-  const cap = Math.min(1, 3840 / width, 2160 / height);
+  const ratio = Math.min(pixelRatio, limits.pixelRatio);
+  let width = Math.round(native.width * scale * ratio);
+  let height = Math.round(native.height * scale * ratio);
+  const cap = Math.min(1, limits.width / width, limits.height / height);
   width = Math.max(1, Math.round(width * cap));
   height = Math.max(1, Math.round(height * cap));
   return { width, height };

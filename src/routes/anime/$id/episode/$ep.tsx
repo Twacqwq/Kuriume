@@ -2,6 +2,8 @@ import { LibraryControl } from "@/components/library-control";
 import { PlaybackPanel, PlaybackOptions, type PanelDrawer } from "@/components/playback-panel";
 import { PlaybackSurface } from "@/components/playback-surface";
 import { PlaybackSubtitles } from "@/components/playback-subtitles";
+import { DanmakuSettings, danmakuSummary } from "@/components/danmaku-settings";
+import { useDanmaku } from "@/hooks/use-danmaku";
 import type { PlayerEpisode } from "@/components/player-chrome";
 import { Button } from "@/components/ui/button";
 import { playbackErrorMessage } from "@/lib/playback-error";
@@ -120,6 +122,9 @@ function EpisodePage() {
     () => catalogPlaybackTitles(media),
     [media?.title, media?.title_cn, media?.title_en, media?.search_titles],
   );
+
+  const danmaku = useDanmaku(media, episodeNumber);
+  const danmakuControl = danmaku.status === "unavailable" ? undefined : <DanmakuSettings view={danmaku} zh={language === "zh"} />;
 
   const onlineSource = useOnlineSource(media?.title, alternativeTitles, {
     catalogId: media?.id,
@@ -383,6 +388,7 @@ function EpisodePage() {
               onSelectEpisode={navigateToEpisode}
               options={<PlaybackOptions source={onlineSource} resolver={resolver} assetIsCurrent={assetIsCurrent} subtitleControl={subtitleControl} />}
               onOpenOptions={isSidePanel ? undefined : () => setPanelDrawer("server")}
+              danmaku={danmaku}
               onError={(message) => {
                 if (resolver.asset) resolver.reportError(resolver.asset, message);
               }}
@@ -419,6 +425,8 @@ function EpisodePage() {
             onSelectEpisode={navigateToEpisode}
             subtitleControl={subtitleControl}
             subtitleLabel={subtitleLabel}
+            danmakuControl={danmakuControl}
+            danmakuLabel={danmakuSummary(danmaku, language === "zh")}
             library={libraryControl}
             drawer={panelDrawer}
             onDrawer={setPanelDrawer}

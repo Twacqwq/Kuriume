@@ -11,9 +11,18 @@ export interface NativeFullscreenTransition {
   pending: boolean;
 }
 
+/**
+ * The window's fullscreen. `setFullscreen` resolves to "settled" when the
+ * switch is already complete (macOS simple fullscreen has no animation, so
+ * no transition events follow).
+ */
+export type NativeFullscreen = Pick<Window, "isFullscreen" | "onResized"> & {
+  setFullscreen(fullscreen: boolean): Promise<void | "settled">;
+};
+
 /** One owner for player controls, Escape and native window events. */
 export function createPlayerFullscreen(
-  native: Pick<Window, "isFullscreen" | "setFullscreen" | "onResized">,
+  native: NativeFullscreen,
   changed: (state: FullscreenState) => void,
   onTransition?: (handler: (event: NativeFullscreenTransition) => void) => Promise<() => void>,
 ) {
@@ -116,10 +125,10 @@ export function createPlayerFullscreen(
       if (disposed) return;
       const entering = mode === "system";
       if (actual !== entering) {
-        await native.setFullscreen(entering);
+        const result = await native.setFullscreen(entering);
         if (entering) owned = true;
         if (disposed) return;
-        if (onTransition) {
+        if (onTransition && result !== "settled") {
           // IPC acknowledgement is not completion of the macOS animation.
           if (state.pending) watchTransition(previous);
           return;

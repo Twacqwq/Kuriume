@@ -1,6 +1,7 @@
 //! macOS animation completion, isolated from the cross-platform player state.
 use block2::RcBlock;
 use objc2::{
+    msg_send,
     rc::Retained,
     runtime::{AnyObject, ProtocolObject},
 };
@@ -77,6 +78,24 @@ pub fn install(window: &WebviewWindow) -> tauri::Result<()> {
         OBSERVERS.with(|observers| observers.borrow_mut().push(Observer(token)));
     }
     Ok(())
+}
+
+/// Hides or shows the close, minimize and zoom buttons (NSWindowButton 0–2).
+pub fn set_window_buttons_hidden(window: &WebviewWindow, hidden: bool) -> tauri::Result<()> {
+    // The pointer crosses to the main thread as an address; AppKit is only
+    // touched there, and the window outlives this call.
+    let native = window.ns_window()? as usize;
+    window.run_on_main_thread(move || {
+        let native = native as *mut AnyObject;
+        for kind in 0usize..3 {
+            unsafe {
+                let button: *mut AnyObject = msg_send![native, standardWindowButton: kind];
+                if !button.is_null() {
+                    let _: () = msg_send![button, setHidden: hidden];
+                }
+            }
+        }
+    })
 }
 
 pub fn clear() {
