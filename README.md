@@ -92,7 +92,6 @@ Only on your device. Kuriume has no server and uploads nothing. Moving to a new 
 
 ## Coming next
 
-- [ ] Danmaku comments (dandanplay)
 - [ ] Manga reading from Komga, OPDS libraries and local files
 
 ## Contributing
@@ -108,6 +107,7 @@ Kuriume does not store or upload any video; playback comes from third-party publ
 **Data**
 - [AniList](https://anilist.co/) and [Bangumi](https://bgm.tv/) for show information, schedules and synopses
 - [soruly/anilist-chinese](https://github.com/soruly/anilist-chinese) for Chinese titles of AniList works
+- The [弹弹play open danmaku network](https://www.dandanplay.com/) for danmaku comments during playback
 
 **Artwork**
 - App icon by [ゆきうなぎ](https://www.pixiv.net/artworks/138196800) on Pixiv

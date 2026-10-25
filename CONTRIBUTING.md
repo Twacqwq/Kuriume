@@ -386,6 +386,26 @@ fall back to downloading the installer. Installed apps read
 A version without the updater (0.2.0 and earlier) has to be updated by hand
 once; from then on updates install in the app.
 
+### Danmaku (弹弹play)
+
+Danmaku come from the 弹弹play open danmaku network
+(`src-tauri/src/danmaku.rs`). Requests use its signature authentication, so
+the AppSecret is compiled into the app and never sent or exposed to the
+WebView. Builds read the credentials at compile time:
+
+| Where | AppId | AppSecret |
+|-------|-------|-----------|
+| CI (repository secrets) | `DANDANPLAY_APP_ID` | `DANDANPLAY_APP_SECRET` |
+| Local builds (environment) | `KURIUME_DANDANPLAY_APP_ID` | `KURIUME_DANDANPLAY_APP_SECRET` |
+
+Without them the app builds and runs normally with danmaku hidden. Matching
+tries the remembered 弹弹play anime, then the bgm.tv subject (Bangumi catalog
+entries), then a title search; viewers can choose another match and shift the
+timing per work in the player's 弹幕 settings. Comments are cached for an hour
+while a series airs and twelve hours otherwise, as 弹弹play asks. Keep to its
+rules: say 弹弹play in full in the UI, credit the network (README, 我的 › 关于),
+and never bulk-download comments.
+
 ## Versioning and Release Workflow
 
 `package.json` is the product version source; Tauri reads it directly. Cargo

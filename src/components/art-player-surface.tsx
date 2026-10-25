@@ -10,6 +10,9 @@ import { useEffect, useRef, useState } from "react";
 import { playerIcons } from "@/components/art-player-icons";
 import { bindPlayerAccessibility } from "@/components/art-player-accessibility";
 import { bindTouchProgress } from "@/components/art-player-progress";
+import { bindDanmaku, type DanmakuController } from "@/components/art-player-danmaku";
+import { toggleDanmaku } from "@/components/danmaku-settings";
+import type { DanmakuView } from "@/hooks/use-danmaku";
 import { bindAnime4K, readAnime4KPreference, writeAnime4KPreference, type Anime4KController, type Anime4KPath } from "@/components/art-player-anime4k";
 import { anime4kSupported } from "@/lib/anime4k/support";
 import type { Anime4KEvent } from "@/lib/anime4k/renderer";
@@ -24,6 +27,8 @@ Artplayer.DBCLICK_FULLSCREEN = false;
 Artplayer.SETTING_ITEM_HEIGHT = 48;
 // A speed picked in the player carries over to the next episode of this session.
 let sessionRate: number | undefined;
+// A small gear on the 弹 badge: "danmaku settings", told apart from the toggle.
+const DANMAKU_GEAR = '<svg class="kuriume-danmaku-gear" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>';
 const NEXT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg>';
 
 export interface ArtPlayerSurfaceProps {
@@ -54,6 +59,8 @@ export interface ArtPlayerSurfaceProps {
   onOpenOptions?: () => void;
   /** Start position restored from history; shows the "resumed" prompt. */
   resumeFrom?: number;
+  /** 弹弹play danmaku for this episode; absent in builds without it. */
+  danmaku?: DanmakuView;
 }
 
 export function ArtPlayerSurface({
@@ -80,6 +87,7 @@ export function ArtPlayerSurface({
   options,
   onOpenOptions,
   resumeFrom,
+  danmaku,
 }: ArtPlayerSurfaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const artRef = useRef<Artplayer | null>(null);
@@ -134,8 +142,17 @@ export function ArtPlayerSurface({
       }
     }
   };
-  const actionsRef = useRef({ setSheet, next, toggleAnime4K, onAnime4KEvent });
-  actionsRef.current = { setSheet, next, toggleAnime4K, onAnime4KEvent };
+  const danmakuRef = useRef<DanmakuController | null>(null);
+  const danmakuAvailable = Boolean(danmaku && danmaku.status !== "unavailable");
+  const toggleDanmakuShown = () => {
+    const art = artRef.current;
+    if (!danmaku || !danmakuAvailable) return;
+    const zh = language === "zh";
+    toggleDanmaku(danmaku);
+    if (art) art.notice.show = danmaku.prefs.enabled ? (zh ? "弹幕已关闭" : "Danmaku off") : (zh ? "弹幕已开启" : "Danmaku on");
+  };
+  const actionsRef = useRef({ setSheet, next, toggleAnime4K, onAnime4KEvent, toggleDanmakuShown });
+  actionsRef.current = { setSheet, next, toggleAnime4K, onAnime4KEvent, toggleDanmakuShown };
   const callbacksRef = useRef({ onEnded, onProgress, onError, onPlaying, onSubtitleError });
   callbacksRef.current = { onEnded, onProgress, onError, onPlaying, onSubtitleError };
   const initialOptionsRef = useRef({ poster, startTime, autoPlay, defaultVolume, defaultSpeed, language });
@@ -202,12 +219,22 @@ export function ArtPlayerSurface({
         }),
         ...([
           ["next", "left", 15, NEXT_ICON, () => actionsRef.current.next?.onPlay()],
+          // Danmaku sit with the playback controls on the left, after the time:
+          // the right side keeps picture and navigation (Anime4K, speed, episodes).
+          ["danmaku", "left", 40, "", () => actionsRef.current.toggleDanmakuShown()],
+          ["danmaku-settings", "left", 41, "", () => actionsRef.current.setSheet("danmaku")],
           ["anime4k", "right", 35, "", () => actionsRef.current.toggleAnime4K()],
           ["speed", "right", 40, "", () => actionsRef.current.setSheet("speed")],
           ["episodes", "right", 45, "", () => actionsRef.current.setSheet("episodes")],
         ] as const).map(([name, position, index, icon, action]) => {
           const button = controlButton(icon);
-          if (name === "anime4k") {
+          if (name === "danmaku") {
+            button.className += " kuriume-danmaku-toggle";
+            button.innerHTML = '<span class="kuriume-danmaku-badge" aria-hidden="true">弹</span>';
+          } else if (name === "danmaku-settings") {
+            button.className += " kuriume-danmaku-settings";
+            button.innerHTML = `<span class="kuriume-danmaku-badge" aria-hidden="true">弹</span>${DANMAKU_GEAR}`;
+          } else if (name === "anime4k") {
             button.className += " kuriume-anime4k-toggle";
             button.innerHTML = '<span class="kuriume-anime4k-badge" aria-hidden="true"><span class="kuriume-anime4k-word">Anime</span><span class="kuriume-anime4k-mark">4K</span></span>';
           } else if (!icon) button.className += " kuriume-player-text-button";
@@ -296,6 +323,8 @@ export function ArtPlayerSurface({
       onEvent: (event) => actionsRef.current.onAnime4KEvent(event),
     });
     anime4kRef.current = anime4kController;
+    const danmakuController = bindDanmaku(art);
+    danmakuRef.current = danmakuController;
     artRef.current = art;
     setGesturePlayer(art);
     if (!isMobileApp) art.on("dblclick", () => fullscreenRef.current.toggle("system"));
@@ -357,6 +386,8 @@ export function ArtPlayerSurface({
       unbindProgress();
       anime4kController.destroy();
       anime4kRef.current = null;
+      danmakuController.destroy();
+      danmakuRef.current = null;
       silence(art.video);
       art.destroy(false);
       artRef.current = null;
@@ -491,6 +522,43 @@ export function ArtPlayerSurface({
     button.title = label;
   }, [gesturePlayer, anime4k, anime4kSupport, language]);
 
+  // Danmaku: the canvas follows the comments, display preferences and offset.
+  const danmakuComments = danmaku?.comments ?? null;
+  const danmakuPrefs = danmaku?.prefs;
+  const danmakuOffset = danmaku?.offset ?? 0;
+  useEffect(() => { danmakuRef.current?.setComments(danmakuComments); }, [gesturePlayer, danmakuComments]);
+  useEffect(() => { if (danmakuPrefs) danmakuRef.current?.setPrefs(danmakuPrefs); }, [gesturePlayer, danmakuPrefs]);
+  useEffect(() => { danmakuRef.current?.setOffset(danmakuOffset); }, [gesturePlayer, danmakuOffset]);
+  const danmakuStatus = danmaku?.status ?? "unavailable";
+  const danmakuCount = danmakuComments?.length ?? 0;
+  useEffect(() => {
+    const control = gesturePlayer?.controls["kuriume-danmaku"] as HTMLElement | undefined;
+    const settings = gesturePlayer?.controls["kuriume-danmaku-settings"] as HTMLElement | undefined;
+    if (settings) {
+      // Settings only matter while danmaku show; turning them on brings it back.
+      settings.style.display = danmakuStatus === "unavailable" || danmakuStatus === "off" ? "none" : "";
+      const button = settings.querySelector("button");
+      const label = language === "zh" ? "弹幕设置" : "Danmaku settings";
+      button?.setAttribute("aria-label", label);
+      if (button) button.title = label;
+    }
+    if (!control) return;
+    control.style.display = danmakuStatus === "unavailable" ? "none" : "";
+    const button = control.querySelector("button");
+    if (!button) return;
+    const zh = language === "zh";
+    const on = danmakuStatus !== "off" && danmakuStatus !== "unavailable";
+    button.setAttribute("aria-pressed", String(on));
+    button.dataset.state = danmakuStatus;
+    const detail = danmakuStatus === "ready" ? (zh ? `，${danmakuCount} 条` : `, ${danmakuCount}`)
+      : danmakuStatus === "none" ? (zh ? "，没有找到弹幕" : ", none found")
+        : danmakuStatus === "error" ? (zh ? "，加载失败" : ", failed to load")
+          : danmakuStatus === "matching" || danmakuStatus === "loading" ? (zh ? "，加载中" : ", loading") : "";
+    const label = zh ? `弹幕：${on ? "已开启" : "已关闭"}${detail}（D）` : `Danmaku: ${on ? "on" : "off"}${detail} (D)`;
+    button.setAttribute("aria-label", label);
+    button.title = label;
+  }, [gesturePlayer, danmakuStatus, danmakuCount, language]);
+
   // Desktop: keyboard shortcuts beyond ArtPlayer's own (space, arrows), and wheel volume.
   useEffect(() => {
     const art = gesturePlayer;
@@ -514,6 +582,7 @@ export function ArtPlayerSurface({
       } else if (event.key === "f" || event.key === "F") fullscreenRef.current.toggle("system");
       else if (event.key === "n" || event.key === "N") actionsRef.current.next?.onPlay();
       else if (event.key === "a" || event.key === "A") actionsRef.current.toggleAnime4K();
+      else if (event.key === "d" || event.key === "D") actionsRef.current.toggleDanmakuShown();
       else if (event.key === "[") step(-1);
       else if (event.key === "]") step(1);
       else if (event.key === "?") actionsRef.current.setSheet("shortcuts");
@@ -571,6 +640,7 @@ export function ArtPlayerSurface({
         onOpenOptions={onOpenOptions}
         resumeFrom={resumeFrom}
         onRateChosen={(rate) => { sessionRate = rate; }}
+        danmaku={danmakuAvailable ? danmaku : undefined}
       />
     </div>
   );

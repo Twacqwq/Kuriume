@@ -92,7 +92,6 @@ Kuriume 暂时没有经过 Apple 公证。先尝试打开一次，然后到「�
 
 ## 接下来
 
-- [ ] 弹幕（弹弹play）
 - [ ] 漫画阅读：支持 Komga、OPDS 书库和本地漫画
 
 ## 参与开发
@@ -108,6 +107,7 @@ Kuriume 不存储、不上传任何视频，播放内容来自第三方公开站
 **数据**
 - [AniList](https://anilist.co/) 与 [Bangumi 番组计划](https://bgm.tv/)：作品资料、放送时间与简介
 - [soruly/anilist-chinese](https://github.com/soruly/anilist-chinese)：AniList 作品的中文译名
+- [弹弹play开放弹幕网络](https://www.dandanplay.com/)：播放时的弹幕
 
 **美术**
 - 应用图标原画：[ゆきうなぎ](https://www.pixiv.net/artworks/138196800)（Pixiv）

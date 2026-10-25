@@ -45,6 +45,12 @@ on:
         required: false
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
         required: false
+      # 弹弹play AppId/AppSecret, compiled into the app for danmaku
+      # (src-tauri/src/danmaku.rs). Without them builds have no danmaku.
+      DANDANPLAY_APP_ID:
+        required: false
+      DANDANPLAY_APP_SECRET:
+        required: false
 
 permissions:
   contents: read
@@ -101,6 +107,8 @@ jobs:
     env:
       # Ad-hoc is not Developer ID signing or notarization.
       APPLE_SIGNING_IDENTITY: '-'
+      KURIUME_DANDANPLAY_APP_ID: ${{ secrets.DANDANPLAY_APP_ID }}
+      KURIUME_DANDANPLAY_APP_SECRET: ${{ secrets.DANDANPLAY_APP_SECRET }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, node24
         with:
@@ -184,6 +192,8 @@ jobs:
     timeout-minutes: 60
     env:
       KURIUME_BUILD_NUMBER: ${{ needs.prepare.outputs.build-number }}
+      KURIUME_DANDANPLAY_APP_ID: ${{ secrets.DANDANPLAY_APP_ID }}
+      KURIUME_DANDANPLAY_APP_SECRET: ${{ secrets.DANDANPLAY_APP_SECRET }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, node24
         with:
@@ -217,6 +227,8 @@ jobs:
     timeout-minutes: 60
     env:
       KURIUME_BUILD_NUMBER: ${{ needs.prepare.outputs.build-number }}
+      KURIUME_DANDANPLAY_APP_ID: ${{ secrets.DANDANPLAY_APP_ID }}
+      KURIUME_DANDANPLAY_APP_SECRET: ${{ secrets.DANDANPLAY_APP_SECRET }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, node24
         with:

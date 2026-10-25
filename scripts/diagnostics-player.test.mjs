@@ -39,6 +39,8 @@ test("player diagnostics do not flood progress or change playback callbacks, and
     "@/components/art-player-accessibility": data("export const bindPlayerAccessibility=()=>()=>{};"),
     "@/components/art-player-progress": data("export const bindTouchProgress=()=>()=>{};"),
     "@/components/player-chrome": data("export const PLAYBACK_RATES=[1];export const PlayerChrome=()=>null;"),
+    "@/components/art-player-danmaku": data("export const bindDanmaku=()=>({setComments(){},setPrefs(){},setOffset(){},destroy(){}});"),
+    "@/components/danmaku-settings": data("export const toggleDanmaku=()=>{};"),
     "@/components/art-player-anime4k": data("export const bindAnime4K=()=>({setEnabled(){},destroy(){}});export const readAnime4KPreference=()=>false;export const writeAnime4KPreference=()=>{};"),
     "@/lib/anime4k/support": data("export const anime4kSupported=async()=>false;"),
     "@/lib/diagnostics": data("export const diagnose=(...args)=>globalThis.__playerDiag.records.push(args);export const diagnosticMessage=error=>String(error);"),

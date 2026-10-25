@@ -295,6 +295,9 @@ function AboutGroup({ zh }: { zh: boolean }) {
         <span className="hidden text-xs text-muted-foreground min-[380px]:inline">github.com/Twacqwq/Kuriume</span>
         <ExternalLink className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       </button>
+      <p className="px-4 py-3 text-xs leading-5 text-muted-foreground">
+        {zh ? "弹幕来自 弹弹play开放弹幕网络（www.dandanplay.com）" : "Danmaku from the 弹弹play open danmaku network (www.dandanplay.com)"}
+      </p>
       {(openError || update.isError) && (
         <p role="alert" className="px-4 py-3 text-xs text-destructive-readable">{openError ?? toErrorMessage(update.error, zh ? "检查更新失败" : "Update check failed")}</p>
       )}

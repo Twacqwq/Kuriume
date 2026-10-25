@@ -15,7 +15,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 type Source = ReturnType<typeof useOnlineSource>;
 type Resolver = ReturnType<typeof usePlaybackResolver>;
-export type PanelDrawer = "episodes" | "source" | "server" | "subtitles";
+export type PanelDrawer = "episodes" | "source" | "server" | "subtitles" | "danmaku";
 
 export interface PlaybackPanelProps {
   layout: "stacked" | "side";
@@ -28,6 +28,9 @@ export interface PlaybackPanelProps {
   onSelectEpisode: (episode: number) => void;
   subtitleControl?: ReactNode;
   subtitleLabel?: string;
+  /** 弹幕 settings and their one-line state; absent without danmaku. */
+  danmakuControl?: ReactNode;
+  danmakuLabel?: string;
   library?: ReactNode;
   drawer: PanelDrawer | null;
   onDrawer: (drawer: PanelDrawer | null) => void;
@@ -115,6 +118,7 @@ function StackedPanel(props: PlaybackPanelProps) {
             <OptionChip label={zhLabel(zh, "线路", "Server")} value={serverValue || "—"} onClick={() => onDrawer("server")} attention={resolver.phase === "error"} />
           )}
           {props.subtitleControl && <OptionChip label={zhLabel(zh, "字幕", "Subtitles")} value={props.subtitleLabel ?? ""} onClick={() => onDrawer("subtitles")} />}
+          {props.danmakuControl && <OptionChip label={zhLabel(zh, "弹幕", "Danmaku")} value={props.danmakuLabel ?? ""} onClick={() => onDrawer("danmaku")} />}
         </section>
       )}
 
@@ -143,6 +147,7 @@ function StackedPanel(props: PlaybackPanelProps) {
             )}
             {drawer === "server" && <ServerOptions source={source} resolver={resolver} assetIsCurrent={props.assetIsCurrent} />}
             {drawer === "subtitles" && props.subtitleControl}
+            {drawer === "danmaku" && props.danmakuControl}
           </div>
         </DrawerContent>
       </Drawer>
@@ -156,6 +161,7 @@ function drawerTitle(drawer: PanelDrawer, zh: boolean) {
     source: zh ? "播放源与作品" : "Source & title",
     server: zh ? "线路" : "Server",
     subtitles: zh ? "字幕" : "Subtitles",
+    danmaku: zh ? "弹幕" : "Danmaku",
   })[drawer];
 }
 
@@ -177,7 +183,7 @@ function SidePanel(props: PlaybackPanelProps) {
   const loading = source.sourcesLoading || source.searching || source.loadingEpisodes;
   const attention = needsAttention(source, resolver) && !loading;
   // Follow what needs the viewer (a failed or missing match), until they pick a tab.
-  const [chosenTab, setChosenTab] = useState<"episodes" | "source" | null>(null);
+  const [chosenTab, setChosenTab] = useState<"episodes" | "source" | "danmaku" | null>(null);
   useEffect(() => { if (attention) setChosenTab(null); }, [attention]);
   const tab = chosenTab ?? (attention ? "source" : "episodes");
   const setTab = setChosenTab;
@@ -190,6 +196,7 @@ function SidePanel(props: PlaybackPanelProps) {
   const tabs = [
     { id: "episodes", label: zhLabel(zh, "选集", "Episodes") },
     { id: "source", label: zhLabel(zh, "播放源", "Source") },
+    ...(props.danmakuControl ? [{ id: "danmaku", label: zhLabel(zh, "弹幕", "Danmaku") }] as const : []),
   ] as const;
 
   return (
@@ -226,6 +233,10 @@ function SidePanel(props: PlaybackPanelProps) {
               ))}
             </div>
           )}
+        </div>
+      ) : tab === "danmaku" && props.danmakuControl ? (
+        <div role="tabpanel" id="panel-danmaku" aria-labelledby="panel-tab-danmaku" className="hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
+          {props.danmakuControl}
         </div>
       ) : (
         <div role="tabpanel" id="panel-source" aria-labelledby="panel-tab-source" className="hide-scrollbar min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-4">
