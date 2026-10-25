@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Commit or branch to check (also usable for release-please PRs)
+        description: Commit or branch to check
         type: string
   workflow_call:
     inputs:
