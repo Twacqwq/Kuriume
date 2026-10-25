@@ -1,10 +1,8 @@
 // Starts a release: `npm run release -- 0.3.0` (or 0.3.0-beta.1) on main.
-// Writes the version to every version file on a new branch release/v0.3.0,
-// commits "chore(release): v0.3.0" and creates the annotated tag v0.3.0.
-// main only accepts pull requests, so the branch is merged through one (with
-// a merge commit, which keeps the tagged commit in main's history). Pushing
-// the tag builds all platforms into a draft GitHub release
-// (.github/workflows/release.yml).
+// Writes the version to every version file on a new branch release/v0.3.0 and
+// commits "chore(release): v0.3.0". main only accepts pull requests: merging
+// the branch's pull request tags the merged commit v0.3.0 and builds all
+// platforms into a draft GitHub release (.github/workflows/release-tag.yml).
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -111,16 +109,14 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     git("switch", "-q", "-c", branch);
     git("add", "--", ...files);
     git("commit", "-q", "-m", `chore(release): v${next}`);
-    git("tag", "-a", `v${next}`, "-m", `Kuriume v${next}`);
-    console.log(`v${previous} → v${next}: committed on ${branch} and tagged v${next}.`);
+    console.log(`v${previous} → v${next}: committed on ${branch}.`);
     console.log(`
 Next:
-  1. git push origin ${branch} v${next}
-     The tag builds the draft release.
-  2. Open a pull request from ${branch} into main and merge it with
-     "Create a merge commit" (not squash or rebase).
-  3. git switch main && git pull && git branch -d ${branch}
-  4. Edit the draft's notes on GitHub and publish it.`);
+  1. git push origin ${branch}
+  2. Open a pull request from ${branch} into main and merge it. Merging tags
+     the merged commit v${next} and builds the draft release.
+  3. git switch main && git pull && git branch -D ${branch}
+  4. When the build finishes, edit the draft's notes on GitHub and publish it.`);
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;
