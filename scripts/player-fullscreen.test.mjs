@@ -209,3 +209,18 @@ test("Escape restores the layout even if macOS exits before the JS handler runs"
   assert.deepEqual(f.calls, [true]);
   f.player.dispose();
 });
+
+test("macOS simple fullscreen has no animation: settled at once, no watchdog", async () => {
+  const f = await fixture(false, true);
+  f.native.setFullscreen = async (value) => { f.calls.push(value); return "settled"; };
+  let simple = false;
+  f.native.isFullscreen = async () => simple;
+  const set = f.native.setFullscreen;
+  f.native.setFullscreen = async (value) => { const result = await set(value); simple = value; return result; };
+  await f.player.toggle("system");
+  assert.deepEqual(f.state(), { mode: "system", pending: false, error: null });
+  await f.player.exit();
+  assert.deepEqual(f.state(), { mode: "normal", pending: false, error: null });
+  assert.deepEqual(f.calls, [true, false]);
+  f.player.dispose();
+});

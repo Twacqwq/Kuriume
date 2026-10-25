@@ -29,8 +29,9 @@ function loadNetworks(quality: Anime4KQuality): Promise<Networks> {
   return hqNetworks;
 }
 
-import { targetSize, upscalePasses, type Anime4KQuality, type Size } from "./sizing";
+import { OUTPUT_LIMITS, targetSize, upscalePasses, type Anime4KQuality, type OutputLimits, type Size } from "./sizing";
 import { MAX_IN_FLIGHT, PaceMeter } from "./pace";
+import { cachingDevice, GpuCache } from "./gpu-cache";
 
 export type { Anime4KQuality } from "./sizing";
 
@@ -47,25 +48,12 @@ export type Anime4KEvent =
 
 type Chain = { input: GPUTexture; passes: Anime4KPipeline[]; bindGroup: GPUBindGroup; textures: GPUTexture[]; native: Size; upscales: number };
 
-/** GPU textures the vendored pipelines allocate, so a rebuild can free them. */
-function trackingDevice(device: GPUDevice, textures: GPUTexture[]): GPUDevice {
-  return new Proxy(device, {
-    get(target, property) {
-      if (property === "createTexture") {
-        return (descriptor: GPUTextureDescriptor) => {
-          const texture = target.createTexture(descriptor);
-          textures.push(texture);
-          return texture;
-        };
-      }
-      const value = Reflect.get(target, property, target);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
-}
-
 export class Anime4KRenderer {
   private chain: Chain | null = null;
+  private cache = new GpuCache();
+  private limits: OutputLimits = OUTPUT_LIMITS.quality;
+  /** Pass counts whose pipelines are compiled or compiling. */
+  private warmed = new Set<number>();
   private frameHandle = 0;
   private stopped = false;
   private pace = new PaceMeter(() => this.onEvent({ type: "slow", quality: this.quality }));
@@ -123,6 +111,7 @@ export class Anime4KRenderer {
     if (quality === this.quality) return;
     this.quality = quality;
     if (quality === "fast") this.networks = FAST;
+    this.warmed.clear();
     this.disposeChain();
   }
 
@@ -132,11 +121,12 @@ export class Anime4KRenderer {
   }
 
   /** Match the canvas backing store to the box the video occupies on screen. */
-  resize(box: Size, pixelRatio = window.devicePixelRatio || 1) {
+  resize(box: Size, limits: OutputLimits = OUTPUT_LIMITS.quality, pixelRatio = window.devicePixelRatio || 1) {
     const native = { width: this.video.videoWidth, height: this.video.videoHeight };
     if (!native.width || !native.height || !box.width || !box.height) return;
+    this.limits = limits;
     // Cap at 2x: a 3x phone screen triples the CNN work for little gain.
-    const target = targetSize(box, native, Math.min(pixelRatio, 2));
+    const target = targetSize(box, native, pixelRatio, limits);
     if (this.canvas.width !== target.width || this.canvas.height !== target.height) {
       this.canvas.width = target.width;
       this.canvas.height = target.height;
@@ -165,16 +155,38 @@ export class Anime4KRenderer {
     }
   }
 
-  private build(native: Size): Chain {
+  /**
+   * Compiles, off the main thread, the pipelines a full-screen player would
+   * need, so entering (and leaving) fullscreen only swaps textures.
+   */
+  private warmUp(native: Size) {
+    const screenBox = { width: window.screen.width, height: window.screen.height };
+    const upscales = upscalePasses(native, targetSize(screenBox, native, window.devicePixelRatio || 1, this.limits));
+    if (this.warmed.has(upscales)) return;
+    this.warmed.add(upscales);
     const textures: GPUTexture[] = [];
-    const device = trackingDevice(this.device, textures);
+    const warming: Promise<unknown>[] = [];
+    try {
+      this.build(native, upscales, cachingDevice(this.device, textures, this.cache, warming));
+    } catch {
+      this.warmed.delete(upscales);
+    } finally {
+      for (const texture of textures) texture.destroy();
+    }
+    void Promise.allSettled(warming);
+  }
+
+  private build(native: Size, upscales = upscalePasses(native, { width: this.canvas.width, height: this.canvas.height }), device?: GPUDevice): Chain {
+    const textures: GPUTexture[] = [];
+    const warmingUp = device !== undefined;
+    device ??= cachingDevice(this.device, textures, this.cache);
+    if (!warmingUp) this.warmed.add(upscales);
     const input = device.createTexture({
       label: "anime4k frame",
       size: [native.width, native.height, 1],
       format: "rgba16float",
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
     });
-    const upscales = upscalePasses(native, { width: this.canvas.width, height: this.canvas.height });
     const passes: Anime4KPipeline[] = [];
     let current = input;
     const add = (pass: Anime4KPipeline) => { passes.push(pass); current = pass.getOutputTexture(); };
@@ -228,7 +240,12 @@ export class Anime4KRenderer {
     if (this.stopped) return;
     if (this.chain && (this.chain.native.width !== native.width || this.chain.native.height !== native.height)) this.disposeChain();
     try {
-      this.chain ??= this.build(native);
+      if (!this.chain) {
+        this.chain = this.build(native);
+        // Once playing, prepare the full-screen pipelines in the background.
+        const built = this.chain;
+        window.setTimeout(() => { if (!this.stopped && this.chain === built) this.warmUp(native); }, 2000);
+      }
       this.device.queue.copyExternalImageToTexture({ source: frame }, { texture: this.chain.input }, [native.width, native.height]);
     } catch (reason) {
       this.onEvent({ type: "error", message: reason instanceof Error ? reason.message : String(reason) });

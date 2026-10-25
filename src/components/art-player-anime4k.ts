@@ -2,6 +2,8 @@ import type Artplayer from "artplayer";
 import type { Anime4KEvent, Anime4KQuality } from "@/lib/anime4k/renderer";
 import { anime4kBackend, webgl2Capable } from "@/lib/anime4k/support";
 import { choosePath, cueText, nextPath, readPath, writePath, type Anime4KPath } from "@/lib/anime4k/paths";
+import type { Anime4KMode } from "@/lib/anime4k/mode";
+import { OUTPUT_LIMITS, type OutputLimits } from "@/lib/anime4k/sizing";
 
 export type { Anime4KPath } from "@/lib/anime4k/paths";
 
@@ -24,14 +26,20 @@ export function writeAnime4KPreference(enabled: boolean) {
 type BackendRenderer = {
   setQuality(quality: Anime4KQuality): void;
   restartPacing(): void;
-  resize(box: { width: number; height: number }): void;
+  resize(box: { width: number; height: number }, limits: OutputLimits): void;
   stop(): void;
 };
 
 export type Anime4KController = {
   setEnabled(enabled: boolean): void;
+  /** 画质优先 / 流畅优先; a running renderer restarts with it. */
+  setMode(mode: Anime4KMode): void;
   destroy(): void;
 };
+
+/** Backing-store resizes run at most this often (window drags); a single
+ *  change, like entering fullscreen, applies at once. */
+const RESIZE_SETTLE_MS = 150;
 
 /**
  * Lays a WebGPU (or WebGL2) canvas exactly over ArtPlayer's <video> and runs Anime4K on
@@ -40,7 +48,7 @@ export type Anime4KController = {
  * the <video> (under the canvas), so while Anime4K is on they are drawn in a
  * text layer above it instead.
  */
-export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; onEvent: (event: Anime4KEvent | { type: "started"; path: Anime4KPath }) => void }): Anime4KController {
+export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; mode: Anime4KMode; onEvent: (event: Anime4KEvent | { type: "started"; path: Anime4KPath }) => void }): Anime4KController {
   const video = art.video;
   // A canvas keeps the first context type it gets, so a switch to WebGL2
   // needs a fresh one.
@@ -67,23 +75,42 @@ export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; 
   let starting: Promise<void> | null = null;
   let generation = 0;
   const hiddenTracks = new Set<TextTrack>();
+  let mode = options.mode;
+  // 流畅优先 runs the medium networks at up to 1080p on every device.
+  const quality = () => (mode === "smooth" ? "fast" : options.quality);
 
-  const layout = () => {
+  let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastResize = -Infinity;
+  const resizeBacking = () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = undefined;
+    lastResize = performance.now();
+    renderer?.resize({ width: video.offsetWidth, height: video.offsetHeight }, OUTPUT_LIMITS[mode]);
+  };
+  const layout = (settle = true) => {
     // The video's own box (ArtPlayer's aspect-ratio setting resizes it) and
     // fit mode; the canvas keeps the same aspect, so letterboxing matches.
+    // The CSS box follows at once (the frame scales); the backing store and,
+    // when the pass count changes, the network chain follow at most every
+    // RESIZE_SETTLE_MS while the size keeps changing.
     canvas.style.left = `${video.offsetLeft}px`;
     canvas.style.top = `${video.offsetTop}px`;
     canvas.style.width = `${video.offsetWidth}px`;
     canvas.style.height = `${video.offsetHeight}px`;
     canvas.style.objectFit = getComputedStyle(video).objectFit || "contain";
-    renderer?.resize({ width: video.offsetWidth, height: video.offsetHeight });
+    if (!settle || performance.now() - lastResize > RESIZE_SETTLE_MS) resizeBacking();
+    else {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(resizeBacking, RESIZE_SETTLE_MS);
+    }
   };
-  const observer = new ResizeObserver(layout);
+  const observer = new ResizeObserver(() => layout());
   observer.observe(video);
-  const onMetadata = () => layout();
+  const onMetadata = () => layout(false);
   video.addEventListener("loadedmetadata", onMetadata);
   video.addEventListener("resize", onMetadata);
-  art.on("aspectRatio", layout);
+  const onAspectRatio = () => layout(false);
+  art.on("aspectRatio", onAspectRatio);
   const onSeeked = () => renderer?.restartPacing();
   video.addEventListener("seeked", onSeeked);
 
@@ -175,7 +202,7 @@ export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; 
         try {
           next = current === "webgl2"
             ? await (await import("@/lib/anime4k/webgl-renderer")).Anime4KWebGLRenderer.start(video, canvas, "fast", onEvent)
-            : await (await import("@/lib/anime4k/renderer")).Anime4KRenderer.start(video, canvas, options.quality, onEvent, current);
+            : await (await import("@/lib/anime4k/renderer")).Anime4KRenderer.start(video, canvas, quality(), onEvent, current);
         } catch (reason) {
           if (run === generation && fallBack(current, reason)) return;
           throw reason;
@@ -183,7 +210,7 @@ export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; 
         if (run !== generation || !enabled) { next.stop(); return; }
         renderer = next;
         art.template.$player.classList.add("kuriume-anime4k-on");
-        layout(); // draws the first frame when paused, which can fail
+        layout(false); // draws the first frame when paused, which can fail
         if (run !== generation || failed) return; // failed, or moved to another path
         takeTracks();
         options.onEvent({ type: "started", path: current });
@@ -207,6 +234,17 @@ export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; 
         stopRenderer();
       }
     },
+    setMode(next) {
+      if (next === mode) return;
+      mode = next;
+      // A different network set (and output size) needs a fresh renderer.
+      if (enabled && (renderer || starting)) {
+        generation += 1;
+        starting = null;
+        stopRenderer();
+        start();
+      }
+    },
     destroy() {
       enabled = false;
       generation += 1;
@@ -217,7 +255,8 @@ export function bindAnime4K(art: Artplayer, options: { quality: Anime4KQuality; 
       video.removeEventListener("seeked", onSeeked);
       video.textTracks.removeEventListener("addtrack", onTracks);
       video.textTracks.removeEventListener("change", onTracks);
-      art.off("aspectRatio", layout);
+      art.off("aspectRatio", onAspectRatio);
+      clearTimeout(resizeTimer);
       canvas.remove();
       captions.remove();
     },

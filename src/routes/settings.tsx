@@ -28,10 +28,12 @@ import {
   Github,
   Info,
   Palette,
+  Sparkles,
 } from "lucide-react";
+import { readAnime4KMode, subscribeAnime4KMode, writeAnime4KMode } from "@/lib/anime4k/mode";
 import { useTheme } from "@/hooks/use-theme";
 import { setTheme, THEMES } from "@/lib/theme";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { UpdateButton, UpdateStatus } from "@/components/update-action";
 import { useAppUpdate } from "@/hooks/use-app-update";
 import { openExternal, plainReleaseNotes, PROJECT_URL } from "@/lib/app-update";
@@ -134,6 +136,7 @@ function SettingsPage() {
         <div className="space-y-8 md:mt-8">
           <SettingsGroup title={zh ? "观看" : "Watching"}>
             <LinkRow to="/watchlist" search={{ view: "history" }} icon={<History />} label={zh ? "观看历史" : "Watch history"} />
+            <Anime4KModeRow zh={zh} />
           </SettingsGroup>
 
           <SettingsGroup title={zh ? "显示" : "Display"} action={
@@ -186,6 +189,22 @@ function SettingsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Anime4K 画质优先 / 流畅优先; kept on this device, applied to a playing video too. */
+function Anime4KModeRow({ zh }: { zh: boolean }) {
+  const mode = useSyncExternalStore(subscribeAnime4KMode, () => readAnime4KMode(), () => readAnime4KMode());
+  return (
+    <SettingRow icon={<Sparkles />} label={zh ? "Anime4K 画质增强" : "Anime4K upscaling"} htmlFor="anime4k-mode">
+      <Select value={mode} onValueChange={(value) => { if (value === "quality" || value === "smooth") writeAnime4KMode(value); }}>
+        <SelectTrigger id="anime4k-mode" className="h-12 w-32 shrink-0 border-0 bg-secondary/60"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="quality" className="min-h-12">{zh ? "画质优先" : "Quality"}</SelectItem>
+          <SelectItem value="smooth" className="min-h-12">{zh ? "流畅优先" : "Smooth"}</SelectItem>
+        </SelectContent>
+      </Select>
+    </SettingRow>
   );
 }
 

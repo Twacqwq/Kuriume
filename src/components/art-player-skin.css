@@ -386,18 +386,20 @@
   color: var(--primary-foreground);
 }
 .kuriume-danmaku-toggle:is([data-state="none"], [data-state="error"]) .kuriume-danmaku-badge { opacity: 0.45; }
-/* Settings: the same badge, outlined, with a small gear set into a notch in
-   its corner (a mask, so it works over any picture). The selector outranks
-   the 22 px rule for icons inside player buttons. */
+/* Settings: the toggle's badge at the same size and place, with a small gear
+   on its lower-right corner, set into a notch (a mask, so it works over any
+   picture). The gear is placed from the button's centre, so it follows the
+   badge at any button size; its rule outranks the 22 px one for icons inside
+   player buttons. */
 .kuriume-danmaku-settings { position: relative; }
 .kuriume-danmaku-settings .kuriume-danmaku-badge {
-  -webkit-mask: radial-gradient(circle 7px at calc(100% - 1px) calc(100% - 1px), transparent 97%, #000 100%);
-  mask: radial-gradient(circle 7px at calc(100% - 1px) calc(100% - 1px), transparent 97%, #000 100%);
+  -webkit-mask: radial-gradient(circle 7px at calc(100% - 3px) calc(100% - 3px), transparent 96%, #000 100%);
+  mask: radial-gradient(circle 7px at calc(100% - 3px) calc(100% - 3px), transparent 96%, #000 100%);
 }
 .artplayer-app .kuriume-player-button.kuriume-danmaku-settings > svg.kuriume-danmaku-gear {
   position: absolute;
-  right: 7.5px;
-  bottom: 7.5px;
+  left: calc(50% + 4px);
+  top: calc(50% + 4px);
   width: 10px;
   height: 10px;
   color: var(--foreground);

@@ -90,3 +90,26 @@ mod tests {
         assert!(!is_project_url("file:///etc/passwd"));
     }
 }
+
+/// The player's system fullscreen on macOS: simple fullscreen, without a new
+/// Space or its animation, so the video (and Anime4K) resize once instead of
+/// on every animation frame. The menu bar and Dock hide; the traffic lights,
+/// which simple fullscreen keeps, are hidden too. Other platforms use their
+/// ordinary (already instant) fullscreen.
+#[cfg(desktop)]
+#[tauri::command]
+pub fn player_simple_fullscreen(window: tauri::WebviewWindow, enabled: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    crate::fullscreen_macos::set_window_buttons_hidden(&window, enabled)
+        .map_err(|error| error.to_string())?;
+    window
+        .set_simple_fullscreen(enabled)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+pub fn player_simple_fullscreen(enabled: bool) -> Result<(), String> {
+    let _ = enabled;
+    Err("Simple fullscreen is a desktop feature".into())
+}

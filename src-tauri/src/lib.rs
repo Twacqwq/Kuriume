@@ -166,6 +166,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             crate::app_commands::open_external,
+            crate::app_commands::player_simple_fullscreen,
             crate::app_update::update_install,
             crate::app_update::update_restart,
             crate::danmaku::danmaku_available,

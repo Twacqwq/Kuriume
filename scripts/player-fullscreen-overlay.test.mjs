@@ -17,6 +17,7 @@ const imports = {
     export const useRef = (current) => ({ current });
     export const useState = (initial) => [initial, (state) => harness.states.push(state)];
   `),
+  "@tauri-apps/api/core": data("export const invoke = () => { throw Error('Unexpected simple fullscreen call off macOS'); };"),
   "@tauri-apps/api/window": data(`const harness = globalThis.__fullscreenOverlayTest; export const getCurrentWindow = () => harness.native;`),
   "@/lib/player-fullscreen": data(await compile("../src/lib/player-fullscreen.ts")),
   "@/lib/platform": data("export const isMobileApp = false;"),

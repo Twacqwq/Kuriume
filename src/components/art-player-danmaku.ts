@@ -11,6 +11,8 @@ export type DanmakuController = {
   destroy(): void;
 };
 
+/** Relayouts run at most this often while the player keeps resizing. */
+const RELAYOUT_MS = 150;
 const FONT_FAMILY = '"PingFang SC", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif';
 const FIXED_SECONDS = 4;
 
@@ -109,7 +111,17 @@ export function bindDanmaku(art: Artplayer): DanmakuController {
 
   const events = ["play", "playing", "pause", "seeked", "seeking", "ratechange", "ended"] as const;
   for (const name of events) video.addEventListener(name, schedule);
-  const resize = new ResizeObserver(refresh);
+  // A single resize (fullscreen) relays out at once; a window drag at most
+  // every RELAYOUT_MS, with the canvas scaling in between.
+  let lastRelayout = -Infinity;
+  let relayoutTimer: ReturnType<typeof setTimeout> | undefined;
+  const resized = () => {
+    clearTimeout(relayoutTimer);
+    const run = () => { lastRelayout = performance.now(); refresh(); };
+    if (performance.now() - lastRelayout > RELAYOUT_MS) run();
+    else relayoutTimer = setTimeout(run, RELAYOUT_MS);
+  };
+  const resize = new ResizeObserver(resized);
   resize.observe(canvas);
 
   return {
@@ -134,6 +146,7 @@ export function bindDanmaku(art: Artplayer): DanmakuController {
       if (frame) cancelAnimationFrame(frame);
       for (const name of events) video.removeEventListener(name, schedule);
       resize.disconnect();
+      clearTimeout(relayoutTimer);
       canvas.remove();
     },
   };

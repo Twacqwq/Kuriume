@@ -28,7 +28,7 @@ test("player diagnostics do not flood progress or change playback callbacks, and
   globalThis.__playerDiag = { Player, effects, records, ref: (value) => ({ current: refIndex++ === 0 ? {} : value }) };
   const data = (code) => `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
   const imports = {
-    react: data("export const useEffect=fn=>globalThis.__playerDiag.effects.push(fn);export const useRef=globalThis.__playerDiag.ref;export const useState=()=>[null,()=>{}];"),
+    react: data("export const useEffect=fn=>globalThis.__playerDiag.effects.push(fn);export const useRef=globalThis.__playerDiag.ref;export const useState=()=>[null,()=>{}];export const useSyncExternalStore=(_subscribe,snapshot)=>snapshot();"),
     "react/jsx-runtime": data("export const jsx=(...args)=>args;export const jsxs=jsx;"),
     artplayer: data("export default globalThis.__playerDiag.Player;"),
     "@/hooks/use-display-language": data('export const useDisplayLanguage=()=>"zh";'),
@@ -41,7 +41,8 @@ test("player diagnostics do not flood progress or change playback callbacks, and
     "@/components/player-chrome": data("export const PLAYBACK_RATES=[1];export const PlayerChrome=()=>null;"),
     "@/components/art-player-danmaku": data("export const bindDanmaku=()=>({setComments(){},setPrefs(){},setOffset(){},destroy(){}});"),
     "@/components/danmaku-settings": data("export const toggleDanmaku=()=>{};"),
-    "@/components/art-player-anime4k": data("export const bindAnime4K=()=>({setEnabled(){},destroy(){}});export const readAnime4KPreference=()=>false;export const writeAnime4KPreference=()=>{};"),
+    "@/components/art-player-anime4k": data("export const bindAnime4K=()=>({setEnabled(){},setMode(){},destroy(){}});export const readAnime4KPreference=()=>false;export const writeAnime4KPreference=()=>{};"),
+    "@/lib/anime4k/mode": data("export const readAnime4KMode=()=>'quality';export const writeAnime4KMode=()=>{};export const subscribeAnime4KMode=()=>()=>{};"),
     "@/lib/anime4k/support": data("export const anime4kSupported=async()=>false;"),
     "@/lib/diagnostics": data("export const diagnose=(...args)=>globalThis.__playerDiag.records.push(args);export const diagnosticMessage=error=>String(error);"),
     "@/lib/theme": data("export const themePrimary=()=>\"#a4534a\";"),
