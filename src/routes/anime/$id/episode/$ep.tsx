@@ -2,8 +2,9 @@ import { LibraryControl } from "@/components/library-control";
 import { PlaybackPanel, PlaybackOptions, type PanelDrawer } from "@/components/playback-panel";
 import { PlaybackSurface } from "@/components/playback-surface";
 import { PlaybackSubtitles } from "@/components/playback-subtitles";
-import { DanmakuSettings, danmakuSummary } from "@/components/danmaku-settings";
+import { DanmakuBar, DanmakuSettings, danmakuSummary } from "@/components/danmaku-settings";
 import { useDanmaku } from "@/hooks/use-danmaku";
+import { isMobileApp } from "@/lib/platform";
 import type { PlayerEpisode } from "@/components/player-chrome";
 import { Button } from "@/components/ui/button";
 import { playbackErrorMessage } from "@/lib/playback-error";
@@ -303,6 +304,9 @@ function EpisodePage() {
 
   const isSidePanel = useMediaQuery(SIDE_PANEL_QUERY);
   const [panelDrawer, setPanelDrawer] = useState<PanelDrawer | null>(null);
+  // On a phone the inline player bar has no room for danmaku: they get a row
+  // under the video, and go back into the bar in fullscreen.
+  const danmakuBelow = isMobileApp && !isSidePanel && danmaku.status !== "unavailable";
   const library = useLibraryEntry(storedMedia?.id);
   const watched = useMemo(() => {
     const map = new Map<number, number>();
@@ -412,6 +416,7 @@ function EpisodePage() {
               options={<PlaybackOptions source={onlineSource} resolver={resolver} assetIsCurrent={assetIsCurrent} subtitleControl={subtitleControl} />}
               onOpenOptions={isSidePanel ? undefined : () => setPanelDrawer("server")}
               danmaku={danmaku}
+              danmakuBelow={danmakuBelow}
               onError={(message) => {
                 if (resolver.asset) resolver.reportError(resolver.asset, message);
               }}
@@ -450,6 +455,7 @@ function EpisodePage() {
             subtitleLabel={subtitleLabel}
             danmakuControl={danmakuControl}
             danmakuLabel={danmakuSummary(danmaku, language === "zh")}
+            danmakuBar={danmakuBelow ? <DanmakuBar view={danmaku} zh={language === "zh"} onOpenSettings={() => setPanelDrawer("danmaku")} /> : undefined}
             library={libraryControl}
             drawer={panelDrawer}
             onDrawer={setPanelDrawer}

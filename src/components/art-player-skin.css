@@ -410,8 +410,8 @@
 .artplayer-app .kuriume-player-button.kuriume-danmaku-settings { width: 40px; }
 /* Toggle and settings read as one pair, set apart from the time. */
 .artplayer-app .art-control-kuriume-danmaku { margin-left: 6px; }
-/* Inline phone player: the 弹幕 chip below the video opens the settings. */
-.artplayer-app[data-mobile="true"][data-fullscreen="false"] .art-control-kuriume-danmaku-settings { display: none !important; }
+/* Inline phone player: danmaku have their own row under the video. */
+.artplayer-app[data-danmaku-below="true"][data-fullscreen="false"] :is(.art-control-kuriume-danmaku, .art-control-kuriume-danmaku-settings) { display: none !important; }
 .kuriume-danmaku-toggle:is([data-state="matching"], [data-state="loading"]) .kuriume-danmaku-knob {
   animation: kuriume-danmaku-pulse 1.2s ease-in-out infinite;
 }

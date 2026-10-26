@@ -41,6 +41,7 @@ test("player diagnostics do not flood progress or change playback callbacks, and
     "@/components/player-chrome": data("export const PLAYBACK_RATES=[1];export const PlayerChrome=()=>null;"),
     "@/components/art-player-danmaku": data("export const bindDanmaku=()=>({setComments(){},setPrefs(){},setOffset(){},destroy(){}});"),
     "@/components/danmaku-settings": data("export const toggleDanmaku=()=>{};"),
+    "@/components/danmaku-icons": data("export const DANMAKU_GLYPH_SVG='';export const DANMAKU_SETTINGS_SVG='';"),
     "@/components/art-player-anime4k": data("export const bindAnime4K=()=>({setEnabled(){},setMode(){},destroy(){}});export const readAnime4KPreference=()=>false;export const writeAnime4KPreference=()=>{};"),
     "@/lib/anime4k/mode": data("export const readAnime4KMode=()=>'quality';export const writeAnime4KMode=()=>{};export const subscribeAnime4KMode=()=>()=>{};"),
     "@/lib/anime4k/paths": data("export const unreadableVideo=()=>false;"),

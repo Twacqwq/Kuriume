@@ -12,6 +12,7 @@ import { bindPlayerAccessibility } from "@/components/art-player-accessibility";
 import { bindTouchProgress } from "@/components/art-player-progress";
 import { bindDanmaku, type DanmakuController } from "@/components/art-player-danmaku";
 import { toggleDanmaku } from "@/components/danmaku-settings";
+import { DANMAKU_GLYPH_SVG, DANMAKU_SETTINGS_SVG } from "@/components/danmaku-icons";
 import type { DanmakuView } from "@/hooks/use-danmaku";
 import { bindAnime4K, readAnime4KPreference, writeAnime4KPreference, type Anime4KController, type Anime4KPath } from "@/components/art-player-anime4k";
 import { unreadableVideo } from "@/lib/anime4k/paths";
@@ -31,13 +32,6 @@ Artplayer.SETTING_ITEM_HEIGHT = 48;
 let sessionRate: number | undefined;
 // Sparkles (lucide), for the Anime4K mode in the player's settings.
 const ANIME4K_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>';
-// 弹 as an outline (Noto Sans CJK SC Bold, SIL OFL 1.1), its ink centred in
-// the box: a font's ascent and descent would set it off-centre in the
-// switch knob, by a different amount in every system font.
-const DANMAKU_GLYPH = '<svg class="kuriume-danmaku-glyph" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false"><path fill="currentColor" d="M42.3 5.1C45.9 10.3 50.3 17.6 52.2 22.1L62.7 16.6C60.6 12.1 56.3 5.5 52.5 0.4ZM2.9 27.9C2.9 39.3 2.4 53.7 1.5 63H20.7C19.8 78 18.8 84.3 17.2 86.1C16.1 87 15.1 87.2 13.5 87.2C11.4 87.2 6.9 87.1 2.4 86.8C4.5 90.1 6 95.3 6.2 99.1C11.3 99.4 16.2 99.3 19.1 98.8C22.6 98.4 24.8 97.4 27.2 94.6C30.3 91 31.4 80.7 32.6 56.8C32.7 55.3 32.8 52 32.8 52H13L13.5 39.3H32.9V4.7H1.3V16H20.7V27.9ZM50.3 48.3H59.8V54.6H50.3ZM72.9 48.3H82.8V54.6H72.9ZM50.3 32.8H59.8V39H50.3ZM72.9 32.8H82.8V39H72.9ZM33 70.9V82H59.8V100H72.9V82H98.7V70.9H72.9V64.5H94.9V22.9H80.5C84 17.3 87.9 10.3 91.3 3.6L78.5 0C76 7.1 71.5 16.6 67.5 22.9H38.8V64.5H59.8V70.9Z"/></svg>';
-// Danmaku settings: comment lines streaming in, with a small gear (Lucide's,
-// scaled into the corner at the bar's stroke weight).
-const DANMAKU_SETTINGS_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h13"/><path d="M7 11h7"/><path d="M3 16h5"/><g transform="translate(11.2 11.2) scale(.53)" stroke-width="3.2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></g></svg>';
 const NEXT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg>';
 
 export interface ArtPlayerSurfaceProps {
@@ -70,6 +64,8 @@ export interface ArtPlayerSurfaceProps {
   resumeFrom?: number;
   /** 弹弹play danmaku for this episode; absent in builds without it. */
   danmaku?: DanmakuView;
+  /** The page shows the danmaku controls under the video while not fullscreen. */
+  danmakuBelow?: boolean;
 }
 
 export function ArtPlayerSurface({
@@ -97,6 +93,7 @@ export function ArtPlayerSurface({
   onOpenOptions,
   resumeFrom,
   danmaku,
+  danmakuBelow = false,
 }: ArtPlayerSurfaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const artRef = useRef<Artplayer | null>(null);
@@ -242,10 +239,10 @@ export function ArtPlayerSurface({
           const button = controlButton(icon);
           if (name === "danmaku") {
             button.className += " kuriume-danmaku-toggle";
-            button.innerHTML = `<span class="kuriume-danmaku-switch" aria-hidden="true"><span class="kuriume-danmaku-knob">${DANMAKU_GLYPH}</span></span>`;
+            button.innerHTML = `<span class="kuriume-danmaku-switch" aria-hidden="true"><span class="kuriume-danmaku-knob">${DANMAKU_GLYPH_SVG}</span></span>`;
           } else if (name === "danmaku-settings") {
             button.className += " kuriume-danmaku-settings";
-            button.innerHTML = DANMAKU_SETTINGS_ICON;
+            button.innerHTML = DANMAKU_SETTINGS_SVG;
           } else if (name === "anime4k") {
             button.className += " kuriume-anime4k-toggle";
             button.innerHTML = '<span class="kuriume-anime4k-badge" aria-hidden="true"><span class="kuriume-anime4k-word">Anime</span><span class="kuriume-anime4k-mark">4K</span></span>';
@@ -691,7 +688,7 @@ export function ArtPlayerSurface({
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-background" data-player-locked={locked ? "" : undefined}>
-      <div ref={containerRef} className="artplayer-app h-full w-full overflow-hidden bg-background" data-mobile={isMobileApp} data-fullscreen={fullscreen.mode !== "normal"} data-locked={locked} data-testid="art-player-surface" />
+      <div ref={containerRef} className="artplayer-app h-full w-full overflow-hidden bg-background" data-mobile={isMobileApp} data-fullscreen={fullscreen.mode !== "normal"} data-danmaku-below={danmakuBelow} data-locked={locked} data-testid="art-player-surface" />
       <PlayerChrome
         art={gesturePlayer}
         language={language}
