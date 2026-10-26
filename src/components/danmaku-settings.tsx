@@ -1,6 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { DANMAKU_GLYPH_PATH, DANMAKU_SETTINGS_PARTS } from "@/components/danmaku-icons";
 import { updateDanmakuPrefs, type DanmakuView } from "@/hooks/use-danmaku";
 import { formatCount, type DanmakuAnime, type DanmakuPrefs } from "@/lib/danmaku";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,62 @@ export function danmakuSummary(view: DanmakuView, zh: boolean): string {
 
 export function toggleDanmaku(view: DanmakuView) {
   updateDanmakuPrefs({ enabled: !view.prefs.enabled });
+}
+
+/**
+ * The phone's inline player has no room for danmaku in its bar, so they get
+ * a row of their own right under the video, as in the big video apps: the
+ * switch (with what is loaded) on the left, settings on the right while on.
+ * Fullscreen moves them back into the player bar.
+ */
+export function DanmakuBar({ view, zh, onOpenSettings }: { view: DanmakuView; zh: boolean; onOpenSettings: () => void }) {
+  const on = view.prefs.enabled;
+  const count = view.comments?.length ?? 0;
+  const detail = !on ? (zh ? "已关闭" : "Off")
+    : view.status === "ready" ? (zh ? `${formatCount(count, zh)} 条` : `${formatCount(count, zh)} comments`)
+      : view.status === "none" ? (zh ? "这一集没有弹幕" : "None for this episode")
+        // A failure says nothing here: the retry button beside settings is enough.
+        : view.status === "error" ? ""
+          : (zh ? "加载中…" : "Loading…");
+  const loading = on && (view.status === "matching" || view.status === "loading");
+  return (
+    <div className="flex h-12 shrink-0 items-center gap-1 border-b border-overlay/6 pl-2 pr-1">
+      <button type="button" role="switch" aria-checked={on} onClick={() => toggleDanmaku(view)}
+        className="flex h-11 min-w-0 items-center gap-2.5 rounded-full px-2 outline-none active:bg-overlay/6 focus-visible:ring-2 focus-visible:ring-primary-readable">
+        <span aria-hidden="true" className={cn("relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors duration-200 motion-reduce:transition-none",
+          on ? "bg-primary" : "ring-[1.5px] ring-inset ring-muted-foreground/70")}>
+          <span className={cn("absolute left-[3px] top-[3px] grid size-4 place-items-center rounded-full transition-[transform,background-color,color] duration-200 motion-reduce:transition-none",
+            on ? "translate-x-4 bg-white text-primary" : "bg-muted-foreground text-background", loading && "animate-pulse")}>
+            <svg viewBox="0 0 100 100" className="size-2.5" focusable="false"><path fill="currentColor" d={DANMAKU_GLYPH_PATH} /></svg>
+          </span>
+        </span>
+        <span className="truncate text-sm">
+          <span className="font-bold">{zh ? "弹幕" : "Danmaku"}</span>
+          {detail && <span className="ml-1.5 tabular-nums text-muted-foreground">{detail}</span>}
+        </span>
+      </button>
+      <span className="flex-1" />
+      {/* Actions stay on the right: retry (a small outlined pill in a full
+          44 px target) beside settings. */}
+      {on && view.status === "error" && (
+        <button type="button" onClick={view.retry} aria-label={zh ? "重新加载弹幕" : "Reload danmaku"}
+          className="group grid h-11 shrink-0 place-items-center px-1 outline-none">
+          <span className="flex h-8 items-center gap-1 rounded-full px-3 text-[13px] text-foreground/85 ring-1 ring-inset ring-border transition-colors group-active:bg-overlay/6 group-focus-visible:ring-2 group-focus-visible:ring-primary-readable motion-reduce:transition-none">
+            <RefreshCw size={14} aria-hidden="true" />{zh ? "重试" : "Retry"}
+          </span>
+        </button>
+      )}
+      {on && (
+        <button type="button" onClick={onOpenSettings} aria-label={zh ? "弹幕设置" : "Danmaku settings"}
+          className="grid size-11 shrink-0 place-items-center rounded-full text-foreground/80 outline-none active:bg-overlay/6 focus-visible:ring-2 focus-visible:ring-primary-readable">
+          <svg viewBox="0 0 24 24" className="size-[22px]" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+            {DANMAKU_SETTINGS_PARTS.lines.map((d) => <path key={d} d={d} />)}
+            <g transform={DANMAKU_SETTINGS_PARTS.gearTransform} strokeWidth={3.2}><path d={DANMAKU_SETTINGS_PARTS.gear} /><circle cx="12" cy="12" r="3" /></g>
+          </svg>
+        </button>
+      )}
+    </div>
+  );
 }
 
 /** 弹幕 settings: shared by the player sheet and the playback panel. */

@@ -31,6 +31,8 @@ export interface PlaybackPanelProps {
   /** 弹幕 settings and their one-line state; absent without danmaku. */
   danmakuControl?: ReactNode;
   danmakuLabel?: string;
+  /** The phone's danmaku row, kept at the top of the stacked panel. */
+  danmakuBar?: ReactNode;
   library?: ReactNode;
   drawer: PanelDrawer | null;
   onDrawer: (drawer: PanelDrawer | null) => void;
@@ -71,7 +73,9 @@ function StackedPanel(props: PlaybackPanelProps) {
   ].filter(Boolean).join(" · ");
 
   return (
-    <div className="hide-scrollbar h-full min-h-0 space-y-5 overflow-y-auto overscroll-contain px-4 pb-6 pt-4">
+    <div className="flex h-full min-h-0 flex-col">
+    {props.danmakuBar}
+    <div className="hide-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 pb-6 pt-4">
       <section className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-bold tabular-nums">{zh ? `第 ${episodeNumber} 话` : `Episode ${episodeNumber}`}</h2>
@@ -120,7 +124,6 @@ function StackedPanel(props: PlaybackPanelProps) {
             <OptionChip label={zhLabel(zh, "线路", "Server")} value={serverValue || "—"} onClick={() => onDrawer("server")} attention={resolver.phase === "error"} />
           )}
           {props.subtitleControl && <OptionChip label={zhLabel(zh, "字幕", "Subtitles")} value={props.subtitleLabel ?? ""} onClick={() => onDrawer("subtitles")} />}
-          {props.danmakuControl && <OptionChip label={zhLabel(zh, "弹幕", "Danmaku")} value={props.danmakuLabel ?? ""} onClick={() => onDrawer("danmaku")} />}
         </section>
       )}
 
@@ -153,6 +156,7 @@ function StackedPanel(props: PlaybackPanelProps) {
           </div>
         </DrawerContent>
       </Drawer>
+    </div>
     </div>
   );
 }
