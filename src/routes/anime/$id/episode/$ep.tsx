@@ -141,10 +141,16 @@ function EpisodePage() {
     ? availableEpisodes.some((episode) => episode.episodeNumber === episodeNumber + 1)
     : episodes.some((episode) => episode.ep === episodeNumber + 1);
   const resolver = usePlaybackResolver();
-  const resolveRequest = useMemo(
+  const currentRequest = useMemo(
     () => onlineSource.getResolveRequest(episodeNumber),
     [episodeNumber, onlineSource.getResolveRequest],
   );
+  // One object per episode identity: refreshing a cached episode list builds
+  // new request objects, and only a different episode may restart playback.
+  const currentRequestKey = currentRequest
+    ? JSON.stringify([currentRequest.candidateId, currentRequest.roadId, currentRequest.episodeId])
+    : null;
+  const resolveRequest = useMemo(() => currentRequest, [currentRequestKey]);
   const requestKey = onlineSource.selectedSource && resolveRequest
     ? playbackRequestKey(onlineSource.selectedSource, resolveRequest)
     : null;
@@ -177,12 +183,14 @@ function EpisodePage() {
   ]);
 
   const retryPlayback = useCallback(() => {
-    if (onlineSource.selectedSource && resolveRequest) {
+    // An episode list from the cache that no live list has confirmed is
+    // reloaded first, as without the cache; the episode then resolves anew.
+    if (onlineSource.selectedSource && resolveRequest && !onlineSource.cached) {
       void resolver.resolve(onlineSource.selectedSource, resolveRequest);
     } else {
       onlineSource.retry();
     }
-  }, [onlineSource.selectedSource, onlineSource.retry, resolveRequest, resolver.resolve]);
+  }, [onlineSource.cached, onlineSource.selectedSource, onlineSource.retry, resolveRequest, resolver.resolve]);
 
   useEffect(() => {
     if (onlineSource.selectedSource && resolveRequest) {
@@ -316,13 +324,28 @@ function EpisodePage() {
     ? { episode: episodeNumber + 1, label: episodeLabel(episodeNumber + 1, language), onPlay: () => navigateToEpisode(episodeNumber + 1) }
     : null;
 
+  // Resuming a work matched before shows one "preparing" state from opening
+  // the page to the first frame: nothing in between asks to choose a match.
+  // Covered: the details and saved choice loading, the episode list loading,
+  // a request about to be resolved, and a cached episode list still being
+  // checked (its failure may just mean the list changed).
+  const resuming = onlineSource.manualQuery === null && (onlineSource.selectedSource
+    ? sourceBindings.some((binding) => binding.source_id === onlineSource.selectedSource)
+    : sourceBindings.length > 0);
+  const preparing =
+    (!media && !detailError) ||
+    (!onlineSource.ready && !onlineSource.error) ||
+    (requestKey !== null && requestKey !== resolver.requestKey) ||
+    (onlineSource.refreshing && (!resolveRequest || resolver.phase === "error")) ||
+    (resuming && !onlineSource.error && (onlineSource.sourcesLoading || onlineSource.loadingEpisodes));
   const status = useMemo(() => {
-    if (resolver.phase === "resolving") return language === "zh" ? "正在准备播放…" : "Preparing playback…";
+    if (resolver.phase === "resolving" || preparing) return language === "zh" ? "正在准备播放…" : "Preparing playback…";
     if (onlineSource.loadingEpisodes) return language === "zh" ? "正在读取选集…" : "Loading episodes…";
     if (onlineSource.searching) return language === "zh" ? "正在匹配作品…" : "Finding your anime…";
     if (onlineSource.sourcesLoading) return language === "zh" ? "正在载入播放源…" : "Loading sources…";
     return null;
   }, [
+    preparing,
     onlineSource.loadingEpisodes,
     onlineSource.searching,
     onlineSource.sourcesLoading,
