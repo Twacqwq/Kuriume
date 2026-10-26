@@ -581,7 +581,14 @@ async fn prepare_playback_asset(
                     )?;
                 }
             }
-            let url = if headers.is_empty() {
+            // A video file from another origin plays with its frames
+            // unreadable to Anime4K unless the CDN sends CORS headers, which
+            // few do; through the media proxy it is same-origin. HLS needs
+            // no proxy for that (hls.js loads it over CORS), and plain-HTTP
+            // media cannot be proxied.
+            let direct = headers.is_empty()
+                && (is_hls(&url, mime_type.as_deref()) || !url.starts_with("https://"));
+            let url = if direct {
                 url
             } else {
                 media_proxy.register(
@@ -641,6 +648,17 @@ async fn prepare_playback_asset(
             })
         }
     }
+}
+
+/// An HLS playlist, by its media type or its path.
+fn is_hls(url: &str, mime_type: Option<&str>) -> bool {
+    mime_type.is_some_and(|mime| mime.to_ascii_lowercase().contains("mpegurl"))
+        || url
+            .split(['?', '#'])
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .ends_with(".m3u8")
 }
 
 fn validate_resolve_request(request: &PlaybackResolveRequest) -> Result<(), String> {
@@ -781,6 +799,17 @@ mod tests {
             b"<html>Verification required</html>"
         ));
         assert!(!is_supported_media_prefix(&[0x47; 188]));
+    }
+
+    #[test]
+    fn hls_is_told_from_video_files_by_media_type_or_path() {
+        assert!(is_hls("https://cdn.example/a/index.m3u8?t=1", None));
+        assert!(is_hls(
+            "https://cdn.example/play",
+            Some("application/x-mpegURL")
+        ));
+        assert!(!is_hls("https://cdn.example/a/ep1.mp4", Some("video/mp4")));
+        assert!(!is_hls("https://cdn.example/a/ep1.mp4#index.m3u8", None));
     }
 
     #[test]

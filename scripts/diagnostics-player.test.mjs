@@ -43,6 +43,7 @@ test("player diagnostics do not flood progress or change playback callbacks, and
     "@/components/danmaku-settings": data("export const toggleDanmaku=()=>{};"),
     "@/components/art-player-anime4k": data("export const bindAnime4K=()=>({setEnabled(){},setMode(){},destroy(){}});export const readAnime4KPreference=()=>false;export const writeAnime4KPreference=()=>{};"),
     "@/lib/anime4k/mode": data("export const readAnime4KMode=()=>'quality';export const writeAnime4KMode=()=>{};export const subscribeAnime4KMode=()=>()=>{};"),
+    "@/lib/anime4k/paths": data("export const unreadableVideo=()=>false;"),
     "@/lib/anime4k/support": data("export const anime4kSupported=async()=>false;"),
     "@/lib/diagnostics": data("export const diagnose=(...args)=>globalThis.__playerDiag.records.push(args);export const diagnosticMessage=error=>String(error);"),
     "@/lib/theme": data("export const themePrimary=()=>\"#a4534a\";"),

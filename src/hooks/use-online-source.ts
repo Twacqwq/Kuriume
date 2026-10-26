@@ -13,6 +13,7 @@ import {
   restoredPlaybackCandidate,
   type PlaybackMatchContext,
 } from "@/lib/playback-selection";
+import { readCachedRoads, sameRoads, writeCachedRoads } from "@/lib/playback-roads-cache";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface OnlineSourceState {
@@ -27,6 +28,12 @@ interface OnlineSourceState {
   roads: PlaybackRoad[];
   loadingEpisodes: boolean;
   selectedRoadIndex: number;
+  /** The roads shown came from the device cache; the live list is on its way. */
+  refreshing: boolean;
+  /** The roads shown came from the device cache and no live list has replaced or confirmed them. */
+  cached: boolean;
+  /** The work whose saved source preference has been applied. */
+  initializedScope: string | null;
   error: string | null;
 }
 
@@ -41,6 +48,9 @@ const INITIAL: OnlineSourceState = {
   roads: [],
   loadingEpisodes: false,
   selectedRoadIndex: 0,
+  refreshing: false,
+  cached: false,
+  initializedScope: null,
   error: null,
 };
 
@@ -51,8 +61,18 @@ const EMPTY_SELECTION = {
   roads: [],
   loadingEpisodes: false,
   selectedRoadIndex: 0,
+  refreshing: false,
+  cached: false,
   error: null,
 } satisfies Partial<OnlineSourceState>;
+
+function storage(): Storage | undefined {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+}
 
 function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
@@ -105,7 +125,7 @@ export function useOnlineSource(
     episodesRequestRef.current += 1;
     initializedScopeRef.current = null;
     setManualSearch(null);
-    patch({ ...EMPTY_SELECTION, selectedSource: null });
+    patch({ ...EMPTY_SELECTION, selectedSource: null, initializedScope: null });
   }, [catalogScope, patch]);
 
   useEffect(() => {
@@ -146,6 +166,7 @@ export function useOnlineSource(
         state.providers,
         contextRef.current.preferredProviderId,
       ),
+      initializedScope: catalogScope,
     });
   }, [catalogScope, matchContext.preferencesReady, patch, state.providers]);
 
@@ -161,6 +182,8 @@ export function useOnlineSource(
         loadingEpisodes: true,
         roads: [],
         selectedRoadIndex: 0,
+        refreshing: false,
+        cached: false,
         error: null,
       });
       try {
@@ -169,6 +192,7 @@ export function useOnlineSource(
           candidate.id,
         );
         if (requestId !== episodesRequestRef.current) return false;
+        writeCachedRoads(storage(), providerId, candidate.id, roads);
         const binding = contextRef.current.bindings?.find(
           (item) =>
             item.source_id === providerId &&
@@ -195,6 +219,44 @@ export function useOnlineSource(
     [patch],
   );
 
+  /**
+   * Fetches the live roads behind a cached list. The line on screen stays
+   * (by its ID) while it still has this episode, so a refresh that changes
+   * nothing for it does not restart playback; otherwise the live list picks
+   * the line exactly as an uncached load does. A failed refresh leaves the
+   * cached list, which is what played last time.
+   */
+  const refreshEpisodes = useCallback(
+    async (providerId: string, candidate: PlaybackCandidate) => {
+      const requestId = ++episodesRequestRef.current;
+      try {
+        const roads = await playbackSourceApi.episodes(providerId, candidate.id);
+        if (requestId !== episodesRequestRef.current) return;
+        writeCachedRoads(storage(), providerId, candidate.id, roads);
+        const current = stateRef.current;
+        if (sameRoads(roads, current.roads)) {
+          patch({ refreshing: false, cached: false });
+          return;
+        }
+        const episodeNumber = contextRef.current.episodeNumber ?? 1;
+        const onScreen = current.roads[current.selectedRoadIndex]?.id;
+        const kept = roads.findIndex((road) => road.id === onScreen && road.episodes.some((episode) => episode.episodeNumber === episodeNumber));
+        const binding = contextRef.current.bindings?.find(
+          (item) => item.source_id === providerId && item.remote_media_url === candidate.id,
+        );
+        patch({
+          refreshing: false,
+          cached: false,
+          roads,
+          selectedRoadIndex: kept >= 0 ? kept : initialPlaybackRoad(roads, episodeNumber, binding?.road_index),
+        });
+      } catch {
+        if (requestId === episodesRequestRef.current) patch({ refreshing: false });
+      }
+    },
+    [patch],
+  );
+
   useEffect(() => {
     const providerId = state.selectedSource;
     const query = manualQuery ?? animeTitle?.trim();
@@ -214,8 +276,29 @@ export function useOnlineSource(
       ? undefined
       : restoredPlaybackCandidate(providerId, [], contextRef.current.bindings);
     if (remembered) {
-      patch({ ...EMPTY_SELECTION, searchResults: [remembered] });
-      void loadEpisodes(providerId, remembered);
+      // Its episode list from last time, when it has this episode, starts
+      // playback without waiting for the provider; the live list follows.
+      const cached = readCachedRoads(storage(), providerId, remembered.id);
+      const episodeNumber = contextRef.current.episodeNumber ?? 1;
+      const binding = contextRef.current.bindings?.find(
+        (item) => item.source_id === providerId && item.remote_media_url === remembered.id,
+      );
+      const cachedIndex = cached ? initialPlaybackRoad(cached, episodeNumber, binding?.road_index) : -1;
+      if (cached && cached[cachedIndex]?.episodes.some((episode) => episode.episodeNumber === episodeNumber)) {
+        patch({
+          ...EMPTY_SELECTION,
+          searchResults: [remembered],
+          selectedAnime: remembered,
+          roads: cached,
+          selectedRoadIndex: cachedIndex,
+          refreshing: true,
+          cached: true,
+        });
+        void refreshEpisodes(providerId, remembered);
+      } else {
+        patch({ ...EMPTY_SELECTION, searchResults: [remembered] });
+        void loadEpisodes(providerId, remembered);
+      }
       void playbackSourceApi
         .search(
           providerId,
@@ -294,6 +377,7 @@ export function useOnlineSource(
     animeTitle,
     catalogScope,
     loadEpisodes,
+    refreshEpisodes,
     manualQuery,
     matchContext.episodeCount,
     matchContext.year,
@@ -314,7 +398,7 @@ export function useOnlineSource(
       episodesRequestRef.current += 1;
       initializedScopeRef.current = catalogScope;
       setManualSearch(null);
-      patch({ ...EMPTY_SELECTION, selectedSource });
+      patch({ ...EMPTY_SELECTION, selectedSource, initializedScope: catalogScope });
     },
     [catalogScope, patch],
   );
@@ -421,8 +505,16 @@ export function useOnlineSource(
     [catalogScope, patch],
   );
 
+  // The saved source has been applied (or there is nothing to apply), so an
+  // empty selection now really means "choose a match".
+  const ready =
+    state.error !== null ||
+    (state.initializedScope !== null && state.initializedScope === catalogScope) ||
+    (!state.sourcesLoading && state.providers.length === 0);
+
   return {
     ...state,
+    ready,
     selectedProvider,
     selectSource,
     selectAnime,

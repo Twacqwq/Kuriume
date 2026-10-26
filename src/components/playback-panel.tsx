@@ -57,7 +57,9 @@ function StackedPanel(props: PlaybackPanelProps) {
   const zh = useDisplayLanguage() === "zh";
   const strip = useRef<HTMLDivElement>(null);
   const road = source.roads[source.selectedRoadIndex];
-  const matching = !source.selectedAnime && !source.sourcesLoading;
+  // Until the saved source is applied, an empty selection is not a request
+  // to match: the panel waits with the player instead.
+  const matching = source.ready && !source.selectedAnime && !source.sourcesLoading;
   useEffect(() => {
     const container = strip.current;
     const active = container?.querySelector<HTMLElement>('[aria-current="true"]');
@@ -88,7 +90,7 @@ function StackedPanel(props: PlaybackPanelProps) {
             </button>
           )}
         </div>
-        {source.loadingEpisodes ? (
+        {source.loadingEpisodes || !source.ready ? (
           <LoadingLine>{zhLabel(zh, "正在读取剧集…", "Loading episodes…")}</LoadingLine>
         ) : !source.selectedAnime ? (
           <p className="mt-2 text-sm text-muted-foreground">{zhLabel(zh, "匹配作品后显示剧集", "Match an anime to see episodes")}</p>
@@ -180,7 +182,9 @@ function OptionChip({ label, value, onClick, attention }: { label: string; value
 function SidePanel(props: PlaybackPanelProps) {
   const { source, resolver, episodes, episodeNumber } = props;
   const zh = useDisplayLanguage() === "zh";
-  const loading = source.sourcesLoading || source.searching || source.loadingEpisodes;
+  // A cached episode list being checked counts too: a failure from it may
+  // just mean the list changed, and the live one decides.
+  const loading = source.sourcesLoading || source.searching || source.loadingEpisodes || !source.ready || source.refreshing;
   const attention = needsAttention(source, resolver) && !loading;
   // Follow what needs the viewer (a failed or missing match), until they pick a tab.
   const [chosenTab, setChosenTab] = useState<"episodes" | "source" | "danmaku" | null>(null);
@@ -222,7 +226,7 @@ function SidePanel(props: PlaybackPanelProps) {
             </div>
             {props.library}
           </div>
-          {source.loadingEpisodes ? (
+          {source.loadingEpisodes || !source.ready ? (
             <div className="px-4"><LoadingLine>{zhLabel(zh, "正在读取剧集…", "Loading episodes…")}</LoadingLine></div>
           ) : episodes.length === 0 ? (
             <p className="px-4 text-sm text-muted-foreground">{source.selectedAnime ? zhLabel(zh, "暂无可用剧集", "No episodes available") : zhLabel(zh, "在「播放源」中匹配作品后显示剧集", "Match an anime under Source to see episodes")}</p>
@@ -332,7 +336,7 @@ export function AnimeMatch({ source }: { source: Source }) {
   const zh = useDisplayLanguage() === "zh";
   const [matchingOpen, setMatchingOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const showCandidates = matchingOpen || !source.selectedAnime;
+  const showCandidates = matchingOpen || (source.ready && !source.selectedAnime);
   useEffect(() => { setMatchingOpen(false); setSearchTerm(""); }, [source.selectedSource]);
   const selectCandidate = async (candidate: PlaybackCandidate) => {
     if (await source.selectAnime(candidate)) setMatchingOpen(false);
@@ -347,6 +351,7 @@ export function AnimeMatch({ source }: { source: Source }) {
           </Button>
         )}
       </div>
+      {!source.ready && !source.selectedAnime && <LoadingLine>{zhLabel(zh, "正在加载…", "Loading…")}</LoadingLine>}
       {source.selectedAnime && !matchingOpen && (
         <div className="mt-3 flex items-start gap-2.5">
           <Check size={15} className="mt-0.5 shrink-0 text-primary-readable" aria-hidden="true" />

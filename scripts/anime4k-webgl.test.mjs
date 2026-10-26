@@ -43,5 +43,8 @@ test("a failed path steps down; missing WebGPU goes straight to WebGL2", () => {
   assert.equal(nextPath("video", "WebGPU is not available", true), "webgl2");
   assert.equal(nextPath("video", "WebGPU is not available", false), null);
   assert.equal(nextPath("bitmap", "GPU device lost", true), "webgl2");
+  // A cross-origin video fails on every path; it must not demote the device.
+  assert.equal(nextPath("video", "Failed to execute 'copyExternalImageToTexture' on 'GPUQueue': The video element contains cross-origin data, and may not be loaded.", true), null);
+  assert.equal(nextPath("bitmap", "SecurityError: The operation is insecure.", true), null);
   assert.equal(nextPath("webgl2", "WebGL context lost", true), null);
 });
