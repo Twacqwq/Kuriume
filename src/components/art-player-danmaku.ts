@@ -1,5 +1,6 @@
 import type Artplayer from "artplayer";
 import { fontPixels, scrollSeconds, type DanmakuPrefs } from "@/lib/danmaku";
+import { DanmakuClock } from "@/lib/danmaku-clock";
 import { cssColor, layoutDanmaku, visibleAt, type DanmakuComment, type DanmakuLayout } from "@/lib/danmaku-layout";
 
 export type DanmakuController = {
@@ -18,8 +19,9 @@ const FIXED_SECONDS = 4;
 
 /**
  * Draws danmaku on a canvas over the video (and over Anime4K's canvas), under
- * subtitles and every control. It follows the video clock, so pausing,
- * seeking and playback speed need no bookkeeping; it ignores pointer input.
+ * subtitles and every control. Positions come from the video's time, through
+ * a clock that advances evenly per display frame (see DanmakuClock); it
+ * ignores pointer input.
  */
 export function bindDanmaku(art: Artplayer): DanmakuController {
   const video = art.video;
@@ -34,6 +36,9 @@ export function bindDanmaku(art: Artplayer): DanmakuController {
   let offset = 0;
   let layout: DanmakuLayout | null = null;
   let size = { width: 0, height: 0, lineHeight: 0, pixels: 0, font: "" };
+  const clock = new DanmakuClock();
+  /** Buffering: the video waits for data without pausing. */
+  let waiting = false;
   let frame = 0;
   let destroyed = false;
   const widths = new Map<string, number>();
@@ -76,7 +81,7 @@ export function bindDanmaku(art: Artplayer): DanmakuController {
     });
   };
 
-  const draw = () => {
+  const draw = (now = performance.now()) => {
     if (!context) return;
     context.clearRect(0, 0, size.width, size.height);
     if (!active() || !layout || !prefs) return;
@@ -87,7 +92,11 @@ export function bindDanmaku(art: Artplayer): DanmakuController {
     context.lineWidth = Math.max(2, Math.round(size.lineHeight / 9));
     context.strokeStyle = "rgba(0, 0, 0, 0.75)";
     const padding = Math.round((size.lineHeight - size.pixels) / 2);
-    for (const { placed, x, y } of visibleAt(layout, video.currentTime - offset, size)) {
+    const playing = !video.paused && !video.ended && !video.seeking && !waiting;
+    const time = clock.next(now, video.currentTime, video.playbackRate, playing);
+    // Fractional positions on purpose: whole pixels would step 2, 3, 3, 2…
+    // px per frame at most speeds, which is uneven motion again.
+    for (const { placed, x, y } of visibleAt(layout, time - offset, size)) {
       context.fillStyle = cssColor(placed.comment.color);
       context.strokeText(placed.comment.text, x, y + padding);
       context.fillText(placed.comment.text, x, y + padding);
@@ -95,10 +104,10 @@ export function bindDanmaku(art: Artplayer): DanmakuController {
   };
 
   // Redraw every frame only while the video plays; otherwise on demand.
-  const tick = () => {
+  const tick = (now: number) => {
     frame = 0;
     if (destroyed) return;
-    draw();
+    draw(now);
     if (active() && !video.paused && !video.ended) frame = requestAnimationFrame(tick);
   };
   const schedule = () => {
@@ -109,8 +118,15 @@ export function bindDanmaku(art: Artplayer): DanmakuController {
     schedule();
   };
 
-  const events = ["play", "playing", "pause", "seeked", "seeking", "ratechange", "ended"] as const;
-  for (const name of events) video.addEventListener(name, schedule);
+  // Each of these puts the clock back on the video's own time.
+  const events = ["play", "playing", "pause", "seeked", "seeking", "ratechange", "ended", "waiting"] as const;
+  const onEvent = (event: Event) => {
+    if (event.type === "waiting") waiting = true;
+    else if (event.type === "playing" || event.type === "seeked" || event.type === "pause") waiting = false;
+    clock.reset();
+    schedule();
+  };
+  for (const name of events) video.addEventListener(name, onEvent);
   // A single resize (fullscreen) relays out at once; a window drag at most
   // every RELAYOUT_MS, with the canvas scaling in between.
   let lastRelayout = -Infinity;
@@ -144,7 +160,7 @@ export function bindDanmaku(art: Artplayer): DanmakuController {
     destroy() {
       destroyed = true;
       if (frame) cancelAnimationFrame(frame);
-      for (const name of events) video.removeEventListener(name, schedule);
+      for (const name of events) video.removeEventListener(name, onEvent);
       resize.disconnect();
       clearTimeout(relayoutTimer);
       canvas.remove();
