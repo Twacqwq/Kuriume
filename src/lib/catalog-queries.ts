@@ -100,7 +100,7 @@ export async function prefetchBrowseData() {
   ]);
 }
 
-const CATALOG_KEYS = new Set([
+export const CATALOG_KEYS = new Set([
   "anime-list", "home-season-page", "search", "calendar", "anime-detail",
   "stored-media", "stored-title", "library-list", "history-list", "catalog-counterpart",
   "manga-list", "catalog-relations", "manga-counterpart",

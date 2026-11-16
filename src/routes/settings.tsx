@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RecordsGroup } from "@/components/records-transfer";
+import { LinkRow, SettingRow, SettingsFeedback, SettingsGroup } from "@/components/settings-rows";
 import { linkFollowedToCatalog, refreshCatalog } from "@/lib/catalog-queries";
 import {
   DEFAULT_CATALOG_SOURCE,
@@ -177,6 +178,8 @@ function SettingsPage() {
             </SettingRow>
           </SettingsGroup>
 
+          <RecordsGroup zh={zh} />
+
           <AboutGroup zh={zh} />
 
           <SettingsGroup title={zh ? "诊断" : "Diagnostics"}>
@@ -318,82 +321,6 @@ function AboutGroup({ zh }: { zh: boolean }) {
         <p role="alert" className="px-4 py-3 text-xs text-destructive-readable">{openError ?? toErrorMessage(update.error, zh ? "检查更新失败" : "Update check failed")}</p>
       )}
     </SettingsGroup>
-  );
-}
-
-function LinkRow({ to, search, icon, label }: { to: "/watchlist"; search: { view: "history" }; icon: React.ReactNode; label: string }) {
-  return (
-    <Link to={to} search={search} className="press flex min-h-16 items-center gap-3 px-4 py-3 text-sm font-medium outline-none hover:bg-secondary/60 active:bg-secondary/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-readable [&_svg]:size-4.5 [&_svg]:shrink-0 [&_svg]:stroke-[1.8]">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="flex-1">{label}</span>
-      <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
-    </Link>
-  );
-}
-
-function SettingsFeedback({ feedback }: { feedback: NonNullable<Feedback> }) {
-  return (
-    <p
-      role={feedback.kind === "error" ? "alert" : "status"}
-      className={cn(
-        "flex min-w-0 items-start gap-2 py-2 text-sm leading-relaxed",
-        feedback.kind === "error"
-          ? "text-destructive-readable"
-          : "text-muted-foreground",
-      )}
-    >
-      {feedback.kind === "error" ? (
-        <AlertCircle aria-hidden="true" size={14} className="shrink-0" />
-      ) : (
-        <Check aria-hidden="true" size={14} className="shrink-0" />
-      )}
-      <span className="min-w-0 break-words">{feedback.message}</span>
-    </p>
-  );
-}
-
-function SettingsGroup({
-  title,
-  children,
-  action,
-}: {
-  title: string;
-  children: React.ReactNode;
-  action?: React.ReactNode;
-}) {
-  const id = `settings-${title}`;
-  return (
-    <section aria-labelledby={id}>
-      <div className="mb-2 flex min-h-12 items-center justify-between gap-3 pl-1">
-        <h2 id={id} className="text-sm font-medium text-muted-foreground">{title}</h2>
-        {action}
-      </div>
-      <div className="divide-y divide-border/60 overflow-hidden rounded-2xl bg-card">
-        {children}
-      </div>
-    </section>
-  );
-}
-
-function SettingRow({
-  icon,
-  label,
-  htmlFor,
-  children,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  htmlFor: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-h-20 items-center justify-between gap-3 px-4 py-3">
-      <div className="flex min-w-0 flex-1 items-center gap-3 text-muted-foreground [&_svg]:size-4.5 [&_svg]:shrink-0 [&_svg]:stroke-[1.8]">
-        {icon}
-        <Label htmlFor={htmlFor} className="min-w-0 text-sm leading-snug text-foreground">{label}</Label>
-      </div>
-      {children}
-    </div>
   );
 }
 

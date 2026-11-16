@@ -46,6 +46,7 @@ tokio = { workspace = true }
 reqwest = { workspace = true }
 regex = "1"
 ring = "0.17"
+tauri-plugin-dialog = "2"
 kuriume-provider = { workspace = true }
 kuriume-store = { workspace = true }
 
@@ -66,3 +67,10 @@ tauri-plugin-mobile = { path = "crates/tauri-plugin-mobile" }
 # In-app updates on desktop (src/app_update.rs); Android installs the APK itself.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
+
+# WebDAV sync credentials (desktop). Mobile uses the native bridge instead.
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+
+[dev-dependencies]
+httpmock = "0.7"

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the records folder MobilePlugin.shareRecordFile() shares. -->
+<paths>
+    <cache-path name="records" path="records/" />
+</paths>

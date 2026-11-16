@@ -19,7 +19,10 @@ mod diagnostics;
 mod fullscreen_macos;
 mod media_proxy;
 mod online_commands;
+mod records_commands;
 mod store_commands;
+mod sync;
+mod sync_commands;
 
 /// macOS sends Cmd+C/V/X/A/Z (and Cmd+Q/H) to the WebView only through the
 /// app menu's key equivalents, so text fields need an Edit menu there. Kept
@@ -104,7 +107,9 @@ pub fn run() {
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_mobile::init());
 
-    builder
+    let builder = builder.plugin(tauri_plugin_dialog::init());
+
+    let app = builder
         .on_window_event(|window, event| {
             #[cfg(target_os = "macos")]
             if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
@@ -129,6 +134,7 @@ pub fn run() {
         .manage(StoreState::new())
         .manage(OnlineSourceState::new())
         .manage(crate::danmaku::DanmakuState::new())
+        .manage(crate::sync::SyncGate::default())
         .manage(media_proxy)
         .setup(|app| {
             #[cfg(all(
@@ -215,7 +221,31 @@ pub fn run() {
             crate::store_commands::source_binding_list,
             crate::store_commands::source_binding_upsert,
             crate::store_commands::source_binding_remove,
+            crate::records_commands::records_export,
+            crate::records_commands::records_import,
+            crate::records_commands::records_import_preview,
+            crate::records_commands::records_copy_import,
+            crate::records_commands::records_export_share,
+            crate::sync_commands::sync_background_push,
+            crate::sync_commands::sync_config_get,
+            crate::sync_commands::sync_config_save,
+            crate::sync_commands::sync_now,
+            crate::sync_commands::sync_on_open,
+            crate::sync_commands::sync_status,
+            crate::sync_commands::sync_test_connection,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        #[cfg(desktop)]
+        if let tauri::RunEvent::ExitRequested { api, .. } = event {
+            // Push the newest records before quitting, bounded by CLOSE_BUDGET.
+            if crate::sync::lifecycle::defer_exit(app_handle) {
+                api.prevent_exit();
+            }
+        }
+        #[cfg(not(desktop))]
+        let _ = (app_handle, event);
+    });
 }

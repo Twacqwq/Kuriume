@@ -2,6 +2,7 @@ import { Outlet, createRootRoute, useMatches } from "@tanstack/react-router";
 import { Sidebar } from "@/components/sidebar";
 import { MobileNavigation } from "@/components/mobile-navigation";
 import { isAndroidApp, isMobileApp } from "@/lib/platform";
+import { syncApi } from "@/lib/sync";
 import { onBackButtonPress } from "@tauri-apps/api/app";
 import { mobileControl } from "@/lib/mobile-player";
 import { SearchPanel } from "@/components/search-panel";
@@ -99,6 +100,33 @@ function RootComponent() {
     });
     return () => { void listener.then((handle) => handle.unregister()); };
   }, [router, searchOpen, closeSearch]);
+
+  // Pull the cloud copy once the first screen is up; the sync page shows the
+  // result and the engine skips runs that happened within the last 5 minutes.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void syncApi.onOpen().catch(() => undefined);
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  // Mobile has no exit event. The native plugin fires `kuriume-background`
+  // when the app leaves the foreground; visibilitychange covers other WebViews.
+  useEffect(() => {
+    if (!isMobileApp) return;
+    const push = () => {
+      void syncApi.backgroundPush().catch(() => undefined);
+    };
+    const hidden = () => {
+      if (document.visibilityState === "hidden") push();
+    };
+    document.addEventListener("kuriume-background", push);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      document.removeEventListener("kuriume-background", push);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

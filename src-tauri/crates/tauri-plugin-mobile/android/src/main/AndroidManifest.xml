@@ -12,5 +12,15 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/kuriume_update_paths" />
         </provider>
+        <!-- Exported records are shared from the cache folder only. -->
+        <provider
+            android:name="com.twac.kuriume.mobile.UpdateFileProvider"
+            android:authorities="${applicationId}.kuriume.records"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/kuriume_records_paths" />
+        </provider>
     </application>
 </manifest>

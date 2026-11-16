@@ -20,6 +20,22 @@ impl StoreState {
     where
         F: FnOnce(&Store) -> Result<R, String>,
     {
+        let guard = self.lock_store(app)?;
+        operation(guard.as_ref().expect("store initialized"))
+    }
+
+    pub fn with_store_mut<F, R>(&self, app: &AppHandle, operation: F) -> Result<R, String>
+    where
+        F: FnOnce(&mut Store) -> Result<R, String>,
+    {
+        let mut guard = self.lock_store(app)?;
+        operation(guard.as_mut().expect("store initialized"))
+    }
+
+    fn lock_store(
+        &self,
+        app: &AppHandle,
+    ) -> Result<std::sync::MutexGuard<'_, Option<Store>>, String> {
         let mut guard = self.inner.lock().map_err(|error| error.to_string())?;
         if guard.is_none() {
             let path = app
@@ -29,7 +45,7 @@ impl StoreState {
                 .join("kuriume-v1.db");
             *guard = Some(Store::open(path).map_err(|error| error.to_string())?);
         }
-        operation(guard.as_ref().expect("store initialized"))
+        Ok(guard)
     }
 }
 
