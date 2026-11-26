@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RecordsGroup } from "@/components/records-transfer";
+import { recordsFeaturesHidden } from "@/lib/platform";
 import { LinkRow, SettingRow, SettingsFeedback, SettingsGroup } from "@/components/settings-rows";
 import { linkFollowedToCatalog, refreshCatalog } from "@/lib/catalog-queries";
 import {
@@ -178,7 +179,7 @@ function SettingsPage() {
             </SettingRow>
           </SettingsGroup>
 
-          <RecordsGroup zh={zh} />
+          {!recordsFeaturesHidden && <RecordsGroup zh={zh} />}
 
           <AboutGroup zh={zh} />
 

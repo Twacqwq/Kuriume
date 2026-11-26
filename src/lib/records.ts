@@ -15,6 +15,8 @@ export interface RecordCounts {
 export interface RecordsExportOutcome {
   counts: RecordCounts;
   bytes: number;
+  /** Android: relative path of the copy saved under Download/Kuriume. */
+  saved_to?: string;
 }
 
 /** What the import dialog shows before the user confirms. */
@@ -57,7 +59,7 @@ export const recordsApi = {
   preview: (path: string) => invoke<RecordsImportPreview>("records_import_preview", { path }),
   import: (path: string, mode: RecordsImportMode) =>
     invoke<RecordsImportOutcome>("records_import", { path, mode }),
-  /** Mobile: opens the system share sheet for a file written into the app cache. */
+  /** Mobile: saves a copy to Download/Kuriume, then opens the system share sheet. */
   exportShare: (includeRecords: boolean, includeSettings: boolean) =>
     invoke<RecordsExportOutcome>("records_export_share", { includeRecords, includeSettings }),
   /** Mobile: copies a picked document URI into the app cache and returns its path. */

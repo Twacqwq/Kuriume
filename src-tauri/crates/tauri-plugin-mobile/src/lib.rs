@@ -116,6 +116,31 @@ mod mobile {
         .map_err(|error| error.to_string())?
     }
 
+    #[derive(Deserialize)]
+    pub struct SavedRecord {
+        pub location: String,
+    }
+
+    /// Copies a records file from the app cache into the public Downloads folder.
+    /// The path is never taken from the frontend.
+    #[cfg(target_os = "android")]
+    pub async fn save_record_file<R: Runtime>(
+        app: AppHandle<R>,
+        path: String,
+    ) -> Result<SavedRecord, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            app.state::<Mobile<R>>()
+                .0
+                .run_mobile_plugin::<SavedRecord>(
+                    "saveRecordFile",
+                    serde_json::json!({ "path": path }),
+                )
+                .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
     /// Shares a records file produced in the app cache; the path is never taken
     /// from the frontend (records_export_share builds it).
     pub async fn share_record_file<R: Runtime>(
@@ -206,7 +231,7 @@ pub use mobile::{
     copy_record_uri, open_url, password_clear, password_get, password_set, share_record_file, sniff,
 };
 #[cfg(target_os = "android")]
-pub use mobile::{install_package, update_dir};
+pub use mobile::{install_package, save_record_file, update_dir};
 
 #[cfg(target_os = "ios")]
 tauri::ios_plugin_binding!(init_plugin_mobile);

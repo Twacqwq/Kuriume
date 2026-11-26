@@ -2,12 +2,15 @@ package com.twac.kuriume.mobile
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.provider.Settings
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -317,6 +320,70 @@ class MobilePlugin(private val activity: Activity) : Plugin(activity) {
             target.delete()
             invoke.reject("Cannot read this file: ${error.message}")
         }
+    }
+
+    /** Saves a records file into the public Downloads folder. */
+    @Command
+    fun saveRecordFile(invoke: Invoke) {
+        val args = invoke.parseArgs(RecordFileArgs::class.java)
+        val file = File(args.path)
+        if (file.parentFile?.canonicalPath != recordsFolder().canonicalPath || !file.isFile || !file.name.endsWith(".json")) {
+            invoke.reject("Not a records file"); return
+        }
+        activity.runOnUiThread {
+            try {
+                val location = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    saveToPublicDownloads(file)
+                } else {
+                    saveToAppDownloads(file)
+                }
+                invoke.resolve(JSObject().apply { put("location", location) })
+            } catch (error: Exception) {
+                invoke.reject("Cannot save the file: ${error.message}")
+            }
+        }
+    }
+
+    /** Android 10+ writes through MediaStore, so no storage permission is needed. */
+    private fun saveToPublicDownloads(file: File): String {
+        val resolver = activity.contentResolver
+        val folder = "${Environment.DIRECTORY_DOWNLOADS}/Kuriume"
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+            put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val uri = resolver.insert(collection, values) ?: throw IllegalStateException("Downloads is unavailable")
+        val savedName = try {
+            resolver.openOutputStream(uri)?.use { output ->
+                file.inputStream().use { input -> input.copyTo(output) }
+            } ?: throw IllegalStateException("Downloads is read-only")
+            values.clear()
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+            resolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) ?: file.name else file.name
+            } ?: file.name
+        } catch (error: Exception) {
+            resolver.delete(uri, null, null)
+            throw error
+        }
+        return "$folder/$savedName"
+    }
+
+    /** Android 9 and older have no MediaStore Downloads collection. */
+    private fun saveToAppDownloads(file: File): String {
+        val root = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: throw IllegalStateException("External storage is unavailable")
+        val folder = File(root, "Kuriume")
+        if (!folder.isDirectory && !folder.mkdirs()) {
+            throw IllegalStateException("Cannot create the records folder")
+        }
+        val target = File(folder, file.name)
+        file.copyTo(target, overwrite = true)
+        return target.absolutePath
     }
 
     /** Opens the system share sheet for a records file the app just wrote. */

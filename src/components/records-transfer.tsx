@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { LinkRow, SettingRow, SettingsFeedback, SettingsGroup } from "@/components/settings-rows";
+import { showToast } from "@/components/toast";
 import { Switch } from "@/components/ui/switch";
 import {
   invalidateAfterRecordsChange,
@@ -77,21 +78,30 @@ function ExportDialog({ open, onOpenChange, zh }: { open: boolean; onOpenChange:
     setBusy(true);
     try {
       if (isMobileApp) {
-        // Mobile has no writable save dialog: write into the cache and share.
-        setDone(await recordsApi.exportShare(includeRecords, includeSettings));
+        // Mobile saves into Download/Kuriume, then opens the system share sheet.
+        const outcome = await recordsApi.exportShare(includeRecords, includeSettings);
+        setDone(outcome);
+        showToast("success", zh ? "导出成功" : "Export complete", exportMessage(outcome, zh));
         return;
       }
       let target: string | null;
       try {
         target = await saveFile({ defaultPath: recordsFileName(), filters: JSON_FILTER });
       } catch (reason) {
-        setError(toMessage(reason, zh ? "无法打开保存窗口" : "Could not open the save dialog"));
+        const message = toMessage(reason, zh ? "无法打开保存窗口" : "Could not open the save dialog");
+        setError(message);
+        showToast("error", zh ? "导出失败" : "Export failed", message);
         return;
       }
       if (!target) return;
-      setDone(await recordsApi.export(target, includeRecords, includeSettings));
+      const outcome = await recordsApi.export(target, includeRecords, includeSettings);
+      setDone(outcome);
+      showToast("success", zh ? "导出成功" : "Export complete", exportMessage(outcome, zh));
     } catch (reason) {
-      setError(toMessage(reason, zh ? "导出失败" : "Export failed"));
+      const message = toMessage(reason, zh ? "导出失败" : "Export failed");
+      const title = zh ? "导出失败" : "Export failed";
+      setError(message);
+      showToast("error", title, message === title ? undefined : message);
     } finally {
       setBusy(false);
     }
@@ -105,8 +115,8 @@ function ExportDialog({ open, onOpenChange, zh }: { open: boolean; onOpenChange:
           <DialogDescription>
             {isMobileApp
               ? zh
-                ? "选择要分享的内容；系统分享面板可以发送到另一台设备或云盘。"
-                : "Choose what to share; the system share sheet can send it to another device or drive."
+                ? "选择要导出的内容。文件会保存到手机的 Download/Kuriume 文件夹，然后打开系统分享面板。"
+                : "Choose what to export. The file is saved to Download/Kuriume, then the system share sheet opens."
               : zh
                 ? "选择要写入文件的内容，之后可以在另一台设备上导入。"
                 : "Choose what the file should carry; import it on another device."}
@@ -127,9 +137,7 @@ function ExportDialog({ open, onOpenChange, zh }: { open: boolean; onOpenChange:
           <SettingsFeedback
             feedback={{
               kind: "success",
-              message: zh
-                ? `已导出 ${countsLine(done.counts, zh)}，文件 ${formatBytes(done.bytes)}。`
-                : `Exported ${countsLine(done.counts, zh)} (${formatBytes(done.bytes)}).`,
+              message: exportMessage(done, zh),
             }}
           />
         )}
@@ -139,7 +147,7 @@ function ExportDialog({ open, onOpenChange, zh }: { open: boolean; onOpenChange:
           </Button>
           <Button type="button" onClick={() => void run()} disabled={busy || (!includeRecords && !includeSettings)}>
             {busy && <Loader2 className="animate-spin" aria-hidden="true" />}
-            {isMobileApp ? (zh ? "分享" : "Share") : zh ? "导出" : "Export"}
+            {zh ? "导出" : "Export"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -182,7 +190,9 @@ function ImportDialog({ open, onOpenChange, zh }: { open: boolean; onOpenChange:
         pickerMode: "document",
       });
     } catch (reason) {
-      setError(toMessage(reason, zh ? "无法打开文件选择窗口" : "Could not open the file dialog"));
+      const message = toMessage(reason, zh ? "无法打开文件选择窗口" : "Could not open the file dialog");
+      setError(message);
+      showToast("error", zh ? "导入失败" : "Import failed", message);
       return;
     }
     if (!picked) return;
@@ -195,9 +205,11 @@ function ImportDialog({ open, onOpenChange, zh }: { open: boolean; onOpenChange:
       setPreview(await recordsApi.preview(local));
       setPath(local);
     } catch (reason) {
+      const message = toMessage(reason, zh ? "无法读取这个文件" : "This file cannot be read");
       setPreview(null);
       setPath(null);
-      setError(toMessage(reason, zh ? "无法读取这个文件" : "This file cannot be read"));
+      setError(message);
+      showToast("error", zh ? "导入失败" : "Import failed", message);
     } finally {
       setBusy(false);
     }
@@ -210,9 +222,13 @@ function ImportDialog({ open, onOpenChange, zh }: { open: boolean; onOpenChange:
     try {
       const result = await recordsApi.import(path, mode);
       setOutcome(result);
+      showToast("success", zh ? "导入成功" : "Import complete", summaryLine(result, zh));
       await invalidateAfterRecordsChange(queryClient);
     } catch (reason) {
-      setError(toMessage(reason, zh ? "导入失败" : "Import failed"));
+      const message = toMessage(reason, zh ? "导入失败" : "Import failed");
+      const title = zh ? "导入失败" : "Import failed";
+      setError(message);
+      showToast("error", title, message === title ? undefined : message);
     } finally {
       setBusy(false);
     }
@@ -328,6 +344,18 @@ function countsLine(counts: RecordCounts, zh: boolean) {
   return zh
     ? `${counts.items} 部作品、${counts.library} 条追番、${counts.history} 条观看记录`
     : `${counts.items} works, ${counts.library} library entries, ${counts.history} history rows`;
+}
+
+function exportMessage(outcome: RecordsExportOutcome, zh: boolean) {
+  const summary = countsLine(outcome.counts, zh);
+  if (outcome.saved_to) {
+    return zh
+      ? `已导出 ${summary}（${formatBytes(outcome.bytes)}），文件保存在 ${outcome.saved_to}。`
+      : `Exported ${summary} (${formatBytes(outcome.bytes)}) to ${outcome.saved_to}.`;
+  }
+  return zh
+    ? `已导出 ${summary}，文件 ${formatBytes(outcome.bytes)}。`
+    : `Exported ${summary} (${formatBytes(outcome.bytes)}).`;
 }
 
 function summaryLine(outcome: RecordsImportOutcome, zh: boolean) {

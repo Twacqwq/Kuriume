@@ -1,6 +1,7 @@
 import { Outlet, createRootRoute, useMatches } from "@tanstack/react-router";
 import { Sidebar } from "@/components/sidebar";
 import { MobileNavigation } from "@/components/mobile-navigation";
+import { ToastViewport, showToast } from "@/components/toast";
 import { isAndroidApp, isMobileApp } from "@/lib/platform";
 import { syncApi } from "@/lib/sync";
 import { onBackButtonPress } from "@tauri-apps/api/app";
@@ -9,7 +10,9 @@ import { SearchPanel } from "@/components/search-panel";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { useTheme } from "@/hooks/use-theme";
+import { useDisplayLanguage } from "@/hooks/use-display-language";
 import { isDarkTheme } from "@/lib/theme";
+import { describeSyncFailure, describeSyncOutcome } from "@/lib/sync-messages";
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -21,7 +24,12 @@ function RootComponent() {
   const [searchOpen, setSearchOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
   const theme = useTheme();
+  const zh = useDisplayLanguage() === "zh";
+  const zhRef = useRef(zh);
 
+  useEffect(() => {
+    zhRef.current = zh;
+  }, [zh]);
 
   // Each history entry keeps its own scroll position: back returns to where
   // the list was, a new page starts at the top. The position is read before
@@ -101,11 +109,22 @@ function RootComponent() {
     return () => { void listener.then((handle) => handle.unregister()); };
   }, [router, searchOpen, closeSearch]);
 
-  // Pull the cloud copy once the first screen is up; the sync page shows the
-  // result and the engine skips runs that happened within the last 5 minutes.
+  // Pull the cloud copy once the first screen is up; the engine skips runs
+  // that happened within the last 5 minutes. Skipped runs stay quiet.
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void syncApi.onOpen().catch(() => undefined);
+      void syncApi.onOpen()
+        .then((outcome) => {
+          if (outcome.note === "auto_disabled" || outcome.note === "recent") return;
+          const language = zhRef.current;
+          showToast("success", language ? "同步成功" : "Sync complete", describeSyncOutcome(outcome, language));
+        })
+        .catch((reason) => {
+          const language = zhRef.current;
+          const title = language ? "同步失败" : "Sync failed";
+          const message = describeSyncFailure(reason, language, title);
+          showToast("error", title, message === title ? undefined : message);
+        });
     }, 1500);
     return () => window.clearTimeout(timer);
   }, []);
@@ -164,6 +183,7 @@ function RootComponent() {
       >
         <Outlet />
       </main>
+      <ToastViewport />
     </div>
   );
 }

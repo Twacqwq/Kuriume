@@ -35,15 +35,22 @@ export function SettingRow({
   icon,
   label,
   htmlFor,
+  stackOnMobile = false,
   children,
 }: {
   icon: React.ReactNode;
   label: string;
   htmlFor: string;
+  stackOnMobile?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-20 items-center justify-between gap-3 px-4 py-3">
+    <div
+      className={cn(
+        "flex min-h-20 items-center justify-between gap-3 px-4 py-3",
+        stackOnMobile && "flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-3",
+      )}
+    >
       <div className="flex min-w-0 flex-1 items-center gap-3 text-muted-foreground [&_svg]:size-4.5 [&_svg]:shrink-0 [&_svg]:stroke-[1.8]">
         {icon}
         <Label htmlFor={htmlFor} className="min-w-0 text-sm leading-snug text-foreground">{label}</Label>

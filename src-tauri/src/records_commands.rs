@@ -18,6 +18,9 @@ const BACKUP_LIMIT: usize = 5;
 pub(crate) struct ExportOutcome {
     pub counts: RecordCounts,
     pub bytes: usize,
+    /// Android: where the copy in the public Downloads folder went.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saved_to: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -39,6 +42,7 @@ pub(crate) fn records_export(
     Ok(ExportOutcome {
         counts: document.counts,
         bytes: bytes.len(),
+        saved_to: None,
     })
 }
 
@@ -90,12 +94,21 @@ pub(crate) async fn records_export_share(
     }
     let target = folder.join(format!("kuriume-records-{stamp}.json"));
     write_file(&target, &bytes)?;
+    #[cfg(target_os = "android")]
+    let saved_to = Some(
+        tauri_plugin_mobile::save_record_file(app.clone(), target.to_string_lossy().into_owned())
+            .await?
+            .location,
+    );
+    #[cfg(not(target_os = "android"))]
+    let saved_to = None;
     #[cfg(mobile)]
     tauri_plugin_mobile::share_record_file(app.clone(), target.to_string_lossy().into_owned())
         .await?;
     Ok(ExportOutcome {
         counts: document.counts,
         bytes: bytes.len(),
+        saved_to,
     })
 }
 

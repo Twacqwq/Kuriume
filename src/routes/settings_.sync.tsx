@@ -2,11 +2,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { SettingRow, SettingsFeedback, SettingsGroup } from "@/components/settings-rows";
+import { showToast } from "@/components/toast";
 import { Switch } from "@/components/ui/switch";
 import { useDisplayLanguage } from "@/hooks/use-display-language";
 import {
   invalidateAfterSync,
-  isSyncFailure,
   syncApi,
   syncConfigQueryOptions,
   type SettingsAuthority,
@@ -14,18 +14,21 @@ import {
   type SyncOutcome,
   type SyncStatusValue,
 } from "@/lib/sync";
+import { describeSyncFailure, describeSyncOutcome, messageFromReason } from "@/lib/sync-messages";
+import { recordsFeaturesHidden } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { listen } from "@tauri-apps/api/event";
 import { ArrowLeft, ArrowRightLeft, Cloud, FolderOpen, KeyRound, Loader2, RefreshCw, Server, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export const Route = createFileRoute("/settings_/sync")({
+  beforeLoad: () => {
+    if (recordsFeaturesHidden) throw redirect({ to: "/settings", replace: true });
+  },
   component: SyncPage,
 });
-
-type Feedback = { kind: "success" | "error"; message: string } | null;
 
 interface SyncForm {
   server_url: string;
@@ -56,7 +59,6 @@ function SyncPage() {
   const queryClient = useQueryClient();
   const { data: config, isLoading, error: loadError, refetch } = useQuery(syncConfigQueryOptions);
   const [form, setForm] = useState<SyncForm | null>(null);
-  const [feedback, setFeedback] = useState<Feedback>(null);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
@@ -91,7 +93,6 @@ function SyncPage() {
   const save = async () => {
     if (!form) return;
     setSaving(true);
-    setFeedback(null);
     try {
       const saved = await syncApi.save({
         server_url: form.server_url,
@@ -104,9 +105,11 @@ function SyncPage() {
       });
       queryClient.setQueryData(syncConfigQueryOptions.queryKey, saved);
       setForm(toForm(saved));
-      setFeedback({ kind: "success", message: zh ? "同步设置已保存" : "Sync settings saved" });
+      showToast("success", zh ? "保存成功" : "Settings saved", zh ? "同步设置已保存" : "Sync settings saved");
     } catch (reason) {
-      setFeedback({ kind: "error", message: describeFailure(reason, zh, zh ? "保存失败" : "Could not save") });
+      const title = zh ? "保存失败" : "Could not save";
+      const message = describeSyncFailure(reason, zh, title);
+      showToast("error", title, message === title ? undefined : message);
     } finally {
       setSaving(false);
     }
@@ -114,21 +117,20 @@ function SyncPage() {
 
   const test = async () => {
     setTesting(true);
-    setFeedback(null);
     try {
       const probe = await syncApi.test();
-      setFeedback({
-        kind: "success",
-        message: probe.exists
-          ? zh
-            ? `连接正常，云端已有同步文件${probe.length ? `（${formatBytes(probe.length)}）` : ""}。`
-            : `Connection works; the remote file is there${probe.length ? ` (${formatBytes(probe.length)})` : ""}.`
-          : zh
-            ? "连接正常，云端还没有同步文件，第一次同步会创建它。"
-            : "Connection works; the first sync will create the remote file.",
-      });
+      const message = probe.exists
+        ? zh
+          ? `连接正常，云端已有同步文件${probe.length ? `（${formatBytes(probe.length)}）` : ""}。`
+          : `Connection works; the remote file is there${probe.length ? ` (${formatBytes(probe.length)})` : ""}.`
+        : zh
+          ? "连接正常，云端还没有同步文件，第一次同步会创建它。"
+          : "Connection works; the first sync will create the remote file.";
+      showToast("success", zh ? "连接成功" : "Connection works", message);
     } catch (reason) {
-      setFeedback({ kind: "error", message: describeFailure(reason, zh, zh ? "连接失败" : "Connection failed") });
+      const title = zh ? "连接失败" : "Connection failed";
+      const message = describeSyncFailure(reason, zh, title);
+      showToast("error", title, message === title ? undefined : message);
     } finally {
       setTesting(false);
     }
@@ -151,22 +153,21 @@ function SyncPage() {
           : "Records merge by timestamp; app settings follow the direction you pick. The password lives in the system credential store, never in the database. HTTPS and HTTP Basic auth only."}
       </p>
 
-      {feedback && <div className="mt-4"><SettingsFeedback feedback={feedback} /></div>}
 
       {isLoading ? (
         <div className="mt-8 flex justify-center"><Loader2 className="animate-spin text-muted-foreground" aria-hidden="true" /></div>
       ) : !config || !form ? (
         <div className="mt-8 flex flex-col items-start gap-3">
-          <SettingsFeedback feedback={{ kind: "error", message: toMessage(loadError, zh ? "无法读取同步设置" : "Could not load sync settings") }} />
+          <SettingsFeedback feedback={{ kind: "error", message: messageFromReason(loadError, zh ? "无法读取同步设置" : "Could not load sync settings") }} />
           <Button type="button" variant="outline" onClick={() => void refetch()}>{zh ? "重试" : "Retry"}</Button>
         </div>
       ) : (
         <div className="mt-8 space-y-8">
           <SettingsGroup title={zh ? "服务器" : "Server"}>
-            <SettingRow icon={<Server />} label={zh ? "服务器地址" : "Server address"} htmlFor="sync-server">
+            <SettingRow icon={<Server />} label={zh ? "服务器地址" : "Server address"} htmlFor="sync-server" stackOnMobile>
               <Input
                 id="sync-server"
-                className="h-12 w-full max-w-64 border-0 bg-secondary/60"
+                className="h-12 w-full border-0 bg-secondary/60 sm:max-w-64"
                 inputMode="url"
                 autoComplete="off"
                 placeholder="https://dav.example.com/dav/"
@@ -175,21 +176,21 @@ function SyncPage() {
                 onChange={(event) => update({ server_url: event.target.value })}
               />
             </SettingRow>
-            <SettingRow icon={<UserRound />} label={zh ? "用户名" : "Username"} htmlFor="sync-username">
+            <SettingRow icon={<UserRound />} label={zh ? "用户名" : "Username"} htmlFor="sync-username" stackOnMobile>
               <Input
                 id="sync-username"
-                className="h-12 w-full max-w-64 border-0 bg-secondary/60"
+                className="h-12 w-full border-0 bg-secondary/60 sm:max-w-64"
                 autoComplete="username"
                 value={form.username}
                 disabled={saving}
                 onChange={(event) => update({ username: event.target.value })}
               />
             </SettingRow>
-            <SettingRow icon={<KeyRound />} label={zh ? "密码" : "Password"} htmlFor="sync-password">
+            <SettingRow icon={<KeyRound />} label={zh ? "密码" : "Password"} htmlFor="sync-password" stackOnMobile>
               <Input
                 id="sync-password"
                 type="password"
-                className="h-12 w-full max-w-64 border-0 bg-secondary/60"
+                className="h-12 w-full border-0 bg-secondary/60 sm:max-w-64"
                 autoComplete="current-password"
                 placeholder={config.has_password ? (zh ? "已保存，留空不修改" : "Saved; leave empty to keep") : zh ? "请输入密码" : "Enter the password"}
                 value={form.password}
@@ -197,10 +198,10 @@ function SyncPage() {
                 onChange={(event) => update({ password: event.target.value })}
               />
             </SettingRow>
-            <SettingRow icon={<FolderOpen />} label={zh ? "远程文件路径" : "Remote file path"} htmlFor="sync-path">
+            <SettingRow icon={<FolderOpen />} label={zh ? "远程文件路径" : "Remote file path"} htmlFor="sync-path" stackOnMobile>
               <Input
                 id="sync-path"
-                className="h-12 w-full max-w-64 border-0 bg-secondary/60"
+                className="h-12 w-full border-0 bg-secondary/60 sm:max-w-64"
                 autoComplete="off"
                 placeholder={DEFAULT_REMOTE_PATH}
                 value={form.remote_path}
@@ -229,11 +230,11 @@ function SyncPage() {
             </SettingRow>
             <p className="px-4 py-3 text-xs leading-relaxed text-muted-foreground">
               {zh
-                ? "打开应用时从云端拉取记录，关闭应用时把本机记录推到云端；设置方向在手动同步时选择，也可以记住选择。"
-                : "Opening the app pulls records from the cloud; closing pushes local records up. Pick the settings direction each time you sync manually, or remember it."}
+                ? "打开应用时从云端拉取记录，关闭应用时把本机记录推到云端；"
+                : "Opening the app pulls records from the cloud; closing pushes local records up."}
             </p>
-            <div className="px-4 pb-3">
-              <p className="mb-2 text-xs font-medium text-muted-foreground">{zh ? "设置方向" : "Settings direction"}</p>
+            <div className="px-4 pb-3 pt-3">
+              <p className="mb-2 text-sm font-medium text-foreground">{zh ? "应用设置自动同步方向" : "App settings sync direction"}</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 <DirectionButton
                   selected={form.settings_authority === "cloud"}
@@ -339,9 +340,13 @@ function ManualSyncDialog({
     try {
       const result = await syncApi.now(authority, remember, includeSettings);
       setOutcome(result);
+      showToast("success", zh ? "同步成功" : "Sync complete", describeSyncOutcome(result, zh));
       await invalidateAfterSync(queryClient);
     } catch (reason) {
-      setError(describeFailure(reason, zh, zh ? "同步失败" : "Sync failed"));
+      const title = zh ? "同步失败" : "Sync failed";
+      const message = describeSyncFailure(reason, zh, title);
+      setError(message);
+      showToast("error", title, message === title ? undefined : message);
     } finally {
       setBusy(false);
     }
@@ -391,7 +396,7 @@ function ManualSyncDialog({
         {error && <SettingsFeedback feedback={{ kind: "error", message: error }} />}
         {outcome && (
           <div className="space-y-1">
-            <SettingsFeedback feedback={{ kind: "success", message: describeOutcome(outcome, zh) }} />
+            <SettingsFeedback feedback={{ kind: "success", message: describeSyncOutcome(outcome, zh) }} />
             {outcome.backup && (
               <p className="break-all text-xs text-muted-foreground">
                 {zh ? "同步前的备份" : "Backup before syncing"} {outcome.backup}
@@ -461,69 +466,8 @@ function statusText(status: SyncStatusValue, zh: boolean) {
   }
 }
 
-function describeOutcome(outcome: SyncOutcome, zh: boolean) {
-  const parts: string[] = [];
-  if (outcome.uploaded) parts.push(zh ? "已上传本机记录" : "uploaded local records");
-  if (outcome.skipped_download) parts.push(zh ? "云端没有记录，未下载" : "nothing downloaded");
-  if (outcome.written > 0) parts.push(zh ? `合并 ${outcome.written} 部作品` : `merged ${outcome.written} works`);
-  if (outcome.note) parts.push(noteText(outcome.note, zh));
-  if (parts.length === 0) parts.push(zh ? "同步完成" : "sync finished");
-  return parts.join(zh ? "，" : ", ");
-}
-
-function noteText(note: string, zh: boolean) {
-  switch (note) {
-    case "no_etag":
-      return zh ? "服务器没有提供 ETag，关闭应用时不会快速推送" : "the server sent no ETag, so closing will not fast-push";
-    case "weak_etag":
-      return zh ? "服务器只提供弱 ETag，已按完整流程同步" : "only a weak ETag was available; the full round-trip ran";
-    case "auto_disabled":
-      return zh ? "自动同步没有开启" : "automatic sync is off";
-    case "recent":
-      return zh ? "5 分钟内刚同步过，已跳过" : "already synced within 5 minutes";
-    default:
-      return note;
-  }
-}
-
-function describeFailure(reason: unknown, zh: boolean, fallback: string) {
-  if (!isSyncFailure(reason)) return toMessage(reason, fallback);
-  const text = {
-    config_missing: zh ? "还没有填写服务器地址" : "No sync server is configured yet.",
-    need_password: zh ? "需要重新输入密码" : "Enter the password again.",
-    not_https: zh ? "只支持以 https:// 开头的地址" : "Only HTTPS addresses are supported.",
-    invalid_url: zh ? "服务器地址无效" : "The server address is not valid.",
-    invalid_path: zh ? "远程路径必须以 / 开头，且不能包含 .. 或 //" : "The remote path must start with / and must not contain .. or //.",
-    auth: zh ? "用户名或密码被拒绝（401）" : "The username or password was rejected (401).",
-    forbidden: zh ? "服务器拒绝访问（403）" : "The server refused access (403).",
-    not_found: zh ? "远程地址不存在（404）" : "The remote address does not exist (404).",
-    mkcol_failed: zh ? "无法创建远程文件夹" : "The remote folder could not be created.",
-    conflict: zh ? "云端文件在另一台设备上被改动过，请重试" : "The file changed on another device; retry.",
-    too_large: zh ? "云端文件超过 32 MB" : "The remote file is larger than 32 MB.",
-    corrupt: zh ? "云端文件不是 Kuriume 记录文件，未改动本机数据" : "The remote file is not a Kuriume records file; nothing changed.",
-    schema_too_new: zh ? "云端文件来自更新版本的 Kuriume" : "The remote file comes from a newer Kuriume.",
-    insufficient_storage: zh ? "服务器空间不足（507）" : "The server is out of space (507).",
-    redirect: zh ? "服务器返回了重定向，请检查地址" : "The server returned a redirect; check the address.",
-    tls: zh ? "TLS 证书校验失败" : "The TLS certificate was rejected.",
-    timeout: zh ? "同步超时" : "The sync ran out of time.",
-    busy: zh ? "已有同步在进行" : "A sync is already running.",
-    keyring: zh ? "系统凭据管理器不可用" : "The system credential store is unavailable.",
-    unsupported_platform: zh ? "这个平台暂不支持同步" : "Sync is not supported on this platform yet.",
-    server: zh ? "服务器返回错误" : "The server returned an error.",
-    network: zh ? "无法连接到服务器" : "The server could not be reached.",
-    internal: zh ? "同步出现内部错误" : "The sync failed unexpectedly.",
-  } as Record<string, string>;
-  return text[reason.code] ?? (reason.message || fallback);
-}
-
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function toMessage(reason: unknown, fallback: string) {
-  if (typeof reason === "string" && reason.trim()) return reason;
-  if (reason instanceof Error && reason.message) return reason.message;
-  return fallback;
 }
