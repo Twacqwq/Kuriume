@@ -1,5 +1,6 @@
 import AVFoundation
 import MediaPlayer
+import Security
 import Tauri
 import UIKit
 import WebKit
@@ -12,6 +13,19 @@ private struct ControlArgs: Decodable {
     let action: String
     let value: Double?
     let session: String?
+}
+
+private struct SecureArgs: Decodable {
+    let account: String
+    let password: String?
+}
+
+private struct RecordUriArgs: Decodable {
+    let uri: String
+}
+
+private struct RecordFileArgs: Decodable {
+    let path: String
 }
 
 class MobilePlugin: Plugin {
@@ -130,6 +144,120 @@ class MobilePlugin: Plugin {
             UIApplication.shared.open(url) { opened in
                 if opened { invoke.resolve() } else { invoke.reject("No app can open this link") }
             }
+        }
+    }
+
+
+    // MARK: - Stored password
+
+    private let keychainService = "kuriume-webdav"
+
+    private func keychainQuery(_ account: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: account,
+        ]
+    }
+
+    @objc public func secureGet(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(SecureArgs.self)
+        var query = keychainQuery(args.account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecItemNotFound {
+            invoke.resolve([:])
+            return
+        }
+        guard status == errSecSuccess, let data = item as? Data, let password = String(data: data, encoding: .utf8) else {
+            invoke.reject("Secure storage unavailable")
+            return
+        }
+        invoke.resolve(["password": password])
+    }
+
+    @objc public func secureSet(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(SecureArgs.self)
+        guard let password = args.password, !password.isEmpty else {
+            invoke.reject("Password is empty")
+            return
+        }
+        SecItemDelete(keychainQuery(args.account) as CFDictionary)
+        var attributes = keychainQuery(args.account)
+        attributes[kSecValueData as String] = Data(password.utf8)
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let status = SecItemAdd(attributes as CFDictionary, nil)
+        if status == errSecSuccess { invoke.resolve() } else { invoke.reject("Secure storage unavailable") }
+    }
+
+    @objc public func secureClear(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(SecureArgs.self)
+        let status = SecItemDelete(keychainQuery(args.account) as CFDictionary)
+        if status == errSecSuccess || status == errSecItemNotFound { invoke.resolve() } else { invoke.reject("Secure storage unavailable") }
+    }
+
+    // MARK: - Records files
+
+    private func recordsFolder() -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("records", isDirectory: true)
+    }
+
+    @objc public func readRecordUri(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(RecordUriArgs.self)
+        let parsed = URL(string: args.uri)
+        let url: URL
+        if let parsed, parsed.isFileURL {
+            url = parsed
+        } else if args.uri.hasPrefix("/") {
+            url = URL(fileURLWithPath: args.uri)
+        } else {
+            invoke.reject("Cannot read this file")
+            return
+        }
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        let manager = FileManager.default
+        do {
+            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            if size > 32 * 1024 * 1024 {
+                invoke.reject("The file is larger than 32 MB")
+                return
+            }
+            let folder = manager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("imports", isDirectory: true)
+            try manager.createDirectory(at: folder, withIntermediateDirectories: true)
+            let target = folder.appendingPathComponent("records-\(Int(Date().timeIntervalSince1970)).json")
+            try? manager.removeItem(at: target)
+            try manager.copyItem(at: url, to: target)
+            invoke.resolve(["path": target.path])
+        } catch {
+            invoke.reject("Cannot read this file: \(error.localizedDescription)")
+        }
+    }
+
+    @objc public func shareRecordFile(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(RecordFileArgs.self)
+        let file = URL(fileURLWithPath: args.path).standardizedFileURL
+        let folder = recordsFolder().standardizedFileURL
+        guard file.deletingLastPathComponent().path == folder.path, file.pathExtension == "json",
+              FileManager.default.fileExists(atPath: file.path) else {
+            invoke.reject("Not a records file")
+            return
+        }
+        DispatchQueue.main.async { [self] in
+            let controller = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+            if let popover = controller.popoverPresentationController, let webview = webview {
+                popover.sourceView = webview
+                popover.sourceRect = CGRect(x: webview.bounds.midX, y: webview.bounds.midY, width: 1, height: 1)
+            }
+            guard let presenter = manager.viewController ?? webview?.window?.rootViewController else {
+                invoke.reject("No window to share from")
+                return
+            }
+            presenter.present(controller, animated: true) { invoke.resolve() }
         }
     }
 

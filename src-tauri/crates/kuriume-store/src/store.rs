@@ -4,7 +4,7 @@ use std::path::Path;
 use thiserror::Error;
 use uuid::Uuid;
 
-const CURRENT_SCHEMA_VERSION: i64 = 3;
+pub const CURRENT_SCHEMA_VERSION: i64 = 4;
 const DEFAULT_DISPLAY_LANGUAGE: &str = "zh";
 const DEFAULT_CATALOG_SOURCE: &str = "anilist";
 /// Catalogs a media item can belong to; their identities are primary.
@@ -43,6 +43,33 @@ const MEDIA_KINDS: [&str; 2] = ["anime", "manga"];
 
 fn default_kind() -> String {
     "anime".into()
+}
+
+impl Settings {
+    /// Check every field against the ranges the individual setters enforce.
+    pub fn validate(&self) -> Result<()> {
+        if !(0.0..=1.0).contains(&self.default_volume) {
+            return Err(StoreError::Invalid(
+                "default_volume must be between 0 and 1".into(),
+            ));
+        }
+        if !(0.25..=4.0).contains(&self.default_speed) {
+            return Err(StoreError::Invalid(
+                "default_speed must be between 0.25 and 4".into(),
+            ));
+        }
+        if !matches!(self.display_language.as_str(), "en" | "zh") {
+            return Err(StoreError::Invalid(
+                "display_language must be 'en' or 'zh'".into(),
+            ));
+        }
+        if !CATALOG_PROVIDERS.contains(&self.catalog_source.as_str()) {
+            return Err(StoreError::Invalid(
+                "catalog_source must be 'anilist' or 'bangumi'".into(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,6 +180,57 @@ pub struct SourceRuleRecord {
     pub installed_at: String,
 }
 
+/// WebDAV endpoints and the last sync result. The password itself lives in the
+/// platform credential store; only `credential_key` is persisted here.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncConfig {
+    pub server_url: String,
+    pub username: String,
+    pub remote_path: String,
+    pub credential_key: String,
+    pub auto_sync: bool,
+    pub sync_settings: bool,
+    pub settings_authority: String,
+    pub device_id: String,
+    pub last_synced_at: Option<String>,
+    pub last_etag: Option<String>,
+    pub last_status: String,
+    pub last_error: Option<String>,
+}
+
+impl SyncConfig {
+    pub fn validate(&self) -> Result<()> {
+        if self.server_url.chars().count() > 2048 {
+            return Err(StoreError::Invalid("server_url is too long".into()));
+        }
+        if self.username.chars().count() > 256 {
+            return Err(StoreError::Invalid("username is too long".into()));
+        }
+        if self.remote_path.chars().count() > 2048 {
+            return Err(StoreError::Invalid("remote_path is too long".into()));
+        }
+        if self.credential_key.chars().count() > 2048 {
+            return Err(StoreError::Invalid("credential_key is too long".into()));
+        }
+        if !matches!(self.settings_authority.as_str(), "cloud" | "local") {
+            return Err(StoreError::Invalid(
+                "settings_authority must be 'cloud' or 'local'".into(),
+            ));
+        }
+        if !SYNC_STATUSES.contains(&self.last_status.as_str()) {
+            return Err(StoreError::Invalid("unknown sync status".into()));
+        }
+        if let Some(error) = &self.last_error {
+            if error.chars().count() > 256 {
+                return Err(StoreError::Invalid("last_error is too long".into()));
+            }
+        }
+        Ok(())
+    }
+}
+
+pub const SYNC_STATUSES: [&str; 6] = ["never", "ok", "failed", "corrupt", "busy", "need_password"];
+
 pub struct Store {
     connection: Connection,
 }
@@ -170,6 +248,7 @@ impl Store {
             r#"
             PRAGMA foreign_keys = ON;
             PRAGMA journal_mode = WAL;
+            PRAGMA busy_timeout = 5000;
 
             CREATE TABLE IF NOT EXISTS settings (
               id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -208,7 +287,8 @@ impl Store {
               media_id TEXT PRIMARY KEY REFERENCES media(id) ON DELETE CASCADE,
               status TEXT NOT NULL CHECK (status IN ('following', 'completed')),
               added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              deleted_at TEXT
             );
 
             CREATE TABLE IF NOT EXISTS watch_history (
@@ -219,6 +299,7 @@ impl Store {
               duration REAL NOT NULL,
               source_id TEXT,
               watched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              deleted_at TEXT,
               PRIMARY KEY (media_id, episode)
             );
             CREATE INDEX IF NOT EXISTS idx_watch_history_recent
@@ -239,6 +320,25 @@ impl Store {
               rule_json TEXT NOT NULL,
               installed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS sync_config (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              server_url TEXT NOT NULL DEFAULT '',
+              username TEXT NOT NULL DEFAULT '',
+              remote_path TEXT NOT NULL DEFAULT '/kuriume/records.json',
+              credential_key TEXT NOT NULL DEFAULT '',
+              auto_sync INTEGER NOT NULL DEFAULT 0,
+              sync_settings INTEGER NOT NULL DEFAULT 0,
+              settings_authority TEXT NOT NULL DEFAULT 'cloud'
+                CHECK (settings_authority IN ('cloud', 'local')),
+              device_id TEXT NOT NULL DEFAULT '',
+              last_synced_at TEXT,
+              last_etag TEXT,
+              last_status TEXT NOT NULL DEFAULT 'never',
+              last_error TEXT
+            );
+            INSERT OR IGNORE INTO sync_config (id) VALUES (1);
+
             "#,
         )?;
         migrate(&mut connection)?;
@@ -567,7 +667,8 @@ impl Store {
             VALUES (?1, ?2)
             ON CONFLICT(media_id) DO UPDATE SET
               status = excluded.status,
-              updated_at = CURRENT_TIMESTAMP
+              updated_at = CURRENT_TIMESTAMP,
+              deleted_at = NULL
             "#,
             params![media_id, status.as_str()],
         )?;
@@ -576,15 +677,22 @@ impl Store {
     }
 
     pub fn library_remove(&self, media_id: &str) -> Result<()> {
-        self.connection
-            .execute("DELETE FROM library_entry WHERE media_id = ?1", [media_id])?;
+        // Soft delete: the tombstone carries the removal to other devices.
+        self.connection.execute(
+            r#"
+            UPDATE library_entry
+            SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE media_id = ?1
+            "#,
+            [media_id],
+        )?;
         Ok(())
     }
 
     pub fn library_get(&self, media_id: &str) -> Result<Option<LibraryEntry>> {
         self.connection
             .query_row(
-                &library_select("WHERE l.media_id = ?1"),
+                &library_select("WHERE l.media_id = ?1 AND l.deleted_at IS NULL"),
                 [media_id],
                 map_library_entry,
             )
@@ -597,7 +705,7 @@ impl Store {
             r#"
             UPDATE library_entry
             SET status = ?2, updated_at = CURRENT_TIMESTAMP
-            WHERE media_id = ?1
+            WHERE media_id = ?1 AND deleted_at IS NULL
             "#,
             params![media_id, status.as_str()],
         )?;
@@ -609,16 +717,16 @@ impl Store {
         if let Some(status) = status {
             let status = LibraryStatus::parse(status)?.as_str();
             let mut statement = self.connection.prepare(&library_select(
-                "WHERE l.status = ?1 ORDER BY l.updated_at DESC",
+                "WHERE l.status = ?1 AND l.deleted_at IS NULL ORDER BY l.updated_at DESC",
             ))?;
             let rows = statement.query_map([status], map_library_entry)?;
             for row in rows {
                 entries.push(row?);
             }
         } else {
-            let mut statement = self
-                .connection
-                .prepare(&library_select("ORDER BY l.updated_at DESC"))?;
+            let mut statement = self.connection.prepare(&library_select(
+                "WHERE l.deleted_at IS NULL ORDER BY l.updated_at DESC",
+            ))?;
             let rows = statement.query_map([], map_library_entry)?;
             for row in rows {
                 entries.push(row?);
@@ -647,7 +755,8 @@ impl Store {
               position = excluded.position,
               duration = excluded.duration,
               source_id = excluded.source_id,
-              watched_at = CURRENT_TIMESTAMP
+              watched_at = CURRENT_TIMESTAMP,
+              deleted_at = NULL
             "#,
             params![
                 media_id,
@@ -671,6 +780,7 @@ impl Store {
             JOIN media m ON m.id = h.media_id
             JOIN external_identity e
               ON e.media_id = h.media_id AND e.scope = 'title' AND {CATALOG_IDENTITY}
+            WHERE h.deleted_at IS NULL
             ORDER BY h.watched_at DESC
             LIMIT ?1 OFFSET ?2
             "#
@@ -698,20 +808,38 @@ impl Store {
     }
 
     pub fn history_remove(&self, media_id: &str, episode: Option<i32>) -> Result<()> {
+        // Soft delete; watched_at is the merge version, so it moves too.
         if let Some(episode) = episode {
             self.connection.execute(
-                "DELETE FROM watch_history WHERE media_id = ?1 AND episode = ?2",
+                r#"
+                UPDATE watch_history
+                SET deleted_at = CURRENT_TIMESTAMP, watched_at = CURRENT_TIMESTAMP
+                WHERE media_id = ?1 AND episode = ?2 AND deleted_at IS NULL
+                "#,
                 params![media_id, episode],
             )?;
         } else {
-            self.connection
-                .execute("DELETE FROM watch_history WHERE media_id = ?1", [media_id])?;
+            self.connection.execute(
+                r#"
+                UPDATE watch_history
+                SET deleted_at = CURRENT_TIMESTAMP, watched_at = CURRENT_TIMESTAMP
+                WHERE media_id = ?1 AND deleted_at IS NULL
+                "#,
+                [media_id],
+            )?;
         }
         Ok(())
     }
 
     pub fn history_clear(&self) -> Result<()> {
-        self.connection.execute("DELETE FROM watch_history", [])?;
+        self.connection.execute(
+            r#"
+            UPDATE watch_history
+            SET deleted_at = CURRENT_TIMESTAMP, watched_at = CURRENT_TIMESTAMP
+            WHERE deleted_at IS NULL
+            "#,
+            [],
+        )?;
         Ok(())
     }
 
@@ -812,6 +940,202 @@ impl Store {
         Ok(())
     }
 
+    pub fn sync_config(&self) -> Result<SyncConfig> {
+        let config = self.connection.query_row(
+            r#"
+            SELECT server_url, username, remote_path, credential_key, auto_sync,
+                   sync_settings, settings_authority, device_id, last_synced_at,
+                   last_etag, last_status, last_error
+            FROM sync_config WHERE id = 1
+            "#,
+            [],
+            |row| {
+                Ok(SyncConfig {
+                    server_url: row.get(0)?,
+                    username: row.get(1)?,
+                    remote_path: row.get(2)?,
+                    credential_key: row.get(3)?,
+                    auto_sync: row.get::<_, i64>(4)? != 0,
+                    sync_settings: row.get::<_, i64>(5)? != 0,
+                    settings_authority: row.get(6)?,
+                    device_id: row.get(7)?,
+                    last_synced_at: row.get(8)?,
+                    last_etag: row.get(9)?,
+                    last_status: row.get(10)?,
+                    last_error: row.get(11)?,
+                })
+            },
+        )?;
+        Ok(config)
+    }
+
+    pub fn save_sync_config(&self, config: &SyncConfig) -> Result<()> {
+        config.validate()?;
+        self.connection.execute(
+            r#"
+            UPDATE sync_config
+            SET server_url = ?1, username = ?2, remote_path = ?3, credential_key = ?4,
+                auto_sync = ?5, sync_settings = ?6, settings_authority = ?7,
+                device_id = ?8, last_synced_at = ?9, last_etag = ?10,
+                last_status = ?11, last_error = ?12
+            WHERE id = 1
+            "#,
+            params![
+                config.server_url,
+                config.username,
+                config.remote_path,
+                config.credential_key,
+                i64::from(config.auto_sync),
+                i64::from(config.sync_settings),
+                config.settings_authority,
+                config.device_id,
+                config.last_synced_at,
+                config.last_etag,
+                config.last_status,
+                config.last_error
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_sync_authority(&self, authority: &str) -> Result<()> {
+        if !matches!(authority, "cloud" | "local") {
+            return Err(StoreError::Invalid(
+                "settings_authority must be 'cloud' or 'local'".into(),
+            ));
+        }
+        self.connection.execute(
+            "UPDATE sync_config SET settings_authority = ?1 WHERE id = 1",
+            [authority],
+        )?;
+        Ok(())
+    }
+
+    /// Record the outcome of one sync attempt. A successful run advances
+    /// `last_synced_at` and (when the server sent one) the ETag.
+    pub fn record_sync_status(
+        &self,
+        status: &str,
+        error: Option<&str>,
+        etag: Option<&str>,
+    ) -> Result<()> {
+        if !SYNC_STATUSES.contains(&status) {
+            return Err(StoreError::Invalid("unknown sync status".into()));
+        }
+        let error: Option<String> = error.map(|text| text.chars().take(256).collect());
+        let synced_at = if status == "ok" {
+            Some(self.now_timestamp()?)
+        } else {
+            None
+        };
+        self.connection.execute(
+            r#"
+            UPDATE sync_config
+            SET last_status = ?1, last_error = ?2,
+                last_etag = COALESCE(?3, last_etag),
+                last_synced_at = COALESCE(?4, last_synced_at)
+            WHERE id = 1
+            "#,
+            params![status, error, etag, synced_at],
+        )?;
+        Ok(())
+    }
+
+    /// Whether the last successful sync happened within `seconds`.
+    pub fn synced_within(&self, seconds: i64) -> Result<bool> {
+        let modifier = format!("-{seconds} seconds");
+        let recent: i64 = self.connection.query_row(
+            r#"
+            SELECT CASE
+                WHEN last_synced_at IS NOT NULL
+                 AND last_synced_at >= strftime('%Y-%m-%d %H:%M:%S', 'now', ?1)
+                THEN 1 ELSE 0 END
+            FROM sync_config WHERE id = 1
+            "#,
+            [modifier],
+            |row| row.get(0),
+        )?;
+        Ok(recent != 0)
+    }
+
+    fn now_timestamp(&self) -> Result<String> {
+        let now: String = self.connection.query_row(
+            "SELECT strftime('%Y-%m-%d %H:%M:%S', 'now')",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(now)
+    }
+
+    pub(crate) fn connection(&self) -> &Connection {
+        &self.connection
+    }
+
+    pub(crate) fn connection_mut(&mut self) -> &mut Connection {
+        &mut self.connection
+    }
+
+    /// Copy a consistent snapshot of the database with `VACUUM INTO`.
+    pub fn backup_database(&self, target: &Path) -> Result<()> {
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| StoreError::Invalid(error.to_string()))?;
+        }
+        let path = target.to_string_lossy().replace('\'', "''");
+        self.connection
+            .execute_batch(&format!("VACUUM INTO '{path}'"))?;
+        Ok(())
+    }
+
+    /// Replace every setting after validating the whole set.
+    pub fn write_settings(&self, settings: &Settings) -> Result<()> {
+        settings.validate()?;
+        self.connection.execute(
+            r#"
+            UPDATE settings
+            SET default_volume = ?1, default_speed = ?2, auto_next = ?3,
+                display_language = ?4, catalog_source = ?5
+            WHERE id = 1
+            "#,
+            params![
+                settings.default_volume,
+                settings.default_speed,
+                i64::from(settings.auto_next),
+                settings.display_language,
+                settings.catalog_source
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// The stable per-install identifier shared with WebDAV sync.
+    pub fn device_id(&mut self) -> Result<String> {
+        let existing: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT device_id FROM sync_config WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(id) = existing.filter(|id| !id.is_empty()) {
+            return Ok(id);
+        }
+        let id = Uuid::new_v4().to_string();
+        self.connection
+            .execute("UPDATE sync_config SET device_id = ?1 WHERE id = 1", [&id])?;
+        Ok(id)
+    }
+
+    /// The current UTC time formatted for backup file names.
+    pub fn timestamp_now(&self) -> Result<String> {
+        self.connection
+            .query_row("SELECT strftime('%Y%m%d-%H%M%S', 'now')", [], |row| {
+                row.get(0)
+            })
+            .map_err(Into::into)
+    }
+
     pub fn source_rule_list(&self) -> Result<Vec<SourceRuleRecord>> {
         let mut statement = self.connection.prepare(
             "SELECT name, rule_json, installed_at FROM source_rule ORDER BY installed_at",
@@ -904,6 +1228,16 @@ fn migrate(connection: &mut Connection) -> Result<()> {
             "#,
         )?;
     }
+    // Schema 4: removal tombstones, title lookup index and the sync settings row.
+    if !table_has_column(&transaction, "library_entry", "deleted_at")? {
+        transaction.execute_batch("ALTER TABLE library_entry ADD COLUMN deleted_at TEXT;")?;
+    }
+    if !table_has_column(&transaction, "watch_history", "deleted_at")? {
+        transaction.execute_batch("ALTER TABLE watch_history ADD COLUMN deleted_at TEXT;")?;
+    }
+    transaction
+        .execute_batch("CREATE INDEX IF NOT EXISTS idx_media_kind_title ON media(kind, title);")?;
+
     if schema_version < CURRENT_SCHEMA_VERSION {
         transaction.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION)?;
     }
@@ -1514,5 +1848,70 @@ mod tests {
 
         drop(store);
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn sync_config_round_trips_without_keeping_the_password() {
+        let mut store = store();
+        let mut config = store.sync_config().unwrap();
+        assert_eq!(config.remote_path, "/kuriume/records.json");
+        assert_eq!(config.last_status, "never");
+        assert!(!config.auto_sync);
+        assert!(!config.sync_settings);
+        assert_eq!(config.settings_authority, "cloud");
+
+        config.server_url = "https://dav.example.com/dav".into();
+        config.username = "lei".into();
+        config.remote_path = "/kuriume/records.json".into();
+        config.credential_key = "https://dav.example.com\0lei".into();
+        config.auto_sync = true;
+        config.sync_settings = true;
+        config.settings_authority = "local".into();
+        store.save_sync_config(&config).unwrap();
+        let saved = store.sync_config().unwrap();
+        assert!(saved.auto_sync);
+        assert!(saved.sync_settings);
+        assert_eq!(saved.settings_authority, "local");
+        assert_eq!(saved.credential_key, "https://dav.example.com\0lei");
+        let columns: i64 = store
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('sync_config') WHERE name LIKE '%password%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(columns, 0, "the password must never be stored in SQLite");
+
+        store
+            .record_sync_status("ok", None, Some("\"etag-1\""))
+            .unwrap();
+        let synced = store.sync_config().unwrap();
+        assert_eq!(synced.last_status, "ok");
+        assert_eq!(synced.last_etag.as_deref(), Some("\"etag-1\""));
+        assert!(synced.last_synced_at.is_some());
+
+        store
+            .record_sync_status("failed", Some(&"x".repeat(400)), None)
+            .unwrap();
+        let failed = store.sync_config().unwrap();
+        assert_eq!(failed.last_status, "failed");
+        assert_eq!(failed.last_error.as_deref().map(str::len), Some(256));
+        assert_eq!(
+            failed.last_etag.as_deref(),
+            Some("\"etag-1\""),
+            "a failure keeps the last known ETag"
+        );
+
+        store.set_sync_authority("cloud").unwrap();
+        assert_eq!(store.sync_config().unwrap().settings_authority, "cloud");
+        assert!(store.set_sync_authority("remote").is_err());
+
+        let mut broken = store.sync_config().unwrap();
+        broken.last_status = "half-way".into();
+        assert!(store.save_sync_config(&broken).is_err());
+        let device = store.device_id().unwrap();
+        assert_eq!(store.device_id().unwrap(), device, "device id is stable");
+        assert_eq!(store.sync_config().unwrap().device_id, device);
     }
 }

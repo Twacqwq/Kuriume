@@ -47,6 +47,120 @@ mod mobile {
             .map_err(|error| error.to_string())
     }
 
+    #[derive(Deserialize)]
+    pub struct SecureValue {
+        pub password: Option<String>,
+    }
+
+    /// Reads the WebDAV password from the native credential store. Trusted Rust
+    /// callers only: the sync engine never exposes the value to the frontend.
+    pub fn password_get<R: Runtime>(
+        app: &AppHandle<R>,
+        account: &str,
+    ) -> Result<Option<String>, String> {
+        app.state::<Mobile<R>>()
+            .0
+            .run_mobile_plugin::<SecureValue>(
+                "secureGet",
+                serde_json::json!({ "account": account }),
+            )
+            .map(|value| value.password)
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn password_set<R: Runtime>(
+        app: &AppHandle<R>,
+        account: &str,
+        password: &str,
+    ) -> Result<(), String> {
+        app.state::<Mobile<R>>()
+            .0
+            .run_mobile_plugin::<serde_json::Value>(
+                "secureSet",
+                serde_json::json!({ "account": account, "password": password }),
+            )
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn password_clear<R: Runtime>(app: &AppHandle<R>, account: &str) -> Result<(), String> {
+        app.state::<Mobile<R>>()
+            .0
+            .run_mobile_plugin::<serde_json::Value>(
+                "secureClear",
+                serde_json::json!({ "account": account }),
+            )
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    /// Copies a document picked through the system file picker into the app
+    /// cache and returns that private path. Only file URLs and content URIs are
+    /// accepted by the native side.
+    pub async fn copy_record_uri<R: Runtime>(
+        app: AppHandle<R>,
+        uri: String,
+    ) -> Result<String, String> {
+        #[derive(Deserialize)]
+        struct Copied {
+            path: String,
+        }
+        tauri::async_runtime::spawn_blocking(move || {
+            app.state::<Mobile<R>>()
+                .0
+                .run_mobile_plugin::<Copied>("readRecordUri", serde_json::json!({ "uri": uri }))
+                .map(|copied| copied.path)
+                .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
+    #[derive(Deserialize)]
+    pub struct SavedRecord {
+        pub location: String,
+    }
+
+    /// Copies a records file from the app cache into the public Downloads folder.
+    /// The path is never taken from the frontend.
+    #[cfg(target_os = "android")]
+    pub async fn save_record_file<R: Runtime>(
+        app: AppHandle<R>,
+        path: String,
+    ) -> Result<SavedRecord, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            app.state::<Mobile<R>>()
+                .0
+                .run_mobile_plugin::<SavedRecord>(
+                    "saveRecordFile",
+                    serde_json::json!({ "path": path }),
+                )
+                .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
+    /// Shares a records file produced in the app cache; the path is never taken
+    /// from the frontend (records_export_share builds it).
+    pub async fn share_record_file<R: Runtime>(
+        app: AppHandle<R>,
+        path: String,
+    ) -> Result<(), String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            app.state::<Mobile<R>>()
+                .0
+                .run_mobile_plugin::<serde_json::Value>(
+                    "shareRecordFile",
+                    serde_json::json!({ "path": path }),
+                )
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
     // Only the trusted Rust resolver can start a sniffer; no frontend permission.
     pub async fn sniff<R: Runtime>(
         app: AppHandle<R>,
@@ -112,10 +226,12 @@ mod mobile {
     }
 }
 
-#[cfg(target_os = "android")]
-pub use mobile::{install_package, update_dir};
 #[cfg(mobile)]
-pub use mobile::{open_url, sniff};
+pub use mobile::{
+    copy_record_uri, open_url, password_clear, password_get, password_set, share_record_file, sniff,
+};
+#[cfg(target_os = "android")]
+pub use mobile::{install_package, save_record_file, update_dir};
 
 #[cfg(target_os = "ios")]
 tauri::ios_plugin_binding!(init_plugin_mobile);

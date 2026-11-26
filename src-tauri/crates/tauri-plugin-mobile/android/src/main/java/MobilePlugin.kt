@@ -2,13 +2,19 @@ package com.twac.kuriume.mobile
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.provider.Settings
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
 import android.view.WindowManager
 import android.webkit.WebView
 import androidx.core.content.FileProvider
@@ -21,7 +27,13 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import kotlin.math.roundToInt
 
 @InvokeArg
@@ -32,6 +44,15 @@ class InstallPackageArgs { lateinit var path: String }
 
 @InvokeArg
 class ControlArgs { lateinit var action: String; var value: Double? = null; var session: String? = null }
+
+@InvokeArg
+class SecureArgs { lateinit var account: String; var password: String? = null }
+
+@InvokeArg
+class RecordUriArgs { lateinit var uri: String }
+
+@InvokeArg
+class RecordFileArgs { lateinit var path: String }
 
 @TauriPlugin
 class MobilePlugin(private val activity: Activity) : Plugin(activity) {
@@ -196,5 +217,201 @@ class MobilePlugin(private val activity: Activity) : Plugin(activity) {
                 invoke.reject("No app can open this link")
             }
         }
+    }
+
+    private val securePrefs by lazy { activity.getSharedPreferences("kuriume-secure", Context.MODE_PRIVATE) }
+
+    /** AES key in the AndroidKeyStore; the preferences only hold ciphertext. */
+    private fun secureKey(): SecretKey {
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (store.getEntry(SECURE_ALIAS, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        generator.init(
+            KeyGenParameterSpec.Builder(SECURE_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build()
+        )
+        return generator.generateKey()
+    }
+
+    @Command
+    fun secureGet(invoke: Invoke) {
+        val args = invoke.parseArgs(SecureArgs::class.java)
+        val stored = securePrefs.getString(args.account, null)
+        if (stored == null) { invoke.resolve(JSObject()); return }
+        try {
+            val raw = Base64.decode(stored, Base64.NO_WRAP)
+            if (raw.size <= 12) { invoke.reject("Stored password is damaged"); return }
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, secureKey(), GCMParameterSpec(128, raw, 0, 12))
+            val password = String(cipher.doFinal(raw, 12, raw.size - 12), Charsets.UTF_8)
+            invoke.resolve(JSObject().apply { put("password", password) })
+        } catch (error: Exception) {
+            invoke.reject("Secure storage unavailable: ${error.message}")
+        }
+    }
+
+    @Command
+    fun secureSet(invoke: Invoke) {
+        val args = invoke.parseArgs(SecureArgs::class.java)
+        val password = args.password
+        if (password.isNullOrEmpty()) { invoke.reject("Password is empty"); return }
+        try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, secureKey())
+            val payload = ByteArrayOutputStream()
+            payload.write(cipher.iv)
+            payload.write(cipher.doFinal(password.toByteArray(Charsets.UTF_8)))
+            val encoded = Base64.encodeToString(payload.toByteArray(), Base64.NO_WRAP)
+            if (!securePrefs.edit().putString(args.account, encoded).commit()) {
+                invoke.reject("Secure storage is read-only"); return
+            }
+            invoke.resolve()
+        } catch (error: Exception) {
+            invoke.reject("Secure storage unavailable: ${error.message}")
+        }
+    }
+
+    @Command
+    fun secureClear(invoke: Invoke) {
+        val args = invoke.parseArgs(SecureArgs::class.java)
+        securePrefs.edit().remove(args.account).apply()
+        invoke.resolve()
+    }
+
+    /** Records shared with other apps come from this one folder. */
+    private fun recordsFolder() = File(activity.cacheDir, "records")
+
+    /** Copies a picked document into the app cache so Rust can read a plain path. */
+    @Command
+    fun readRecordUri(invoke: Invoke) {
+        val args = invoke.parseArgs(RecordUriArgs::class.java)
+        val uri = try {
+            val parsed = Uri.parse(args.uri)
+            if (parsed.scheme == null && args.uri.startsWith("/")) Uri.fromFile(File(args.uri)) else parsed
+        } catch (error: Exception) { invoke.reject("Cannot read this file"); return }
+        if (uri.scheme != "content" && uri.scheme != "file") { invoke.reject("Cannot read this file"); return }
+        val folder = File(activity.cacheDir, "imports")
+        if (!folder.isDirectory && !folder.mkdirs()) { invoke.reject("Cannot create the import folder"); return }
+        val target = File(folder, "records-${System.currentTimeMillis()}.json")
+        try {
+            activity.contentResolver.openInputStream(uri).use { input ->
+                if (input == null) { invoke.reject("Cannot read this file"); return }
+                target.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        total += read
+                        if (total > MAX_RECORD_BYTES) {
+                            target.delete()
+                            invoke.reject("The file is larger than 32 MB")
+                            return
+                        }
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+            invoke.resolve(JSObject().apply { put("path", target.absolutePath) })
+        } catch (error: Exception) {
+            target.delete()
+            invoke.reject("Cannot read this file: ${error.message}")
+        }
+    }
+
+    /** Saves a records file into the public Downloads folder. */
+    @Command
+    fun saveRecordFile(invoke: Invoke) {
+        val args = invoke.parseArgs(RecordFileArgs::class.java)
+        val file = File(args.path)
+        if (file.parentFile?.canonicalPath != recordsFolder().canonicalPath || !file.isFile || !file.name.endsWith(".json")) {
+            invoke.reject("Not a records file"); return
+        }
+        activity.runOnUiThread {
+            try {
+                val location = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    saveToPublicDownloads(file)
+                } else {
+                    saveToAppDownloads(file)
+                }
+                invoke.resolve(JSObject().apply { put("location", location) })
+            } catch (error: Exception) {
+                invoke.reject("Cannot save the file: ${error.message}")
+            }
+        }
+    }
+
+    /** Android 10+ writes through MediaStore, so no storage permission is needed. */
+    private fun saveToPublicDownloads(file: File): String {
+        val resolver = activity.contentResolver
+        val folder = "${Environment.DIRECTORY_DOWNLOADS}/Kuriume"
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+            put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val uri = resolver.insert(collection, values) ?: throw IllegalStateException("Downloads is unavailable")
+        val savedName = try {
+            resolver.openOutputStream(uri)?.use { output ->
+                file.inputStream().use { input -> input.copyTo(output) }
+            } ?: throw IllegalStateException("Downloads is read-only")
+            values.clear()
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+            resolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) ?: file.name else file.name
+            } ?: file.name
+        } catch (error: Exception) {
+            resolver.delete(uri, null, null)
+            throw error
+        }
+        return "$folder/$savedName"
+    }
+
+    /** Android 9 and older have no MediaStore Downloads collection. */
+    private fun saveToAppDownloads(file: File): String {
+        val root = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: throw IllegalStateException("External storage is unavailable")
+        val folder = File(root, "Kuriume")
+        if (!folder.isDirectory && !folder.mkdirs()) {
+            throw IllegalStateException("Cannot create the records folder")
+        }
+        val target = File(folder, file.name)
+        file.copyTo(target, overwrite = true)
+        return target.absolutePath
+    }
+
+    /** Opens the system share sheet for a records file the app just wrote. */
+    @Command
+    fun shareRecordFile(invoke: Invoke) {
+        val args = invoke.parseArgs(RecordFileArgs::class.java)
+        val file = File(args.path)
+        if (file.parentFile?.canonicalPath != recordsFolder().canonicalPath || !file.isFile || !file.name.endsWith(".json")) {
+            invoke.reject("Not a records file"); return
+        }
+        activity.runOnUiThread {
+            try {
+                val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.kuriume.records", file)
+                val intent = Intent(Intent.ACTION_SEND)
+                    .setType("application/json")
+                    .putExtra(Intent.EXTRA_STREAM, uri)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                intent.clipData = android.content.ClipData.newRawUri("Kuriume records", uri)
+                activity.startActivity(Intent.createChooser(intent, "Kuriume records"))
+                invoke.resolve()
+            } catch (error: Exception) {
+                invoke.reject("Cannot share the file: ${error.message}")
+            }
+        }
+    }
+
+    private companion object {
+        const val SECURE_ALIAS = "kuriume-webdav"
+        const val MAX_RECORD_BYTES = 32L * 1024 * 1024
     }
 }
